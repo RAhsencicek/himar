@@ -164,14 +164,14 @@ def superuser_required(view_func):
     erişmesine izin veren özel yetkilendirme dekoratörü.
     Oturum açmamış kullanıcıları giriş sayfasına (/login/?next=...) yönlendirir.
     Oturum açmış ancak is_superuser=False olan (kasiyer veya mağaza yöneticisi)
-    kullanıcılar için PermissionDenied (HTTP 403 Forbidden) fırlatır.
+    kullanıcılar için şık 403 yetki kısıtlama ekranı sunar (HTTP 403).
     """
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):
         if not request.user.is_authenticated:
             return redirect(f'/login/?next={request.path}')
         if not request.user.is_superuser:
-            raise PermissionDenied("Bu işlem yalnızca Platform Süper Yöneticisi (Superuser) tarafından gerçekleştirilebilir.")
+            return render(request, '403.html', {'user': request.user}, status=403)
         return view_func(request, *args, **kwargs)
     return _wrapped_view
 

@@ -299,33 +299,33 @@
     <aside class="saas-sidebar">
         <div class="saas-sidebar-nav">
             <div class="saas-nav-category">Platform Yönetimi</div>
-            <a href="{% url 'super_admin_dashboard' %}" class="saas-nav-link active">
+            <a href="javascript:void(0);" onclick="switchSaasTab('overview')" class="saas-nav-link active" data-tab="overview">
                 <i class="bi bi-grid-1x2-fill"></i>
                 <span>Platform Özeti & KPI</span>
             </a>
-            <a href="{% url 'super_admin_dashboard' %}#companies-section" class="saas-nav-link">
+            <a href="javascript:void(0);" onclick="switchSaasTab('companies')" class="saas-nav-link" data-tab="companies">
                 <i class="bi bi-buildings"></i>
                 <span>Kayıtlı Mağazalar</span>
             </a>
-            <a href="{% url 'super_admin_dashboard' %}#subscriptions-section" class="saas-nav-link">
+            <a href="javascript:void(0);" onclick="switchSaasTab('companies')" class="saas-nav-link" data-tab="subscriptions">
                 <i class="bi bi-key"></i>
                 <span>Lisanslar & Kotalar</span>
             </a>
-            <a href="{% url 'super_admin_dashboard' %}#registers-section" class="saas-nav-link">
+            <a href="javascript:void(0);" onclick="switchSaasTab('registers')" class="saas-nav-link" data-tab="registers">
                 <i class="bi bi-display"></i>
                 <span>Kasalar & Cihazlar</span>
             </a>
 
             <div class="saas-nav-category">Sistem & Güvenlik</div>
-            <a href="{% url 'super_admin_dashboard' %}#audit-logs-section" class="saas-nav-link">
+            <a href="javascript:void(0);" onclick="switchSaasTab('logs')" class="saas-nav-link" data-tab="logs">
                 <i class="bi bi-journal-text"></i>
                 <span>Sistem Denetim İzi</span>
             </a>
-            <a href="{% url 'admin:index' %}pos_app/company/" class="saas-nav-link">
+            <a href="{% url 'admin:index' %}pos_app/company/" class="saas-nav-link" title="Django ModelAdmin Şirket Listesi">
                 <i class="bi bi-gear"></i>
                 <span>Şirket Ayarları</span>
             </a>
-            <a href="{% url 'admin:index' %}auth/user/" class="saas-nav-link">
+            <a href="{% url 'admin:index' %}auth/user/" class="saas-nav-link" title="Django ModelAdmin Kullanıcılar">
                 <i class="bi bi-people"></i>
                 <span>Kullanıcı Yönetimi</span>
             </a>
@@ -338,6 +338,10 @@
                 <span>Yeni Mağaza Ekle</span>
             </button>
             <div class="text-center mt-2">
+                <span class="text-muted" style="font-size: 0.7rem;">HiMarket Multi-Tenant v1.0</span>
+            </div>
+        </div>
+    </aside>
                 <span class="text-muted" style="font-size: 0.7rem;">HiMarket Multi-Tenant v1.0</span>
             </div>
         </div>
@@ -363,6 +367,53 @@
 
     <!-- Bootstrap 5 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function switchSaasTab(tabKey) {
+            // 1. Sidebar aktif rozetini güncelle
+            document.querySelectorAll('.saas-sidebar .saas-nav-link').forEach(function(link) {
+                link.classList.remove('active');
+            });
+            var activeLink = document.querySelector('.saas-sidebar [data-tab="' + tabKey + '"]');
+            if (activeLink) activeLink.classList.add('active');
+
+            if (tabKey === 'overview') {
+                var ov = document.getElementById('overview');
+                if (ov) {
+                    ov.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                return;
+            }
+
+            // 2. İlgili Bootstrap sekmesini aktifleştir
+            var targetBtnId = 'companies-tab';
+            if (tabKey === 'registers') targetBtnId = 'registers-tab';
+            else if (tabKey === 'logs') targetBtnId = 'logs-tab';
+
+            var tabBtn = document.getElementById(targetBtnId);
+            if (tabBtn) {
+                var tab = bootstrap.Tab.getOrCreateInstance(tabBtn);
+                tab.show();
+                tabBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
+        // Sekme elle tıklandığında sol menüyü de senkronize et
+        document.addEventListener('DOMContentLoaded', function() {
+            var tabBtns = document.querySelectorAll('#saasDashboardTabs button[data-bs-toggle="tab"]');
+            tabBtns.forEach(function(btn) {
+                btn.addEventListener('shown.bs.tab', function(e) {
+                    var id = e.target.id;
+                    var key = 'companies';
+                    if (id === 'registers-tab') key = 'registers';
+                    else if (id === 'logs-tab') key = 'logs';
+
+                    document.querySelectorAll('.saas-sidebar .saas-nav-link').forEach(function(l) { l.classList.remove('active'); });
+                    var activeLink = document.querySelector('.saas-sidebar [data-tab="' + key + '"]');
+                    if (activeLink) activeLink.classList.add('active');
+                });
+            });
+        });
+    </script>
     {% block extrajs %}{% endblock %}
 </body>
 </html>

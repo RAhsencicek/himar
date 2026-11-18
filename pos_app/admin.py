@@ -1,7 +1,37 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
-from .models import Category, Product, CashRegister, Shift, Sale, SaleItem, Supplier, SupplierTransaction, StockEntry, StockEntryItem, SystemLog
+from .models import (
+    Category, Product, CashRegister, Shift, Sale, SaleItem,
+    Supplier, SupplierTransaction, StockEntry, StockEntryItem, SystemLog,
+    Company, UserProfile, Subscription, CompanySetting
+)
+
+
+@admin.register(Company)
+class CompanyAdmin(admin.ModelAdmin):
+    list_display = ('name', 'code', 'phone', 'email', 'tax_number', 'is_active', 'created_at')
+    search_fields = ('name', 'code', 'tax_number')
+    list_filter = ('is_active',)
+
+
+@admin.register(Subscription)
+class SubscriptionAdmin(admin.ModelAdmin):
+    list_display = ('company', 'plan_type', 'max_cash_registers', 'status', 'expires_at')
+    list_filter = ('plan_type', 'status')
+    search_fields = ('company__name',)
+
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ('user', 'company', 'pin_code')
+    search_fields = ('user__username', 'company__name')
+
+
+@admin.register(CompanySetting)
+class CompanySettingAdmin(admin.ModelAdmin):
+    list_display = ('brand_name', 'company', 'fiscal_mode', 'fiscal_provider')
+
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
