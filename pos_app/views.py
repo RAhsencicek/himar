@@ -5383,6 +5383,131 @@ def super_admin_toggle_company_status_action(request, company_id):
     return redirect('super_admin_dashboard')
 
 
+def _seed_company_demo_products(company):
+    """
+    Yeni oluşturulan mağazaya temel market kategorilerini ve popüler demo ürünlerini yükler.
+    """
+    cat_bakery, _ = Category.objects.get_or_create(company=company, name="Fırın & Ekmek", defaults={'display_order': 1})
+    cat_food, _ = Category.objects.get_or_create(company=company, name="Temel Gıda", defaults={'display_order': 2})
+    cat_drink, _ = Category.objects.get_or_create(company=company, name="İçecekler", defaults={'display_order': 3})
+    cat_dairy, _ = Category.objects.get_or_create(company=company, name="Süt & Şarküteri", defaults={'display_order': 4})
+    cat_produce, _ = Category.objects.get_or_create(company=company, name="Manav (Tartılı)", defaults={'display_order': 5})
+    cat_snack, _ = Category.objects.get_or_create(company=company, name="Atıştırmalık", defaults={'display_order': 6})
+
+    demo_products = [
+        {
+            'barcode': '8690000000010',
+            'name': 'Ekmek 200g',
+            'category': cat_bakery,
+            'buy_price': Decimal('8.00'),
+            'sell_price': Decimal('10.00'),
+            'vat_rate': Decimal('1.00'),
+            'is_weighted': False,
+            'unit': 'Adet',
+            'stock_quantity': Decimal('150.000'),
+            'is_quick_button': True,
+            'quick_button_order': 1
+        },
+        {
+            'barcode': '8690000000027',
+            'name': 'Büyük Alışveriş Poşeti',
+            'category': cat_food,
+            'buy_price': Decimal('0.10'),
+            'sell_price': Decimal('0.50'),
+            'vat_rate': Decimal('20.00'),
+            'is_weighted': False,
+            'unit': 'Adet',
+            'stock_quantity': Decimal('5000.000'),
+            'is_quick_button': True,
+            'quick_button_order': 2
+        },
+        {
+            'barcode': '8690504018003',
+            'name': 'Su 0.5L Pet',
+            'category': cat_drink,
+            'buy_price': Decimal('3.50'),
+            'sell_price': Decimal('6.00'),
+            'vat_rate': Decimal('10.00'),
+            'is_weighted': False,
+            'unit': 'Adet',
+            'stock_quantity': Decimal('200.000'),
+            'is_quick_button': True,
+            'quick_button_order': 3
+        },
+        {
+            'barcode': '8690504000123',
+            'name': 'Tam Yağlı Süt 1L',
+            'category': cat_dairy,
+            'buy_price': Decimal('26.00'),
+            'sell_price': Decimal('35.00'),
+            'vat_rate': Decimal('1.00'),
+            'is_weighted': False,
+            'unit': 'Adet',
+            'stock_quantity': Decimal('40.000'),
+            'is_quick_button': True,
+            'quick_button_order': 4
+        },
+        {
+            'barcode': '2700001014502',
+            'name': 'Amasya Elması (Tartılı)',
+            'category': cat_produce,
+            'buy_price': Decimal('25.00'),
+            'sell_price': Decimal('40.00'),
+            'vat_rate': Decimal('1.00'),
+            'is_weighted': True,
+            'unit': 'KG',
+            'stock_quantity': Decimal('85.500'),
+            'is_quick_button': True,
+            'quick_button_order': 5
+        },
+        {
+            'barcode': '2700002005008',
+            'name': 'Taze Kaşar Peyniri (Tartılı)',
+            'category': cat_dairy,
+            'buy_price': Decimal('180.00'),
+            'sell_price': Decimal('260.00'),
+            'vat_rate': Decimal('1.00'),
+            'is_weighted': True,
+            'unit': 'KG',
+            'stock_quantity': Decimal('30.000'),
+            'is_quick_button': True,
+            'quick_button_order': 6
+        },
+        {
+            'barcode': '8690526011234',
+            'name': 'Çikolatalı Gofret 35g',
+            'category': cat_snack,
+            'buy_price': Decimal('6.00'),
+            'sell_price': Decimal('10.00'),
+            'vat_rate': Decimal('10.00'),
+            'is_weighted': False,
+            'unit': 'Adet',
+            'stock_quantity': Decimal('120.000'),
+            'is_quick_button': True,
+            'quick_button_order': 7
+        },
+        {
+            'barcode': '8690123456789',
+            'name': 'Çay 1000g Rize Turist',
+            'category': cat_food,
+            'buy_price': Decimal('110.00'),
+            'sell_price': Decimal('150.00'),
+            'vat_rate': Decimal('1.00'),
+            'is_weighted': False,
+            'unit': 'Adet',
+            'stock_quantity': Decimal('50.000'),
+            'is_quick_button': False
+        }
+    ]
+
+    for p in demo_products:
+        Product.objects.get_or_create(
+            company=company,
+            barcode=p['barcode'],
+            defaults=p
+        )
+
+
 @superuser_required
 @require_POST
 def super_admin_create_company_action(request):
@@ -5486,6 +5611,10 @@ def super_admin_create_company_action(request):
 
     # 4. Firma Ayarları
     CompanySetting.get_settings(company=company)
+
+    # 4.1 İsteğe Bağlı Örnek Market Ürünleri Yükleme
+    if request.POST.get('seed_demo_products') == '1':
+        _seed_company_demo_products(company)
 
     # 5. İsteğe Bağlı Yönetici Kullanıcı Hesabı
     manager_username = request.POST.get('manager_username', '').strip()
