@@ -28,13 +28,30 @@ def backfill_company_data(apps, schema_editor):
         }
     )
 
-    models_to_update = [
-        Category, Product, CashRegister, Shift, Customer, Sale,
-        CustomerTransaction, Supplier, SupplierTransaction, StockEntry,
+    # 1. Supplier: Çakışmaları önleyerek tek tek güncelle
+    for sup in Supplier.objects.filter(company__isnull=True):
+        existing = Supplier.objects.filter(company=default_company, company_name=sup.company_name).first()
+        if existing and existing.id != sup.id:
+            sup.company_name = f"{sup.company_name} ({sup.id})"
+        sup.company = default_company
+        sup.save(update_fields=['company', 'company_name'])
+
+    # 2. CashRegister: Kasa kodu çakışmalarını önle
+    for reg in CashRegister.objects.filter(company__isnull=True):
+        existing = CashRegister.objects.filter(company=default_company, register_code=reg.register_code).first()
+        if existing and existing.id != reg.id:
+            reg.register_code = f"{reg.register_code}-{reg.id}"
+        reg.company = default_company
+        reg.save(update_fields=['company', 'register_code'])
+
+    # 3. Diğer modeller: Toplu güncelle
+    other_models = [
+        Category, Product, Shift, Customer, Sale,
+        CustomerTransaction, SupplierTransaction, StockEntry,
         StockTake, SystemLog
     ]
 
-    for model in models_to_update:
+    for model in other_models:
         model.objects.filter(company__isnull=True).update(company=default_company)
 
     setting = CompanySetting.objects.filter(id=1).first()
