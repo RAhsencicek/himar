@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=HiMarket Kasa (POS)
+Comment=HiMarket Dokunmatik Kasa Satış Terminali
+Exec=/opt/HiMarket/deployment/kiosk_chrome.sh
+Icon=/opt/HiMarket/static/img/icon.png
+Terminal=false
+Categories=Office;Finance;
+StartupNotify=true
+

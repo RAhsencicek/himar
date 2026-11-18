@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=HiMarket Yönetim Paneli
+Comment=HiMarket Stok, Cari, Fatura ve Rapor Yönetimi
+Exec=xdg-open http://127.0.0.1:8000/management/dashboard/
+Icon=/opt/HiMarket/static/img/icon.png
+Terminal=false
+Categories=Office;Finance;
+StartupNotify=true
+

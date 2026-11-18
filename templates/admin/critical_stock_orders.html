@@ -1,0 +1,252 @@
+{% extends "admin/base_site.html" %}
+{% load static l10n %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .order-supplier-card {
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        transition: box-shadow 0.2s ease;
+    }
+    .order-supplier-card:hover {
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
+    }
+    .stock-critical-pill {
+        background-color: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #fecaca;
+        font-weight: 800;
+        padding: 3px 8px;
+        border-radius: 20px;
+    }
+    @media print {
+        .no-print {
+            display: none !important;
+        }
+        .container-fluid {
+            padding: 0 !important;
+        }
+        .order-supplier-card {
+            border: 1px solid #94a3b8 !important;
+            page-break-inside: avoid;
+            margin-bottom: 25px !important;
+        }
+        table {
+            font-size: 11px !important;
+        }
+        .print-only-header {
+            display: block !important;
+        }
+    }
+    .print-only-header {
+        display: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <!-- YAZDIRMA FORM BAŞLIĞI (Yalnızca Print Çıktısında Görünür) -->
+    <div class="print-only-header mb-4 text-center border-bottom pb-3">
+        <h3 class="fw-bold text-slate-900 mb-1">HİMARKET PERAKENDE OTOMASYONU</h3>
+        <h5 class="fw-semibold text-slate-700 mb-1">KRİTİK STOK VE TOPTANCI SATIN ALMA SİPARİŞ FORMU (PO)</h5>
+        <div class="fs-8 text-secondary font-monospace">Tarih: {% now "d.m.Y H:i" %}</div>
+    </div>
+
+    <!-- BAŞLIK VE AKSİYON ÇUBUĞU -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-2 border-bottom no-print">
+        <div style="min-width: 0; flex: 1 1 280px;">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                <i class="bi bi-exclamation-triangle-fill fs-4 text-danger"></i>
+                <h4 class="mb-0 fw-extrabold text-slate-900 tracking-tight">KRİTİK STOK & TOPTANCI OTOMATİK SİPARİŞ</h4>
+                <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-0.5 rounded-pill fs-8 fw-bold">Faz 5.2</span>
+            </div>
+            <p class="text-secondary fs-7 mb-0">Asgari stok seviyesinin altına düşen ürünler toptancılarına göre otomatik gruplanır. Tek tıkla WhatsApp siparişi atabilir veya A4 satın alma formu yazdırabilirsiniz.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{% url 'export_critical_orders_csv' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-outline-success btn-sm fw-bold px-3" title="Sipariş listesini Excel uyumlu CSV olarak indir">
+                <i class="bi bi-file-earmark-spreadsheet me-1"></i> Sipariş CSV İndir
+            </a>
+            <button type="button" class="btn btn-outline-secondary btn-sm fw-bold px-3" onclick="window.print()">
+                <i class="bi bi-printer me-1"></i> Tümünü Yazdır (A4 PO)
+            </button>
+            <a href="{% url 'stock_entry_create' %}" class="btn btn-primary btn-sm fw-bold px-3 shadow-xs">
+                <i class="bi bi-box-arrow-in-down me-1"></i> Mal Kabulü Yap
+            </a>
+        </div>
+    </div>
+
+    <!-- METRİK ÖZET KARTLARI -->
+    <div class="row g-2 mb-3 no-print">
+        <div class="col-12 col-sm-6 col-md-4">
+            <div class="card shadow-xs border h-100 border-danger-subtle bg-danger-subtle bg-opacity-25">
+                <div class="card-body p-3 d-flex align-items-center justify-content-between gap-2">
+                    <div style="min-width: 0;">
+                        <div class="text-danger-emphasis fs-8 fw-bold text-uppercase">Kritik Stoktaki Ürün</div>
+                        <div class="fs-3 fw-extrabold text-danger font-monospace mt-1">{{ total_critical_count }} Kalem</div>
+                    </div>
+                    <div class="rounded-circle bg-danger bg-opacity-25 p-2.5 text-danger flex-shrink-0">
+                        <i class="bi bi-exclamation-octagon-fill fs-3"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-sm-6 col-md-4">
+            <div class="card shadow-xs border h-100 border-primary-subtle bg-primary-subtle bg-opacity-25">
+                <div class="card-body p-3 d-flex align-items-center justify-content-between gap-2">
+                    <div style="min-width: 0;">
+                        <div class="text-primary-emphasis fs-8 fw-bold text-uppercase">Tahmini İkmal Bütçesi</div>
+                        <div class="fs-3 fw-extrabold text-primary font-monospace mt-1">₺{{ total_estimated_budget|floatformat:2 }}</div>
+                    </div>
+                    <div class="rounded-circle bg-primary bg-opacity-25 p-2.5 text-primary flex-shrink-0">
+                        <i class="bi bi-cash-stack fs-3"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="card shadow-xs border h-100">
+                <div class="card-body p-3 d-flex align-items-center justify-content-between gap-2">
+                    <div style="min-width: 0;">
+                        <div class="text-secondary fs-8 fw-bold text-uppercase">Sipariş Verilecek Tedarikçi</div>
+                        <div class="fs-3 fw-extrabold text-slate-900 font-monospace mt-1">{{ order_groups|length }} Toptancı</div>
+                    </div>
+                    <div class="rounded-circle bg-slate-100 p-2.5 text-slate-700 flex-shrink-0">
+                        <i class="bi bi-truck fs-3"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FİLTRELEME ÇUBUĞU -->
+    <div class="card shadow-xs border mb-3 no-print">
+        <div class="card-body p-2.5">
+            <form method="get" class="row g-2 align-items-center">
+                <div class="col-12 col-md-5">
+                    <select name="supplier_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">-- Tüm Tedarikçiler / Toptancılar --</option>
+                        <option value="0" {% if selected_supplier_id == '0' %}selected{% endif %}>Atanmamış / Genel Toptancı Ürünleri</option>
+                        {% for s in suppliers %}
+                            <option value="{{ s.id }}" {% if selected_supplier_id == s.id|stringformat:"s" %}selected{% endif %}>{{ s.company_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-5">
+                    <select name="category_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">-- Tüm Kategoriler --</option>
+                        {% for cat in categories %}
+                            <option value="{{ cat.id }}" {% if selected_category_id == cat.id|stringformat:"s" %}selected{% endif %}>{{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-2 d-flex gap-1">
+                    <button type="submit" class="btn btn-sm btn-slate-700 w-100 fw-bold">Filtrele</button>
+                    {% if selected_supplier_id or selected_category_id %}
+                        <a href="{% url 'critical_stock_orders' %}" class="btn btn-sm btn-outline-secondary" title="Temizle"><i class="bi bi-x-lg"></i></a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- TOPTANCI BAZINDA GRUPLANMIŞ SİPARİŞ LİSTELERİ -->
+    {% for group in order_groups %}
+        <div class="card order-supplier-card mb-4 shadow-xs" id="supplier-group-{{ group.supplier_id }}">
+            <div class="card-header bg-slate-900 text-white py-2.5 px-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex align-items-center gap-2" style="min-width: 0; flex: 1 1 220px;">
+                    <i class="bi bi-truck text-warning fs-5 flex-shrink-0"></i>
+                    <div style="min-width: 0;">
+                        <span class="fw-bold fs-7">{{ group.name }}</span>
+                        {% if group.contact_name %}
+                            <span class="text-slate-300 fs-8 ms-1">({{ group.contact_name }})</span>
+                        {% endif %}
+                        {% if group.phone %}
+                            <span class="badge bg-slate-800 text-slate-300 font-monospace ms-1">{{ group.phone }}</span>
+                        {% endif %}
+                        {% if group.supplier %}
+                            <span class="badge bg-slate-800 text-slate-300 ms-1">Mevcut Borç: ₺{{ group.balance|floatformat:2 }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-2 no-print">
+                    <span class="badge bg-slate-800 text-warning font-monospace fs-7 fw-bold px-2.5 py-1 text-wrap">
+                        {{ group.total_items }} Kalem | Toplam: ₺{{ group.total_cost|floatformat:2 }}
+                    </span>
+                    {% if group.whatsapp_url %}
+                        <a href="{{ group.whatsapp_url }}" target="_blank" class="btn btn-success btn-sm fw-bold px-2.5 py-1 fs-8">
+                            <i class="bi bi-whatsapp me-1"></i> WhatsApp Siparişi Gönder
+                        </a>
+                    {% endif %}
+                    <a href="{% url 'stock_entry_create' %}{% if group.supplier %}?supplier_id={{ group.supplier.id }}{% endif %}" class="btn btn-primary btn-sm fw-bold px-2.5 py-1 fs-8">
+                        <i class="bi bi-box-arrow-in-down me-1"></i> Fatura İşle
+                    </a>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0 fs-7">
+                    <thead class="table-light text-secondary text-uppercase fs-8 border-bottom">
+                        <tr>
+                            <th class="ps-3 py-2">Barkod</th>
+                            <th>Ürün Adı & Kategori</th>
+                            <th class="text-center">Mevcut Stok</th>
+                            <th class="text-center">Asgari Stok</th>
+                            <th class="text-center bg-warning-subtle text-dark">Önerilen Sipariş</th>
+                            <th class="text-end">Birim Alış Maliyeti</th>
+                            <th class="text-end">Tahmini Tutar</th>
+                            <th class="text-end pe-3 no-print">Aksiyon</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in group.items %}
+                            <tr>
+                                <td class="ps-3 font-monospace fw-bold text-slate-700">{{ item.product.barcode }}</td>
+                                <td>
+                                    <div class="fw-bold text-slate-900">{{ item.product.name }}</div>
+                                    <small class="text-secondary fs-8">{{ item.product.category.name|default:"Kategorisiz" }}</small>
+                                </td>
+                                <td class="text-center font-monospace">
+                                    <span class="stock-critical-pill">{{ item.current_stock|floatformat:3 }} {{ item.product.unit }}</span>
+                                </td>
+                                <td class="text-center font-monospace text-slate-600">
+                                    {{ item.min_stock|floatformat:3 }} {{ item.product.unit }}
+                                </td>
+                                <td class="text-center font-monospace fw-extrabold bg-warning-subtle text-dark fs-7">
+                                    {{ item.suggested_qty|floatformat:0 }} {{ item.product.unit }}
+                                </td>
+                                <td class="text-end font-monospace text-slate-700">₺{{ item.product.buy_price|default:"0.00"|floatformat:2 }}</td>
+                                <td class="text-end font-monospace fw-extrabold text-slate-900">₺{{ item.cost|floatformat:2 }}</td>
+                                <td class="text-end pe-3 no-print">
+                                    <a href="{% url 'stock_entry_create' %}?product_id={{ item.product.id }}" class="btn btn-sm btn-outline-primary px-2 py-1 fs-8" title="Mal Kabulüne Ekle">
+                                        <i class="bi bi-plus-lg me-1"></i> Mal Kabul
+                                    </a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-light border-top">
+                        <tr>
+                            <th colspan="4" class="ps-3 text-secondary text-uppercase fs-8">Toptancı Sipariş Özeti</th>
+                            <th class="text-center font-monospace fw-extrabold text-dark bg-warning-subtle">{{ group.total_items }} Kalem</th>
+                            <th class="text-end text-secondary fs-8">TOPLAM:</th>
+                            <th class="text-end font-monospace fw-extrabold text-slate-900 fs-7">₺{{ group.total_cost|floatformat:2 }}</th>
+                            <th class="no-print"></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    {% empty %}
+        <div class="card shadow-xs border py-5 text-center">
+            <div class="card-body">
+                <i class="bi bi-check-circle-fill text-success fs-1 d-block mb-3"></i>
+                <h5 class="fw-bold text-slate-900">Harika! Asgari Seviyenin Altında Ürün Bulunmuyor.</h5>
+                <p class="text-secondary fs-7 mb-0">Tüm ürünlerinizin stok miktarı tanımlanan asgari stok seviyelerinin üzerindedir.</p>
+            </div>
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}
+

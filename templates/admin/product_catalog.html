@@ -1,0 +1,492 @@
+{% extends "admin/base_site.html" %}
+{% load static l10n %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <!-- SAYFA BAŞLIĞI VE HİYERARŞİK AKSİYONLAR -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-2 border-bottom">
+        <div>
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="badge bg-primary text-white fs-8 px-2 py-0.5 rounded-1">ÜRÜN YÖNETİMİ</span>
+                <span class="text-secondary fs-8 fw-semibold">/ Master Veri Havuzu</span>
+            </div>
+            <h1 class="h3 fw-bold text-slate-900 mb-0 d-flex align-items-center gap-2">
+                <i class="bi bi-grid-3x3-gap-fill text-warning"></i> ÜRÜN YÖNETİM KATALOĞU
+            </h1>
+            <span class="text-secondary small fw-medium">Market stokları, birim maliyetler, satış fiyatları, kar marjları ve tedarikçi eşleştirmeleri.</span>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{% url 'product_labels_view' %}" class="btn btn-sm btn-outline-info fw-bold px-3 py-1.5 d-flex align-items-center gap-1.5" title="Tüm ürünler veya seçili reyonlar için raf etiketi bas">
+                <i class="bi bi-tag"></i> Raf Etiketleri
+            </a>
+            <a href="{% url 'export_products_csv' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}" class="btn btn-sm btn-outline-secondary fw-bold px-3 py-1.5 d-flex align-items-center gap-1.5" title="Filtreli ürün kataloğunu Excel uyumlu CSV olarak indir">
+                <i class="bi bi-file-earmark-spreadsheet"></i> CSV İndir
+            </a>
+            <a href="{% url 'stock_entry_create' %}" class="btn btn-sm btn-outline-primary fw-bold px-3 py-1.5 d-flex align-items-center gap-1.5">
+                <i class="bi bi-box-arrow-in-down"></i> Fatura / Mal Kabulü Yap
+            </a>
+            <a href="{% url 'product_create_view' %}" class="btn btn-sm btn-success text-white fw-bold px-3 py-1.5 shadow-xs d-flex align-items-center gap-1.5">
+                <i class="bi bi-plus-lg"></i> Yeni Ürün Tanımla
+            </a>
+        </div>
+    </div>
+
+    <!-- BİLGİ & UYARI MESAJLARI -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show mb-3 rounded-2 shadow-xs py-2 px-3 fs-7" role="alert">
+                <i class="bi bi-check-circle-fill me-1"></i> {{ message }}
+                <button type="button" class="btn-close py-2" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- ENVANTER VE FİNANSAL KPI ÖZET KARTLARI -->
+    <div class="row g-2.5 mb-3">
+        <div class="col-6 col-lg-3">
+            <div class="tabler-card border-start border-4 border-primary h-100 p-2.5">
+                <div class="text-secondary fs-8 fw-bold text-uppercase">TOPLAM ÜRÜN ÇEŞİDİ</div>
+                <div class="fs-4 fw-extrabold text-slate-900">{{ total_products_count }} <span class="fs-7 fw-normal text-slate-500">Çeşit</span></div>
+                <div class="text-slate-500 fs-8 mt-0.5">Sistemde kayıtlı aktif ürünler</div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="tabler-card border-start border-4 border-info h-100 p-2.5">
+                <div class="text-secondary fs-8 fw-bold text-uppercase">STOK MALİYET DEĞERİ</div>
+                <div class="fs-4 fw-extrabold text-primary">₺{{ total_stock_cost|floatformat:2 }}</div>
+                <div class="text-slate-500 fs-8 mt-0.5">Mevcut stok alış toplamı</div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="tabler-card border-start border-4 border-success h-100 p-2.5">
+                <div class="text-secondary fs-8 fw-bold text-uppercase">RAF SATIŞ DEĞERİ</div>
+                <div class="fs-4 fw-extrabold text-success">₺{{ total_stock_value|floatformat:2 }}</div>
+                <div class="text-slate-500 fs-8 mt-0.5">Mevcut stok perakende cirosu</div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="tabler-card border-start border-4 border-warning h-100 p-2.5">
+                <div class="text-secondary fs-8 fw-bold text-uppercase">KRİTİK / TÜKENEN STOK</div>
+                <div class="fs-4 fw-extrabold text-warning">
+                    {{ low_stock_count }} <span class="fs-7 fw-bold text-danger">({{ out_of_stock_count }} Sıfır)</span>
+                </div>
+                <div class="text-slate-500 fs-8 mt-0.5">Tedarik edilmesi gerekenler</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- HIZLI DURUM SEKMELERİ (PILLS) -->
+    <div class="d-flex flex-wrap gap-1.5 mb-2.5">
+        <a href="{% url 'product_catalog_view' %}" class="btn btn-sm {% if not stock_status %}btn-primary text-white{% else %}btn-light border text-slate-700{% endif %} fw-bold px-3 py-1">
+            Tüm Ürünler ({{ total_products_count }})
+        </a>
+        <a href="{% url 'product_catalog_view' %}?stock=low" class="btn btn-sm {% if stock_status == 'low' %}btn-warning text-dark{% else %}btn-light border text-slate-700{% endif %} fw-bold px-3 py-1">
+            ⚠️ Kritik Stoktakiler ({{ low_stock_count }})
+        </a>
+        <a href="{% url 'product_catalog_view' %}?stock=out" class="btn btn-sm {% if stock_status == 'out' %}btn-danger text-white{% else %}btn-light border text-slate-700{% endif %} fw-bold px-3 py-1">
+            ❌ Tükenenler ({{ out_of_stock_count }})
+        </a>
+        <a href="{% url 'product_catalog_view' %}?stock=quick" class="btn btn-sm {% if stock_status == 'quick' %}btn-info text-white{% else %}btn-light border text-slate-700{% endif %} fw-bold px-3 py-1">
+            ⭐ Kasa Hızlı Butonları ({{ quick_button_count }})
+        </a>
+        <a href="{% url 'product_catalog_view' %}?stock=weighted" class="btn btn-sm {% if stock_status == 'weighted' %}btn-secondary text-white{% else %}btn-light border text-slate-700{% endif %} fw-bold px-3 py-1">
+            ⚖️ Tartılı / Terazi Ürünleri
+        </a>
+        <a href="{% url 'product_catalog_view' %}?stock=passive" class="btn btn-sm {% if stock_status == 'passive' %}btn-dark text-white{% else %}btn-light border text-slate-700{% endif %} fw-bold px-3 py-1">
+            ⛔ Pasif Ürünler ({{ passive_count }})
+        </a>
+    </div>
+
+    <!-- ARAMA VE ÇOKLU FİLTRE ÇUBUĞU -->
+    <form method="get" class="tabler-card mb-3 py-2 px-3">
+        {% if stock_status %}<input type="hidden" name="stock" value="{{ stock_status }}">{% endif %}
+        <div class="row g-2 align-items-center">
+            <div class="col-12 col-md-4">
+                <div class="input-group">
+                    <span class="input-group-text bg-light border"><i class="bi bi-search text-secondary"></i></span>
+                    <input type="text" name="q" class="form-control" placeholder="Ürün adı, barkod veya koli barkodu ara..." value="{{ search_q }}">
+                </div>
+            </div>
+            <div class="col-12 col-md-3">
+                <select name="category" class="form-select">
+                    <option value="">-- Tüm Kategoriler --</option>
+                    {% for c in categories %}
+                        <option value="{{ c.id }}" {% if category_id == c.id|stringformat:"s" %}selected{% endif %}>{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md-3">
+                <select name="supplier" class="form-select">
+                    <option value="">-- Tüm Toptancılar --</option>
+                    {% for s in suppliers %}
+                        <option value="{{ s.id }}" {% if supplier_id == s.id|stringformat:"s" %}selected{% endif %}>{{ s.company_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md-2 d-flex gap-1">
+                <button type="submit" class="btn btn-primary fw-bold w-100 text-white">Filtrele</button>
+                {% if search_q or category_id or supplier_id or stock_status %}
+                    <a href="{% url 'product_catalog_view' %}" class="btn btn-light border" title="Filtreyi Temizle"><i class="bi bi-x-lg"></i></a>
+                {% endif %}
+            </div>
+        </div>
+    </form>
+
+    <!-- TOPLU FİYAT / KDV GÜNCELLEME ÇUBUĞU (Faz 5.2 - form attribute ile iç içe form yok) -->
+    <form id="bulkUpdateForm" method="post" action="{% url 'product_bulk_update_action' %}" class="tabler-card mb-3 py-2.5 px-3 bg-light border">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <input type="hidden" name="q" value="{{ search_q }}">
+        <input type="hidden" name="category" value="{{ category_id }}">
+        <input type="hidden" name="supplier" value="{{ supplier_id }}">
+        <input type="hidden" name="stock" value="{{ stock_status|default:'' }}">
+        <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-3">
+                <label for="bulkScopeSelect" class="form-label fs-8 fw-bold text-secondary mb-1">
+                    Toplu İşlem Kapsamı (<span id="bulkSelectedCount">0</span> seçili)
+                </label>
+                <select id="bulkScopeSelect" name="apply_scope" class="form-select form-select-sm fw-semibold">
+                    <option value="selected">Seçili Ürünler</option>
+                    <option value="filtered">Filtrelenen Tüm Ürünler ({{ total_filtered_count|default:products.count }})</option>
+                </select>
+            </div>
+            <div class="col-12 col-md-4">
+                <label for="bulkActionTypeSelect" class="form-label fs-8 fw-bold text-secondary mb-1">Uygulanacak İşlem</label>
+                <select id="bulkActionTypeSelect" name="action_type" class="form-select form-select-sm fw-semibold">
+                    <option value="price_percent_up">% Satış Fiyatı Zammı (Artır)</option>
+                    <option value="price_percent_down">% Satış Fiyatı İndirimi (Azalt)</option>
+                    <option value="price_fixed_set">Sabit Satış Fiyatı Ata (TL)</option>
+                    <option value="vat_set">KDV Oranı Güncelle (%)</option>
+                </select>
+            </div>
+            <div class="col-7 col-md-3">
+                <label for="bulkActionValueInput" class="form-label fs-8 fw-bold text-secondary mb-1">Değer (% veya TL)</label>
+                <input type="number" id="bulkActionValueInput" name="action_value" step="0.01" min="0" required class="form-control form-control-sm font-monospace fw-bold" placeholder="Örn: 10">
+            </div>
+            <div class="col-5 col-md-2">
+                <button type="submit" class="btn btn-sm btn-warning text-dark fw-bold w-100">
+                    <i class="bi bi-lightning-charge-fill me-1"></i> Toplu Uygula
+                </button>
+            </div>
+        </div>
+    </form>
+
+    <!-- ÜRÜN TABLOSU -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span id="catalogTableTitle" class="fw-bold text-slate-900">ÜRÜN LİSTESİ ({{ total_filtered_count|default:products.count }} Sonuç{% if page_obj.paginator.num_pages > 1 %} · Sayfa {{ page_obj.number }}/{{ page_obj.paginator.num_pages }}{% endif %})</span>
+            <span class="badge bg-slate-100 text-slate-800 border border-slate-300 fs-8 fw-bold">Katalog Görünümü</span>
+        </div>
+        <div tabindex="0" role="region" aria-labelledby="catalogTableTitle" class="table-responsive">
+            <table class="table mb-0 fs-8 align-middle">
+                <thead>
+                    <tr>
+                        <th class="ps-3 text-center align-middle" style="width: 38px;">
+                            <input type="checkbox" id="selectAllProducts" class="form-check-input" aria-label="Listelenen tüm ürünleri seç">
+                        </th>
+                        <th style="min-width: 250px;">Ürün Tanımı & Barkod</th>
+                        <th>Kategori</th>
+                        <th>Toptancı / Tedarikçi</th>
+                        <th class="text-end">Alış (Maliyet)</th>
+                        <th class="text-end">Satış (KDV Dahil)</th>
+                        <th class="text-center">KDV</th>
+                        <th class="text-center">Mevcut Stok</th>
+                        <th class="text-end pe-3" style="min-width: 320px;">İşlemler</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in products %}
+                        <tr class="{% if not p.is_active %}table-secondary opacity-75{% endif %}">
+                            <td class="ps-3 text-center align-middle">
+                                <input type="checkbox" class="form-check-input product-select-cb" name="product_ids" value="{{ p.id }}" form="bulkUpdateForm" aria-label="{{ p.name }} seç">
+                            </td>
+                            <td>
+                                <div class="d-flex align-items-center gap-2.5">
+                                    {% if p.image %}
+                                        <img src="{{ p.image.url }}" class="rounded-2 border flex-shrink-0" style="width: 38px; height: 38px; object-fit: cover;">
+                                    {% else %}
+                                        <div class="bg-light border rounded-2 d-flex align-items-center justify-content-center text-slate-400 flex-shrink-0" style="width: 38px; height: 38px;">
+                                            <i class="bi bi-box fs-5"></i>
+                                        </div>
+                                    {% endif %}
+                                    <div>
+                                        <a href="{% url 'product_edit_view' p.id %}" class="text-slate-900 fs-7 fw-bold text-decoration-none d-block hover-primary">
+                                            {{ p.name }}
+                                        </a>
+                                        <div class="d-flex align-items-center gap-1.5 mt-0.5 flex-wrap">
+                                            <span class="font-monospace fw-bold text-primary" style="font-size: 0.75rem;">{{ p.barcode }}</span>
+                                            {% if not p.is_active %}
+                                                <span class="badge bg-secondary text-white fw-bold" style="font-size: 0.68rem;">PASİF</span>
+                                            {% endif %}
+                                            {% if p.secondary_barcode %}
+                                                <span class="text-slate-500 font-monospace fs-8" title="İkincil / Koli Barkodu">[{{ p.secondary_barcode }}]</span>
+                                            {% endif %}
+                                            {% if p.is_quick_button %}
+                                                <span class="badge bg-info-subtle text-info border border-info-subtle fw-bold" style="font-size: 0.68rem;">Hızlı Tuş</span>
+                                            {% endif %}
+                                            {% if p.is_weighted %}
+                                                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle fw-bold" style="font-size: 0.68rem;">Tartılı</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                {% if p.category %}
+                                    <span class="badge bg-slate-100 text-slate-800 border border-slate-300 px-2.5 py-1 fw-bold">{{ p.category.name }}</span>
+                                {% else %}
+                                    <span class="text-secondary">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-slate-700 fw-medium">
+                                {% if p.supplier %}
+                                    <i class="bi bi-truck text-primary me-1"></i> {{ p.supplier.company_name|truncatechars:20 }}
+                                {% else %}
+                                    <span class="text-secondary">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end fw-semibold text-slate-600 font-monospace">₺{{ p.buy_price|floatformat:2 }}</td>
+                            <td class="text-end quick-price-cell" data-product-id="{{ p.id }}" data-buy-price="{{ p.buy_price|unlocalize }}" data-product-name="{{ p.name|escapejs }}">
+                                <div class="price-display-wrap d-inline-flex align-items-center justify-content-end gap-1 px-1.5 py-0.5 rounded cursor-pointer"
+                                     onclick="activateQuickPriceEdit(this)" title="Hızlı Fiyat Değiştir (Tıklayın)">
+                                    <span class="fw-extrabold text-success fs-7 font-monospace price-val">₺{{ p.sell_price|floatformat:2 }}</span>
+                                    <i class="bi bi-pencil-fill text-slate-400 price-edit-icon" style="font-size: 0.65rem;"></i>
+                                </div>
+                                <div class="price-input-wrap d-none mt-1">
+                                    <div class="input-group input-group-sm ms-auto" style="width: 125px;">
+                                        <span class="input-group-text px-1 py-0 text-success fw-bold" style="font-size: 0.75rem;">₺</span>
+                                        <input type="text" class="form-control form-control-sm text-end fw-bold font-monospace p-1 quick-price-input"
+                                               value="{{ p.sell_price|unlocalize }}"
+                                               style="font-size: 0.8rem;"
+                                               onkeydown="handleQuickPriceKey(event, this, {{ p.id }})"
+                                               onblur="handleQuickPriceBlur(this, {{ p.id }})">
+                                        <button type="button" class="btn btn-sm btn-success px-1.5 py-0" onmousedown="submitQuickPriceEdit(this, {{ p.id }})" title="Kaydet (Enter)">
+                                            <i class="bi bi-check-lg"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="profit-badge-container mt-0.5">
+                                    {% if p.buy_price > 0 %}
+                                        <span class="badge profit-badge {% if p.profit_percent >= 30 %}bg-success-subtle text-success border border-success-subtle{% elif p.profit_percent > 0 %}bg-primary-subtle text-primary border border-primary-subtle{% else %}bg-danger-subtle text-danger border border-danger-subtle{% endif %} px-1.5 py-0.5" style="font-size: 0.72rem;">
+                                            Kâr: %{{ p.profit_percent|floatformat:1 }} (+₺{{ p.profit_amount|floatformat:2 }})
+                                        </span>
+                                    {% else %}
+                                        <span class="text-secondary fs-8">Maliyet girilmedi</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td class="text-center text-slate-700 fw-semibold font-monospace">%{{ p.vat_rate|floatformat:0 }}</td>
+                            <td class="text-center">
+                                {% if p.stock_quantity <= 0 %}
+                                    <span class="badge bg-danger text-white px-2.5 py-1">TÜKENDİ (0)</span>
+                                {% elif p.is_low_stock %}
+                                    <span class="badge bg-warning text-dark px-2.5 py-1">KRİTİK ({{ p.stock_quantity|floatformat:1 }} {{ p.unit }})</span>
+                                {% else %}
+                                    <span class="badge bg-success text-white px-2.5 py-1">{{ p.stock_quantity|floatformat:1 }} {{ p.unit }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-3">
+                                <div class="d-inline-flex flex-wrap justify-content-end gap-1.5">
+                                    <a href="{% url 'stock_entry_create' %}?product_id={{ p.id }}" class="btn btn-sm btn-outline-success fw-bold px-2 py-1 fs-8" title="Bu ürün için fatura/stok girişi yap">
+                                        <i class="bi bi-box-arrow-in-down me-1"></i> Mal Al
+                                    </a>
+                                    <a href="{% url 'product_labels_view' %}?q={{ p.barcode }}" class="btn btn-sm btn-outline-info fw-bold px-2 py-1 fs-8" title="Bu ürün için raf etiketi bas">
+                                        <i class="bi bi-tag me-1"></i> Etiket
+                                    </a>
+                                    <a href="{% url 'product_edit_view' p.id %}" class="btn btn-sm btn-outline-primary fw-bold px-2 py-1 fs-8" title="Ürünü Düzenle">
+                                        <i class="bi bi-pencil-square me-1"></i> Düzenle
+                                    </a>
+                                    <form method="post" action="{% url 'product_toggle_active_action' p.id %}" class="d-inline">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                        <button type="submit" class="btn btn-sm {% if p.is_active %}btn-outline-secondary{% else %}btn-outline-success{% endif %} fw-bold px-2 py-1 fs-8" title="{% if p.is_active %}Ürünü satıştan gizle (Pasife Al){% else %}Ürünü yeniden satışa aç (Aktifleştir){% endif %}">
+                                            {% if p.is_active %}
+                                                <i class="bi bi-pause-circle me-1"></i> Pasife Al
+                                            {% else %}
+                                                <i class="bi bi-play-circle me-1"></i> Aktifleştir
+                                            {% endif %}
+                                        </button>
+                                    </form>
+                                    <form method="post" action="{% url 'product_delete_action' p.id %}" class="d-inline" onsubmit="return confirm('\'{{ p.name }}\' ürününü silmek istediğinize emin misiniz? (Geçmiş satışı veya mal kabulü olan ürünler silinemez)');">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger px-2 py-1 fs-8" title="Ürünü Sil">
+                                            <i class="bi bi-trash3"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="9" class="text-center py-5 text-secondary">
+                                <i class="bi bi-box-seam fs-1 d-block mb-2 text-slate-300"></i>
+                                <span class="fw-bold">Arama kriterlerine uygun ürün bulunamadı.</span><br>
+                                <small>Filtreleri temizleyebilir veya yeni ürün ekleyebilirsiniz.</small>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if page_obj.has_other_pages %}
+            <div class="card-footer d-flex flex-wrap justify-content-between align-items-center py-2 px-3 gap-2">
+                <small class="text-secondary fw-semibold">
+                    Toplam {{ total_filtered_count }} üründen {{ page_obj.start_index }}-{{ page_obj.end_index }} arası gösteriliyor (Sayfa {{ page_obj.number }} / {{ page_obj.paginator.num_pages }})
+                </small>
+                <div class="btn-group btn-group-sm">
+                    {% if page_obj.has_previous %}
+                        <a class="btn btn-outline-secondary fw-bold" href="?{% if query_string %}{{ query_string }}&{% endif %}page=1" title="İlk Sayfa">
+                            <i class="bi bi-chevron-double-left"></i>
+                        </a>
+                        <a class="btn btn-outline-secondary fw-bold" href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.previous_page_number }}">
+                            <i class="bi bi-chevron-left me-1"></i> Önceki
+                        </a>
+                    {% endif %}
+                    <span class="btn btn-light border fw-bold disabled text-slate-900">
+                        {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
+                    </span>
+                    {% if page_obj.has_next %}
+                        <a class="btn btn-outline-secondary fw-bold" href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.next_page_number }}">
+                            Sonraki <i class="bi bi-chevron-right ms-1"></i>
+                        </a>
+                        <a class="btn btn-outline-secondary fw-bold" href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.paginator.num_pages }}" title="Son Sayfa">
+                            <i class="bi bi-chevron-double-right"></i>
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const selectAllCb = document.getElementById('selectAllProducts');
+    const rowCbs = Array.from(document.querySelectorAll('.product-select-cb'));
+    const countEl = document.getElementById('bulkSelectedCount');
+    if (!selectAllCb || !countEl) return;
+
+    function syncSelectedCount() {
+        const checked = rowCbs.filter((cb) => cb.checked).length;
+        countEl.textContent = String(checked);
+        selectAllCb.checked = rowCbs.length > 0 && checked === rowCbs.length;
+        selectAllCb.indeterminate = checked > 0 && checked < rowCbs.length;
+    }
+
+    selectAllCb.addEventListener('change', () => {
+        rowCbs.forEach((cb) => { cb.checked = selectAllCb.checked; });
+        syncSelectedCount();
+    });
+    rowCbs.forEach((cb) => cb.addEventListener('change', syncSelectedCount));
+});
+
+// Faz 10.2: Satır İçi Hızlı Fiyat Güncelleme (Inline Quick Edit)
+function activateQuickPriceEdit(displayEl) {
+    const cell = displayEl.closest('.quick-price-cell');
+    if (!cell) return;
+    const inputWrap = cell.querySelector('.price-input-wrap');
+    const input = cell.querySelector('.quick-price-input');
+    displayEl.classList.add('d-none');
+    inputWrap.classList.remove('d-none');
+    input.focus();
+    input.select();
+}
+
+function handleQuickPriceBlur(inputEl, productId) {
+    setTimeout(() => {
+        const cell = inputEl.closest('.quick-price-cell');
+        if (!cell) return;
+        const displayEl = cell.querySelector('.price-display-wrap');
+        const inputWrap = cell.querySelector('.price-input-wrap');
+        inputWrap.classList.add('d-none');
+        displayEl.classList.remove('d-none');
+    }, 180);
+}
+
+function handleQuickPriceKey(e, inputEl, productId) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        submitQuickPriceEdit(inputEl, productId);
+    } else if (e.key === 'Escape') {
+        e.preventDefault();
+        const cell = inputEl.closest('.quick-price-cell');
+        if (!cell) return;
+        cell.querySelector('.price-input-wrap').classList.add('d-none');
+        cell.querySelector('.price-display-wrap').classList.remove('d-none');
+    }
+}
+
+async function submitQuickPriceEdit(btnOrInput, productId) {
+    const cell = btnOrInput.closest('.quick-price-cell');
+    if (!cell) return;
+    const input = cell.querySelector('.quick-price-input');
+    const displayEl = cell.querySelector('.price-display-wrap');
+    const priceValEl = cell.querySelector('.price-val');
+    const inputWrap = cell.querySelector('.price-input-wrap');
+    const badgeContainer = cell.querySelector('.profit-badge-container');
+    const row = cell.closest('tr');
+    const rawVal = input.value.trim().replace(',', '.');
+
+    if (!rawVal || isNaN(parseFloat(rawVal)) || parseFloat(rawVal) < 0) {
+        alert('Lütfen geçerli ve pozitif bir satış fiyatı giriniz.');
+        input.focus();
+        return;
+    }
+
+    input.disabled = true;
+
+    try {
+        const response = await fetch(`/api/product/${productId}/quick-price-update/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({ sell_price: rawVal })
+        });
+
+        const data = await response.json();
+        if (response.ok && data.success) {
+            priceValEl.textContent = `₺${Number(data.new_sell_price).toFixed(2)}`;
+            input.value = Number(data.new_sell_price).toFixed(2);
+            inputWrap.classList.add('d-none');
+            displayEl.classList.remove('d-none');
+
+            // Kâr rozetini dinamik güncelle
+            if (badgeContainer) {
+                const buyP = parseFloat(cell.dataset.buyPrice) || 0;
+                if (buyP > 0) {
+                    let badgeClass = 'bg-primary-subtle text-primary border border-primary-subtle';
+                    if (data.profit_percent >= 30) badgeClass = 'bg-success-subtle text-success border border-success-subtle';
+                    else if (data.profit_percent <= 0) badgeClass = 'bg-danger-subtle text-danger border border-danger-subtle';
+
+                    badgeContainer.innerHTML = `
+                        <span class="badge profit-badge ${badgeClass} px-1.5 py-0.5" style="font-size: 0.72rem;">
+                            Kâr: %${Number(data.profit_percent).toFixed(1)} (+₺${Number(data.profit_amount).toFixed(2)})
+                        </span>
+                    `;
+                }
+            }
+
+            // Satıra yeşil onay parıltısı ver
+            if (row) {
+                row.classList.add('table-success');
+                setTimeout(() => row.classList.remove('table-success'), 1200);
+            }
+        } else {
+            alert(data.message || 'Fiyat güncellenemedi.');
+            inputWrap.classList.add('d-none');
+            displayEl.classList.remove('d-none');
+        }
+    } catch (err) {
+        alert('Sunucu iletişim hatası: ' + err.message);
+        inputWrap.classList.add('d-none');
+        displayEl.classList.remove('d-none');
+    } finally {
+        input.disabled = false;
+    }
+}
+</script>
+{% endblock %}

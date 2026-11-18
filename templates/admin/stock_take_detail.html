@@ -1,0 +1,689 @@
+{% extends "admin/base_site.html" %}
+{% load static l10n %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .scan-box-wrapper {
+        background-color: #0f172a !important;
+        background-image: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+        border: 1px solid #334155 !important;
+        border-radius: 10px;
+        color: #ffffff !important;
+    }
+    .scan-box-wrapper .form-label {
+        color: #e2e8f0 !important;
+    }
+    .scan-box-wrapper .btn-outline-warning,
+    .scan-box-wrapper .btn-outline-warning.text-white {
+        color: #fde68a !important;
+        background-color: #1e293b !important;
+        border: 1.5px solid #f59e0b !important;
+    }
+    .scan-box-wrapper .btn-outline-warning:hover {
+        color: #0f172a !important;
+        background-color: #fbbf24 !important;
+        border-color: #fbbf24 !important;
+    }
+    .scan-box-wrapper .btn-outline-light {
+        color: #ffffff !important;
+        background-color: #1e293b !important;
+        border: 1.5px solid #94a3b8 !important;
+        font-weight: 700 !important;
+    }
+    .scan-box-wrapper .btn-outline-light:hover {
+        color: #0f172a !important;
+        background-color: #ffffff !important;
+        border-color: #ffffff !important;
+    }
+    .barcode-input-lg {
+        font-size: 1.35rem !important;
+        font-family: monospace;
+        letter-spacing: 1px;
+        height: 52px !important;
+        font-weight: 700;
+    }
+    .diff-badge-positive {
+        background-color: #dcfce7 !important;
+        color: #15803d !important;
+        border: 1px solid #bbf7d0 !important;
+    }
+    .diff-badge-negative {
+        background-color: #fee2e2 !important;
+        color: #b91c1c !important;
+        border: 1px solid #fecaca !important;
+    }
+    .diff-badge-zero {
+        background-color: #f1f5f9 !important;
+        color: #475569 !important;
+        border: 1px solid #cbd5e1 !important;
+    }
+    @media print {
+        .no-print {
+            display: none !important;
+        }
+        .container-fluid {
+            padding: 0 !important;
+        }
+        .card {
+            border: 1px solid #ddd !important;
+            box-shadow: none !important;
+        }
+        table {
+            font-size: 11px !important;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <!-- ÜST BİLGİ VE AKSİYON ÇUBUĞU -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-2 border-bottom">
+        <div>
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <a href="{% url 'stock_take_list' %}" class="btn btn-sm btn-outline-secondary no-print" title="Listeye Dön">
+                    <i class="bi bi-arrow-left"></i>
+                </a>
+                <h4 class="mb-0 fw-extrabold text-slate-900 tracking-tight">SAYIM FİŞİ #{{ take.take_number }}</h4>
+                {% if take.status == 'DRAFT' %}
+                    <span class="badge bg-warning text-dark px-2.5 py-1 fs-8 fw-bold" id="statusBadge"><i class="bi bi-hourglass-split me-1"></i> Sayım Devam Ediyor</span>
+                {% elif take.status == 'COMPLETED' %}
+                    <span class="badge bg-success text-white px-2.5 py-1 fs-8 fw-bold"><i class="bi bi-check-circle-fill me-1"></i> Stoğa İşlendi</span>
+                {% else %}
+                    <span class="badge bg-danger text-white px-2.5 py-1 fs-8 fw-bold"><i class="bi bi-x-circle me-1"></i> İptal Edildi</span>
+                {% endif %}
+            </div>
+            <p class="text-secondary fs-7 mb-0">
+                <strong>{{ take.title }}</strong> 
+                {% if take.category %}| Kategori: <span class="badge bg-light text-dark border">{{ take.category.name }}</span>{% endif %}
+                | Sayan: <strong>{% if take.created_by %}{{ take.created_by.get_full_name|default:take.created_by.username }}{% else %}Sistem{% endif %}</strong>
+                | Tarih: {{ take.created_at|date:"d.m.Y H:i" }}
+            </p>
+        </div>
+        <div class="d-flex flex-wrap gap-2 no-print">
+            <a href="{% url 'export_stock_take_csv' take.id %}" class="btn btn-outline-secondary btn-sm fw-bold px-3 d-flex align-items-center gap-1.5" title="Sayım kalemlerini ve fark maliyetlerini CSV indir">
+                <i class="bi bi-file-earmark-spreadsheet"></i> Sayım CSV İndir
+            </a>
+            <button type="button" class="btn btn-outline-secondary btn-sm fw-bold px-3 d-flex align-items-center gap-1.5" onclick="window.print()">
+                <i class="bi bi-printer"></i> Yazdır / Rapor Al
+            </button>
+            {% if take.status == 'DRAFT' %}
+                <button type="button" class="btn btn-success btn-sm fw-bold px-3 shadow-xs d-flex align-items-center gap-1.5" data-bs-toggle="modal" data-bs-target="#applyStockTakeModal">
+                    <i class="bi bi-check2-circle"></i> Sayımı Onayla & Stoğa Eşitle
+                </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- DEVAM EDEN SAYIM İÇİN CANLI BARKOD OKUTMA ALANI -->
+    {% if take.status == 'DRAFT' %}
+        <div class="card scan-box-wrapper p-3 mb-3 shadow-xs no-print">
+            <form id="scanForm" onsubmit="handleBarcodeScan(event)">
+                {% csrf_token %}
+                <div class="row g-2 align-items-center">
+                    <div class="col-12 col-md-7">
+                        <label class="form-label text-slate-300 fs-8 fw-bold text-uppercase mb-1">
+                            <i class="bi bi-upc-scan text-warning me-1"></i> Barkod Okutunuz (El Terminali veya Okuyucu)
+                        </label>
+                        <div class="input-group">
+                            <input type="text" id="barcodeInput" class="form-control barcode-input-lg" placeholder="Barkodu okutun veya yazıp Enter'a basınız..." autofocus autocomplete="off">
+                            <button type="button" class="btn btn-outline-warning text-white fw-bold px-3 d-flex align-items-center gap-1.5" onclick="openCameraScannerModal()" title="Telefon veya Tablet Kamerasıyla Barkod Tara">
+                                <i class="bi bi-camera-fill fs-5"></i> <span class="d-none d-sm-inline fs-8">Kamera</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <label class="form-label text-slate-300 fs-8 fw-bold text-uppercase mb-1">Miktar</label>
+                        <input type="number" id="qtyInput" class="form-control barcode-input-lg text-center" value="1" step="any" min="0.001">
+                    </div>
+                    <div class="col-6 col-md-3 d-flex flex-column justify-content-end">
+                        <label class="form-label text-slate-300 fs-8 fw-bold text-uppercase mb-1 d-none d-md-block">&nbsp;</label>
+                        <div class="d-flex gap-1">
+                            <button type="submit" class="btn btn-warning fw-bold h-100 py-2.5 px-3 flex-grow-1 text-dark">
+                                <i class="bi bi-plus-lg me-1"></i> Ekle
+                            </button>
+                            <button type="button" class="btn btn-outline-light py-2.5 px-2" onclick="setQuickQty(1)" title="Miktarı 1 yap">1</button>
+                            <button type="button" class="btn btn-outline-light py-2.5 px-2" onclick="setQuickQty(10)" title="Miktarı 10 yap">10</button>
+                            <button type="button" class="btn btn-outline-light py-2.5 px-2" onclick="setQuickQty(24)" title="Miktarı 24 (Koli) yap">24</button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+            <div id="scanFeedback" class="mt-2 text-white fs-8 d-none"></div>
+        </div>
+    {% else %}
+        <div class="alert alert-info py-2.5 px-3 mb-3 d-flex align-items-center justify-content-between">
+            <div>
+                <i class="bi bi-info-circle-fill me-2 fs-6"></i>
+                Bu sayım <strong>{{ take.completed_at|date:"d.m.Y H:i"|default:take.created_at|date:"d.m.Y H:i" }}</strong> tarihinde tamamlanmış ve tüm stoklar fiziki sayım verilerine eşitlenmiştir.
+            </div>
+            <span class="badge bg-primary text-white">Denetim Kaydı Kilitli</span>
+        </div>
+    {% endif %}
+
+    <!-- METRİK ÖZET KARTLARI -->
+    <div class="row g-2 mb-3">
+        <div class="col-6 col-md-3">
+            <div class="card shadow-xs border h-100">
+                <div class="card-body p-2.5 text-center">
+                    <span class="text-secondary fs-8 fw-bold text-uppercase d-block">Sayılan Çeşit</span>
+                    <span class="fs-4 fw-extrabold text-slate-900 font-monospace" id="totalItemsDisplay">{{ total_items }}</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card shadow-xs border h-100 border-success-subtle bg-success-subtle bg-opacity-25">
+                <div class="card-body p-2.5 text-center">
+                    <span class="text-success-emphasis fs-8 fw-bold text-uppercase d-block">Fazla Çıkan Ürün (+Stok)</span>
+                    <span class="fs-4 fw-extrabold text-success font-monospace" id="surplusDisplay">{{ surplus_items }}</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card shadow-xs border h-100 border-danger-subtle bg-danger-subtle bg-opacity-25">
+                <div class="card-body p-2.5 text-center">
+                    <span class="text-danger-emphasis fs-8 fw-bold text-uppercase d-block">Eksik Çıkan Ürün (-Stok)</span>
+                    <span class="fs-4 fw-extrabold text-danger font-monospace" id="deficitDisplay">{{ deficit_items }}</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card shadow-xs border h-100">
+                <div class="card-body p-2.5 text-center">
+                    <span class="text-secondary fs-8 fw-bold text-uppercase d-block">Net Maliyet Farkı (TL)</span>
+                    <span class="fs-4 fw-extrabold font-monospace {% if total_cost < 0 %}text-danger{% elif total_cost > 0 %}text-success{% else %}text-secondary{% endif %}" id="totalCostDisplay">
+                        {% if total_cost > 0 %}+{% endif %}₺{{ total_cost|floatformat:2 }}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SAYILAN ÜRÜNLER LİSTESİ -->
+    <div class="card shadow-xs border">
+        <div class="card-header bg-white py-2.5 px-3 border-bottom d-flex justify-content-between align-items-center">
+            <div class="fw-bold text-slate-900 fs-7">
+                <i class="bi bi-list-check me-1 text-primary"></i> Sayım Kalemleri (Fiziki vs Sistem Karşılaştırması)
+            </div>
+            <div class="fs-8 text-secondary">
+                Son okutulan ürünler üstte listelenir.
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 fs-7" id="itemsTable">
+                <thead class="table-light text-secondary text-uppercase fs-8 border-bottom">
+                    <tr>
+                        <th class="ps-3 py-2.5">Barkod</th>
+                        <th>Ürün Adı & Kategori</th>
+                        <th class="text-center">Sistem Stoğu</th>
+                        <th class="text-center" style="width: 170px;">Sayılan Fiziki Stok</th>
+                        <th class="text-center">Stok Farkı</th>
+                        <th class="text-end">Alış Maliyeti</th>
+                        <th class="text-end">Fark Tutarı</th>
+                        {% if take.status == 'DRAFT' %}
+                            <th class="text-end pe-3 no-print" style="width: 60px;">İşlem</th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody id="itemsTableBody">
+                    {% for item in items %}
+                        <tr id="row-{{ item.id }}" data-item-id="{{ item.id }}" data-product-id="{{ item.product.id }}" data-barcode="{{ item.product.barcode }}">
+                            <td class="ps-3 font-monospace fw-bold text-slate-700">{{ item.product.barcode }}</td>
+                            <td>
+                                <div class="fw-bold text-slate-900">{{ item.product.name }}</div>
+                                <small class="text-secondary fs-8">{{ item.product.category.name|default:"Kategorisiz" }} | {{ item.product.unit }}</small>
+                            </td>
+                            <td class="text-center font-monospace fw-bold text-slate-600">
+                                {{ item.system_quantity|floatformat:3 }} {{ item.product.unit }}
+                            </td>
+                            <td class="text-center">
+                                {% if take.status == 'DRAFT' %}
+                                    <div class="input-group input-group-sm justify-content-center">
+                                        <button type="button" class="btn btn-outline-secondary px-2 no-print" onclick="stepQty({{ item.id }}, -1)">-</button>
+                                        <input type="number" step="any" min="0" class="form-control text-center font-monospace fw-extrabold counted-input" 
+                                               style="max-width: 85px;" value="{{ item.counted_quantity|unlocalize }}"
+                                               onchange="updateItemQty({{ item.id }}, this.value)">
+                                        <button type="button" class="btn btn-outline-secondary px-2 no-print" onclick="stepQty({{ item.id }}, 1)">+</button>
+                                    </div>
+                                {% else %}
+                                    <span class="font-monospace fw-extrabold text-slate-900 fs-7">
+                                        {{ item.counted_quantity|floatformat:3 }} {{ item.product.unit }}
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if item.difference > 0 %}
+                                    <span class="badge diff-badge-positive px-2 py-1 font-monospace fw-bold">
+                                        +{{ item.difference|floatformat:3 }} (Fazla)
+                                    </span>
+                                {% elif item.difference < 0 %}
+                                    <span class="badge diff-badge-negative px-2 py-1 font-monospace fw-bold">
+                                        {{ item.difference|floatformat:3 }} (Eksik)
+                                    </span>
+                                {% else %}
+                                    <span class="badge diff-badge-zero px-2 py-1 font-monospace">
+                                        0.000 (Tam)
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end font-monospace text-slate-700">₺{{ item.buy_price|floatformat:2 }}</td>
+                            <td class="text-end font-monospace fw-extrabold {% if item.discrepancy_cost < 0 %}text-danger{% elif item.discrepancy_cost > 0 %}text-success{% else %}text-secondary{% endif %}">
+                                {% if item.discrepancy_cost > 0 %}+{% endif %}₺{{ item.discrepancy_cost|floatformat:2 }}
+                            </td>
+                            {% if take.status == 'DRAFT' %}
+                                <td class="text-end pe-3 no-print">
+                                    <button type="button" class="btn btn-sm btn-outline-danger p-1" onclick="deleteItem({{ item.id }})" title="Satırı Çıkar">
+                                        <i class="bi bi-trash fs-8"></i>
+                                    </button>
+                                </td>
+                            {% endif %}
+                        </tr>
+                    {% empty %}
+                        <tr id="emptyRow">
+                            <td colspan="8" class="text-center py-5 text-secondary">
+                                <i class="bi bi-upc-scan fs-1 d-block mb-2 text-slate-300"></i>
+                                <span class="fw-bold">Bu sayım fişinde henüz hiç ürün okutulmadı.</span><br>
+                                <small>Yukarıdaki alana el terminalinizle ürün barkodunu okutarak sayıma hemen başlayabilirsiniz.</small>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- SAYIMI TAMAMLAMA VE ONAYLAMA MODALI -->
+{% if take.status == 'DRAFT' %}
+<div class="modal fade" id="applyStockTakeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <form method="post" action="{% url 'stock_take_apply_api' take.id %}">
+                {% csrf_token %}
+                <div class="modal-header bg-success text-white py-2.5 px-3">
+                    <h6 class="modal-title fw-bold fs-7 d-flex align-items-center gap-2">
+                        <i class="bi bi-check2-circle"></i> Sayımı Onayla ve Sistem Stoklarını Eşitle
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-3">
+                    <div class="alert alert-warning py-2 px-3 fs-8 mb-3">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                        <strong>DİKKAT:</strong> Bu işlem geri alınamaz. Sayılan tüm ürünlerin sistem stokları, fiziki sayım miktarıyla <strong>kesin olarak eşitlenecektir</strong>.
+                    </div>
+                    <p class="fs-7 text-slate-700 mb-2">
+                        Bu onay ile birlikte:
+                    </p>
+                    <ul class="fs-8 text-secondary ps-3 mb-3">
+                        <li>Fiziki sayılan <strong id="modalItemCount">{{ total_items }}</strong> kalem ürünün mevcut stok miktarı güncellenecektir.</li>
+                        <li>Yasal ve mali denetim için otomatik olarak <strong>#SYM-{{ take.take_number }}</strong> numaralı <em>"Sayım Düzeltme Stok Fişi"</em> kesilecektir.</li>
+                        <li>Sayım fişi kilitlenecek ve arşivlendi statüsüne geçecektir.</li>
+                    </ul>
+                    <div class="bg-slate-50 p-2.5 rounded border text-center font-monospace">
+                        <div class="fs-8 text-secondary text-uppercase fw-bold">Tahmini Net Envanter Maliyet Farkı</div>
+                        <div class="fs-4 fw-extrabold {% if total_cost < 0 %}text-danger{% elif total_cost > 0 %}text-success{% else %}text-secondary{% endif %}" id="modalCost">
+                            {% if total_cost > 0 %}+{% endif %}₺{{ total_cost|floatformat:2 }}
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-slate-50 py-2 px-3 border-top">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">İptal / Kontrole Dön</button>
+                    <button type="submit" class="btn btn-sm btn-success fw-bold px-3">
+                        <i class="bi bi-check-lg me-1"></i> Evet, Stokları Güncelle ve Tamamla
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- CANLI KAMERA BARKOD OKUYUCU MODALI -->
+<div class="modal fade" id="cameraScannerModal" tabindex="-1" aria-labelledby="cameraScannerModalLabel" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 440px;">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-header bg-slate-900 text-white py-2.5 px-3">
+                <h6 class="modal-title fw-bold fs-7 d-flex align-items-center gap-2" id="cameraScannerModalLabel">
+                    <i class="bi bi-camera-fill text-warning"></i> Canlı Kamera Barkod Okuyucu
+                </h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" onclick="stopCameraScanner()"></button>
+            </div>
+            <div class="modal-body p-2 bg-black text-center position-relative">
+                <div id="cameraReader" style="width: 100%; min-height: 250px;" class="rounded overflow-hidden"></div>
+                <div class="text-white-50 fs-8 mt-2">
+                    <i class="bi bi-arrows-fullscreen me-1"></i> Telefon kamerasını paketin barkoduna yaklaştırınız.
+                </div>
+            </div>
+            <div class="modal-footer bg-slate-100 py-2 px-3 border-top d-flex justify-content-between">
+                <small class="text-secondary fs-8">EAN-13, EAN-8, QR Code destekli</small>
+                <button type="button" class="btn btn-sm btn-secondary fw-bold" data-bs-dismiss="modal" onclick="stopCameraScanner()">Kapat</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Ses Sentezleme (Web Audio API - Ek kütüphane veya harici ses dosyası gerektirmez)
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playBeep(freq = 880, duration = 0.08, type = 'sine') {
+        try {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.value = freq;
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        } catch(e) {}
+    }
+
+    function playSuccessSound() {
+        playBeep(987.77, 0.06); // B5 (yüksek temiz bip)
+    }
+
+    function playErrorSound() {
+        playBeep(220, 0.25, 'sawtooth'); // A3 (hata viziltisi)
+    }
+
+    function setQuickQty(qty) {
+        document.getElementById('qtyInput').value = qty;
+        document.getElementById('barcodeInput').focus();
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    function handleBarcodeScan(e) {
+        e.preventDefault();
+        const barcodeInput = document.getElementById('barcodeInput');
+        const qtyInput = document.getElementById('qtyInput');
+        const barcode = barcodeInput.value.trim();
+        const qty = qtyInput.value.trim() || '1';
+
+        if (!barcode) return;
+
+        const formData = new FormData();
+        formData.append('barcode', barcode);
+        formData.append('quantity', qty);
+        formData.append('mode', 'add');
+
+        fetch("{% url 'stock_take_scan_api' take.id %}", {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                playSuccessSound();
+                renderOrUpdateRow(data.item);
+                updateSummary(data.summary);
+                showFeedback(`✅ ${data.item.product_name} (+${qty} ${data.item.unit}) eklendi. Toplam: ${data.item.counted_quantity}`, 'success');
+                barcodeInput.value = '';
+                qtyInput.value = '1';
+                barcodeInput.focus();
+            } else {
+                playErrorSound();
+                showFeedback(`❌ ${data.message}`, 'danger');
+                barcodeInput.select();
+            }
+        })
+        .catch(err => {
+            playErrorSound();
+            showFeedback('Bağlantı hatası oluştu.', 'danger');
+        });
+    }
+
+    function showFeedback(msg, type) {
+        const fb = document.getElementById('scanFeedback');
+        if (!fb) return;
+        fb.className = `mt-2 text-white fs-8 p-1.5 rounded bg-${type === 'success' ? 'success' : 'danger'} bg-opacity-75`;
+        fb.innerHTML = msg;
+        fb.classList.remove('d-none');
+    }
+
+    function renderOrUpdateRow(item) {
+        const emptyRow = document.getElementById('emptyRow');
+        if (emptyRow) emptyRow.remove();
+
+        let row = document.getElementById(`row-${item.id}`);
+        const tbody = document.getElementById('itemsTableBody');
+
+        const diffVal = item.difference;
+        let diffBadge = '';
+        if (diffVal > 0) {
+            diffBadge = `<span class="badge diff-badge-positive px-2 py-1 font-monospace fw-bold">+${diffVal.toFixed(3)} (Fazla)</span>`;
+        } else if (diffVal < 0) {
+            diffBadge = `<span class="badge diff-badge-negative px-2 py-1 font-monospace fw-bold">${diffVal.toFixed(3)} (Eksik)</span>`;
+        } else {
+            diffBadge = `<span class="badge diff-badge-zero px-2 py-1 font-monospace">0.000 (Tam)</span>`;
+        }
+
+        const costClass = item.discrepancy_cost < 0 ? 'text-danger' : (item.discrepancy_cost > 0 ? 'text-success' : 'text-secondary');
+        const costSign = item.discrepancy_cost > 0 ? '+' : '';
+
+        const rowHtml = `
+            <td class="ps-3 font-monospace fw-bold text-slate-700">${item.barcode}</td>
+            <td>
+                <div class="fw-bold text-slate-900">${item.product_name}</div>
+                <small class="text-secondary fs-8">${item.category_name} | ${item.unit}</small>
+            </td>
+            <td class="text-center font-monospace fw-bold text-slate-600">
+                ${item.system_quantity.toFixed(3)} ${item.unit}
+            </td>
+            <td class="text-center">
+                <div class="input-group input-group-sm justify-content-center">
+                    <button type="button" class="btn btn-outline-secondary px-2 no-print" onclick="stepQty(${item.id}, -1)">-</button>
+                    <input type="number" step="any" min="0" class="form-control text-center font-monospace fw-extrabold counted-input" 
+                           style="max-width: 85px;" value="${item.counted_quantity}"
+                           onchange="updateItemQty(${item.id}, this.value)">
+                    <button type="button" class="btn btn-outline-secondary px-2 no-print" onclick="stepQty(${item.id}, 1)">+</button>
+                </div>
+            </td>
+            <td class="text-center">${diffBadge}</td>
+            <td class="text-end font-monospace text-slate-700">₺${item.buy_price.toFixed(2)}</td>
+            <td class="text-end font-monospace fw-extrabold ${costClass}">${costSign}₺${item.discrepancy_cost.toFixed(2)}</td>
+            <td class="text-end pe-3 no-print">
+                <button type="button" class="btn btn-sm btn-outline-danger p-1" onclick="deleteItem(${item.id})" title="Satırı Çıkar">
+                    <i class="bi bi-trash fs-8"></i>
+                </button>
+            </td>
+        `;
+
+        if (row) {
+            row.innerHTML = rowHtml;
+            // Yanıp sönme efekti
+            row.style.backgroundColor = '#fef08a';
+            setTimeout(() => { row.style.backgroundColor = ''; }, 600);
+        } else {
+            row = document.createElement('tr');
+            row.id = `row-${item.id}`;
+            row.innerHTML = rowHtml;
+            tbody.insertBefore(row, tbody.firstChild);
+        }
+    }
+
+    function stepQty(itemId, step) {
+        const row = document.getElementById(`row-${itemId}`);
+        if (!row) return;
+        const input = row.querySelector('.counted-input');
+        let current = parseFloat(input.value) || 0;
+        let next = Math.max(0, current + step);
+        input.value = next;
+        updateItemQty(itemId, next);
+    }
+
+    function updateItemQty(itemId, newQty) {
+        const formData = new FormData();
+        formData.append('counted_quantity', newQty);
+
+        fetch(`/api/stock-take/item/${itemId}/update/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                playSuccessSound();
+                renderOrUpdateRow(data.item);
+                updateSummary(data.summary);
+            } else {
+                playErrorSound();
+                alert(data.message);
+            }
+        });
+    }
+
+    function deleteItem(itemId) {
+        if (!confirm('Bu ürünü sayım listesinden çıkarmak istediğinize emin misiniz?')) return;
+
+        const formData = new FormData();
+        formData.append('action', 'delete');
+
+        fetch(`/api/stock-take/item/${itemId}/update/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                const row = document.getElementById(`row-${itemId}`);
+                if (row) row.remove();
+                updateSummary(data.summary);
+            }
+        });
+    }
+
+    function updateSummary(summary) {
+        if (!summary) return;
+        const totalItemsDisplay = document.getElementById('totalItemsDisplay');
+        const totalCostDisplay = document.getElementById('totalCostDisplay');
+        const modalItemCount = document.getElementById('modalItemCount');
+        const modalCost = document.getElementById('modalCost');
+
+        if (totalItemsDisplay) totalItemsDisplay.textContent = summary.total_items;
+        if (modalItemCount) modalItemCount.textContent = summary.total_items;
+
+        const cost = summary.total_discrepancy_cost;
+        const costStr = (cost > 0 ? '+' : '') + '₺' + cost.toFixed(2);
+        const costClass = cost < 0 ? 'text-danger' : (cost > 0 ? 'text-success' : 'text-secondary');
+
+        if (totalCostDisplay) {
+            totalCostDisplay.textContent = costStr;
+            totalCostDisplay.className = `fs-4 fw-extrabold font-monospace ${costClass}`;
+        }
+        if (modalCost) {
+            modalCost.textContent = costStr;
+            modalCost.className = `fs-4 fw-extrabold font-monospace ${costClass}`;
+        }
+    }
+
+    // Ekran açıldığında barkod girişine odaklan
+    window.addEventListener('DOMContentLoaded', () => {
+        const inp = document.getElementById('barcodeInput');
+        if (inp) inp.focus();
+    });
+    // ==========================================================
+    // CANLI KAMERA BARKOD OKUYUCU MOTORU
+    // ==========================================================
+    let html5QrCodeScanner = null;
+
+    function openCameraScannerModal() {
+        const modalEl = document.getElementById('cameraScannerModal');
+        if (!modalEl) return;
+        const modal = new bootstrap.Modal(modalEl);
+        modal.show();
+
+        loadHtml5QrCodeScript(() => {
+            if (html5QrCodeScanner) {
+                try { html5QrCodeScanner.stop(); } catch(e) {}
+            }
+            html5QrCodeScanner = new Html5Qrcode("cameraReader");
+            const config = { fps: 15, qrbox: { width: 250, height: 160 } };
+
+            html5QrCodeScanner.start(
+                { facingMode: "environment" },
+                config,
+                (decodedText, decodedResult) => {
+                    playSuccessSound();
+                    stopCameraScanner();
+                    const modalInstance = bootstrap.Modal.getInstance(modalEl);
+                    if (modalInstance) modalInstance.hide();
+
+                    const inp = document.getElementById('barcodeInput');
+                    if (inp) {
+                        inp.value = decodedText;
+                        const form = document.getElementById('scanForm');
+                        if (form) form.requestSubmit();
+                    }
+                },
+                (errorMessage) => {
+                    // okuma devam ediyor
+                }
+            ).catch(err => {
+                alert("Kamera erişimi sağlanamadı: " + err + "\nLütfen tarayıcı ayarlarından kamera iznini onaylayınız.");
+                stopCameraScanner();
+                const modalInstance = bootstrap.Modal.getInstance(modalEl);
+                if (modalInstance) modalInstance.hide();
+            });
+        });
+    }
+
+    function stopCameraScanner() {
+        if (html5QrCodeScanner) {
+            try {
+                html5QrCodeScanner.stop().then(() => {
+                    html5QrCodeScanner.clear();
+                }).catch(e => {});
+            } catch(e) {}
+        }
+    }
+
+    function loadHtml5QrCodeScript(callback) {
+        if (typeof Html5Qrcode !== 'undefined') {
+            callback();
+            return;
+        }
+        const script = document.createElement('script');
+        script.src = "{% static 'js/html5-qrcode.min.js' %}";
+        script.onload = callback;
+        script.onerror = function() {
+            const status = document.getElementById('cameraStatus');
+            if (status) {
+                status.className = 'mt-2 text-danger fs-8 fw-bold';
+                status.textContent = 'Kamera tarayıcı kütüphanesi yüklenemedi.';
+            }
+        };
+        document.head.appendChild(script);
+    }
+</script>
+{% endblock %}
+

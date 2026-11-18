@@ -1,0 +1,267 @@
+{% extends "admin/base_site.html" %}
+{% load static l10n %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <!-- BAŞLIK VE YENİ SAYIM BAŞLATMA BUTONU -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-2 border-bottom">
+        <div>
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <i class="bi bi-upc-scan fs-4 text-success"></i>
+                <h4 class="mb-0 fw-extrabold text-slate-900 tracking-tight">STOK SAYIM FİŞLERİ & EL TERMİNALİ</h4>
+                <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-0.5 rounded-pill fs-8 fw-bold">Faz 5 Envanter</span>
+            </div>
+            <p class="text-secondary fs-7 mb-0">Mağaza veya reyon bazlı fiziki sayımları başlatın, el terminali/barkod okuyucuyla okutun ve tek tıkla stokları denetimli eşitleyin.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-success fw-bold px-3 py-2 fs-7 shadow-xs touch-btn" data-bs-toggle="modal" data-bs-target="#newStockTakeModal">
+                <i class="bi bi-plus-circle me-1"></i> Yeni Sayım Başlat
+            </button>
+        </div>
+    </div>
+
+    <!-- METRİK ÖZET KARTLARI -->
+    <div class="row g-2 mb-3">
+        <div class="col-6 col-md-4">
+            <div class="card shadow-xs border h-100">
+                <div class="card-body p-3 d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="text-secondary fs-8 fw-bold text-uppercase">Toplam Sayım Fişi</div>
+                        <div class="fs-4 fw-extrabold text-slate-900 font-monospace mt-1">{{ total_count }}</div>
+                    </div>
+                    <div class="rounded-circle bg-slate-100 p-2.5 text-slate-700">
+                        <i class="bi bi-card-checklist fs-4"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-4">
+            <div class="card shadow-xs border h-100 border-warning-subtle bg-warning-subtle bg-opacity-25">
+                <div class="card-body p-3 d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="text-warning-emphasis fs-8 fw-bold text-uppercase">Devam Eden (Taslak)</div>
+                        <div class="fs-4 fw-extrabold text-warning-emphasis font-monospace mt-1">{{ draft_count }}</div>
+                    </div>
+                    <div class="rounded-circle bg-warning bg-opacity-25 p-2.5 text-warning-emphasis">
+                        <i class="bi bi-hourglass-split fs-4"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="card shadow-xs border h-100 border-success-subtle bg-success-subtle bg-opacity-25">
+                <div class="card-body p-3 d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="text-success-emphasis fs-8 fw-bold text-uppercase">Stoğa İşlenen Sayımlar</div>
+                        <div class="fs-4 fw-extrabold text-success font-monospace mt-1">{{ completed_count }}</div>
+                    </div>
+                    <div class="rounded-circle bg-success bg-opacity-25 p-2.5 text-success">
+                        <i class="bi bi-check2-circle fs-4"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FİLTRELEME ÇUBUĞU -->
+    <div class="card shadow-xs border mb-3">
+        <div class="card-body p-2.5">
+            <form method="get" class="row g-2 align-items-center">
+                <div class="col-12 col-md-4">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-white text-secondary border-end-0"><i class="bi bi-search"></i></span>
+                        <input type="text" name="q" class="form-control border-start-0" placeholder="Sayım No veya Başlık ara..." value="{{ q }}">
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">-- Tüm Durumlar --</option>
+                        <option value="DRAFT" {% if status_filter == 'DRAFT' %}selected{% endif %}>Devam Edenler (Taslak)</option>
+                        <option value="COMPLETED" {% if status_filter == 'COMPLETED' %}selected{% endif %}>Stoğa İşlenenler</option>
+                        <option value="CANCELLED" {% if status_filter == 'CANCELLED' %}selected{% endif %}>İptal Edilenler</option>
+                    </select>
+                </div>
+                <div class="col-6 col-md-3">
+                    <select name="category_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">-- Tüm Kategoriler --</option>
+                        {% for cat in categories %}
+                            <option value="{{ cat.id }}" {% if category_id == cat.id|stringformat:"s" %}selected{% endif %}>{{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-2 d-flex gap-1">
+                    <button type="submit" class="btn btn-sm btn-slate-700 w-100 fw-bold">Filtrele</button>
+                    {% if q or status_filter or category_id %}
+                        <a href="{% url 'stock_take_list' %}" class="btn btn-sm btn-outline-secondary" title="Filtreleri Temizle"><i class="bi bi-x-lg"></i></a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- SAYIM FİŞLERİ TABLOSU -->
+    <div class="card shadow-xs border">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 fs-7">
+                <thead class="table-light text-secondary text-uppercase fs-8 border-bottom">
+                    <tr>
+                        <th class="ps-3 py-2.5">Sayım Fiş No</th>
+                        <th>Sayım Başlığı / Reyon</th>
+                        <th>Kategori</th>
+                        <th>Durum</th>
+                        <th class="text-center">Sayılan Kalem</th>
+                        <th class="text-end">Net Fark Tutarı</th>
+                        <th>Sayan Personel</th>
+                        <th>Tarih</th>
+                        <th class="text-end pe-3">İşlemler</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for take in takes %}
+                        <tr>
+                            <td class="ps-3 font-monospace fw-bold text-slate-900">
+                                #{{ take.take_number }}
+                            </td>
+                            <td class="fw-bold text-slate-900">
+                                <a href="{% url 'stock_take_detail' take.id %}" class="text-decoration-none text-slate-900 hover-primary">
+                                    {{ take.title }}
+                                </a>
+                                {% if take.notes %}
+                                    <small class="d-block text-secondary fw-normal fs-8">{{ take.notes|truncatechars:45 }}</small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if take.category %}
+                                    <span class="badge bg-slate-100 text-slate-700 border">{{ take.category.name }}</span>
+                                {% else %}
+                                    <span class="text-muted fs-8">Genel Mağaza</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if take.status == 'DRAFT' %}
+                                    <span class="badge bg-warning text-dark px-2 py-1"><i class="bi bi-hourglass-split me-1"></i> Sayım Devam Ediyor</span>
+                                {% elif take.status == 'COMPLETED' %}
+                                    <span class="badge bg-success text-white px-2 py-1"><i class="bi bi-check-circle-fill me-1"></i> Stoğa İşlendi</span>
+                                {% else %}
+                                    <span class="badge bg-danger text-white px-2 py-1"><i class="bi bi-x-circle me-1"></i> İptal Edildi</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-slate-100 text-slate-900 border px-2.5 py-1 fw-bold">{{ take.total_counted_items }} Kalem</span>
+                            </td>
+                            <td class="text-end font-monospace fw-extrabold fs-7 {% if take.total_discrepancy_cost < 0 %}text-danger{% elif take.total_discrepancy_cost > 0 %}text-success{% else %}text-secondary{% endif %}">
+                                {% if take.total_discrepancy_cost > 0 %}+{% endif %}₺{{ take.total_discrepancy_cost|floatformat:2 }}
+                            </td>
+                            <td class="text-slate-700">
+                                {% if take.created_by %}
+                                    {{ take.created_by.get_full_name|default:take.created_by.username }}
+                                {% else %}
+                                    Sistem
+                                {% endif %}
+                            </td>
+                            <td class="text-slate-600 font-monospace fs-8">{{ take.created_at|date:"d.m.Y H:i" }}</td>
+                            <td class="text-end pe-3 text-nowrap">
+                                <a href="{% url 'stock_take_detail' take.id %}" class="btn btn-sm btn-outline-primary fw-bold px-2.5 py-1 fs-8">
+                                    <i class="bi bi-upc-scan me-1"></i> {% if take.status == 'DRAFT' %}Sayıma Devam Et{% else %}Sayımı İncele{% endif %}
+                                </a>
+                                {% if take.status == 'DRAFT' %}
+                                    <form method="post" action="{% url 'stock_take_cancel_action' take.id %}" class="d-inline" onsubmit="return confirm('Bu sayım fişini iptal etmek istediğinize emin misiniz?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-danger px-2 py-1 fs-8" title="İptal Et">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="9" class="text-center py-5 text-secondary">
+                                <i class="bi bi-upc-scan fs-1 d-block mb-2 text-slate-300"></i>
+                                <span class="fw-bold">Kayıtlı stok sayım fişi bulunamadı.</span><br>
+                                <small>El terminali veya barkod okuyucuyla sayım yapmak için yukarıdaki <strong>"Yeni Sayım Başlat"</strong> butonuna tıklayınız.</small>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if page_obj.has_other_pages %}
+            <div class="card-footer d-flex flex-wrap justify-content-between align-items-center py-2 px-3 gap-2">
+                <small class="text-secondary fw-semibold">
+                    Toplam {{ total_filtered_count }} sayım fişinden {{ page_obj.start_index }}-{{ page_obj.end_index }} arası gösteriliyor (Sayfa {{ page_obj.number }} / {{ page_obj.paginator.num_pages }})
+                </small>
+                <div class="btn-group btn-group-sm">
+                    {% if page_obj.has_previous %}
+                        <a class="btn btn-outline-secondary fw-bold" href="?{% if query_string %}{{ query_string }}&{% endif %}page=1" title="İlk Sayfa">
+                            <i class="bi bi-chevron-double-left"></i>
+                        </a>
+                        <a class="btn btn-outline-secondary fw-bold" href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.previous_page_number }}">
+                            <i class="bi bi-chevron-left me-1"></i> Önceki
+                        </a>
+                    {% endif %}
+                    <span class="btn btn-light border fw-bold disabled text-slate-900">
+                        {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
+                    </span>
+                    {% if page_obj.has_next %}
+                        <a class="btn btn-outline-secondary fw-bold" href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.next_page_number }}">
+                            Sonraki <i class="bi bi-chevron-right ms-1"></i>
+                        </a>
+                        <a class="btn btn-outline-secondary fw-bold" href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.paginator.num_pages }}" title="Son Sayfa">
+                            <i class="bi bi-chevron-double-right"></i>
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- YENİ SAYIM BAŞLATMA MODALI -->
+<div class="modal fade" id="newStockTakeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <form method="post" action="{% url 'stock_take_create_action' %}">
+                {% csrf_token %}
+                <div class="modal-header bg-slate-900 text-white py-2.5 px-3">
+                    <h6 class="modal-title fw-bold fs-7 d-flex align-items-center gap-2">
+                        <i class="bi bi-plus-circle text-success"></i> Yeni Stok Sayım Fişi Başlat
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-3">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold fs-8">Sayım Başlığı / Reyon *</label>
+                        <input type="text" name="title" class="form-control fw-bold fs-7" required placeholder="Örn: Bisküvi & Atıştırmalık Reyonu Sayımı" value="Reyon Sayımı">
+                        <small class="text-secondary fs-8">Sayılan bölümü veya amacı belirten açıklayıcı bir başlık giriniz.</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold fs-8">Kategori Filtresi (İsteğe Bağlı)</label>
+                        <select name="category_id" class="form-select fs-7">
+                            <option value="">-- Tüm Mağaza (Filtresiz) --</option>
+                            {% for cat in categories %}
+                                <option value="{{ cat.id }}">{{ cat.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-secondary fs-8">Yalnızca belirli bir kategoriye ait ürünleri sayıyorsanız seçiniz.</small>
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="form-label fw-bold fs-8">Sayım Notları (İsteğe Bağlı)</label>
+                        <textarea name="notes" class="form-control fs-7" rows="2" placeholder="Örn: 2026 Q1 sonu denetim sayımı..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer bg-slate-50 py-2 px-3 border-top">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Vazgeç</button>
+                    <button type="submit" class="btn btn-sm btn-success fw-bold px-3">
+                        <i class="bi bi-upc-scan me-1"></i> Sayımı Başlat ve Barkod Okut
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

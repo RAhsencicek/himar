@@ -1,0 +1,413 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <!-- SAYFA BAŞLIĞI -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-2 border-bottom">
+        <div>
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="badge bg-primary text-white fs-8 px-2 py-0.5 rounded-1">SİSTEM VERİLERİ</span>
+                <span class="text-secondary fs-8 fw-semibold">/ Fiş & İade Arşivi</span>
+            </div>
+            <h1 class="h3 fw-bold text-slate-900 mb-0 d-flex align-items-center gap-2">
+                <i class="bi bi-receipt text-primary"></i> SATIŞ FİŞLERİ & İADE TAKİP EKRANI
+            </h1>
+            <span class="text-secondary small fw-medium">Tarih, kasa, kasiyer ve ödeme türüne göre tüm fişleri ve müşteri iadelerini inceleyin.</span>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{% url 'export_sales_csv' %}{% if query_string %}?{{ query_string }}{% endif %}" class="btn btn-sm btn-outline-secondary fw-bold px-3 py-1.5 d-flex align-items-center gap-1.5" title="Filtrelenen satış fişlerini Excel uyumlu CSV olarak indir">
+                <i class="bi bi-file-earmark-spreadsheet"></i> CSV İndir
+            </a>
+            <a href="{% url 'z_report_view' %}" target="_blank" class="btn btn-sm btn-outline-primary fw-bold px-3 py-1.5 d-flex align-items-center gap-1.5">
+                <i class="bi bi-file-earmark-bar-graph"></i> Gün Sonu Z Raporu
+            </a>
+        </div>
+    </div>
+
+    <!-- KPI ÖZET KARTLARI (FİLTREYE GÖRE DİNAMİK) -->
+    <div class="row g-2.5 mb-3">
+        <div class="col-6 col-lg-3">
+            <div class="tabler-card border-start border-4 border-primary h-100 p-2.5">
+                <div class="text-secondary fs-8 fw-bold text-uppercase">FİŞ ADEDİ</div>
+                <div class="fs-4 fw-extrabold text-slate-900">{{ total_count }}</div>
+                <div class="text-slate-500 fs-8 mt-0.5">{{ return_count }} İade · {{ cancelled_count }} İptal</div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="tabler-card border-start border-4 border-success h-100 p-2.5">
+                <div class="text-secondary fs-8 fw-bold text-uppercase">BRÜT SATIŞ</div>
+                <div class="fs-4 fw-extrabold text-success font-monospace">₺{{ gross_sales|floatformat:2 }}</div>
+                <div class="text-slate-500 fs-8 mt-0.5">İptal/iade hariç satışlar</div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="tabler-card border-start border-4 border-danger h-100 p-2.5">
+                <div class="text-secondary fs-8 fw-bold text-uppercase">TOPLAM İADE</div>
+                <div class="fs-4 fw-extrabold text-danger font-monospace">₺{{ total_returns|floatformat:2 }}</div>
+                <div class="text-slate-500 fs-8 mt-0.5">Müşteriye iade edilen tutar</div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="tabler-card border-start border-4 border-info h-100 p-2.5">
+                <div class="text-secondary fs-8 fw-bold text-uppercase">NET CİRO</div>
+                <div class="fs-4 fw-extrabold text-primary font-monospace">₺{{ net_revenue|floatformat:2 }}</div>
+                <div class="text-slate-500 fs-8 mt-0.5">Brüt Satış - İade</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ARAMA VE ÇOKLU FİLTRE ÇUBUĞU -->
+    <search>
+        <form method="get" action="{% url 'sale_list_view' %}" class="tabler-card mb-3 py-2.5 px-3" aria-label="Satış fişi filtreleme formu">
+            <div class="row g-2 align-items-end">
+                <div class="col-12 col-md-3">
+                    <label for="saleSearchInput" class="form-label fs-8 fw-bold text-secondary mb-1">Fiş No / Müşteri / Kasiyer</label>
+                    <input type="search" id="saleSearchInput" name="q" class="form-control form-control-sm" value="{{ search_q }}" placeholder="Fiş no, müşteri adı, TCKN/VKN...">
+                </div>
+                <div class="col-6 col-md-2">
+                    <label for="saleDateFrom" class="form-label fs-8 fw-bold text-secondary mb-1">Başlangıç Tarihi</label>
+                    <input type="date" id="saleDateFrom" name="date_from" class="form-control form-control-sm" value="{{ date_from }}">
+                </div>
+                <div class="col-6 col-md-2">
+                    <label for="saleDateTo" class="form-label fs-8 fw-bold text-secondary mb-1">Bitiş Tarihi</label>
+                    <input type="date" id="saleDateTo" name="date_to" class="form-control form-control-sm" value="{{ date_to }}">
+                </div>
+                <div class="col-6 col-md-1">
+                    <label for="saleRegisterSelect" class="form-label fs-8 fw-bold text-secondary mb-1">Kasa</label>
+                    <select id="saleRegisterSelect" name="register" class="form-select form-select-sm">
+                        <option value="">Tümü</option>
+                        {% for reg in registers %}
+                            <option value="{{ reg.register_code }}" {% if register_code == reg.register_code %}selected{% endif %}>{{ reg.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-1">
+                    <label for="saleCashierSelect" class="form-label fs-8 fw-bold text-secondary mb-1">Kasiyer</label>
+                    <select id="saleCashierSelect" name="cashier" class="form-select form-select-sm">
+                        <option value="">Tümü</option>
+                        {% for u in cashiers %}
+                            <option value="{{ u.id }}" {% if cashier_id == u.id|stringformat:"s" %}selected{% endif %}>{{ u.username }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-1">
+                    <label for="salePaymentSelect" class="form-label fs-8 fw-bold text-secondary mb-1">Ödeme</label>
+                    <select id="salePaymentSelect" name="payment_type" class="form-select form-select-sm">
+                        <option value="">Tümü</option>
+                        {% for code, label in payment_choices %}
+                            <option value="{{ code }}" {% if payment_type == code %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-1">
+                    <label for="saleStatusSelect" class="form-label fs-8 fw-bold text-secondary mb-1">Belge</label>
+                    <select id="saleStatusSelect" name="doc_status" class="form-select form-select-sm">
+                        <option value="all" {% if doc_status == 'all' %}selected{% endif %}>Tümü</option>
+                        <option value="sales" {% if doc_status == 'sales' %}selected{% endif %}>Satışlar</option>
+                        <option value="returns" {% if doc_status == 'returns' %}selected{% endif %}>İadeler</option>
+                        <option value="cancelled" {% if doc_status == 'cancelled' %}selected{% endif %}>İptaller</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-1 d-flex gap-1">
+                    <button type="submit" class="btn btn-sm btn-primary text-white fw-bold w-100">Bul</button>
+                    {% if search_q or register_code or cashier_id or payment_type or doc_status != 'all' or date_from or date_to %}
+                        <a href="{% url 'sale_list_view' %}" class="btn btn-sm btn-light border" title="Filtreyi Temizle"><i class="bi bi-x-lg"></i></a>
+                    {% endif %}
+                </div>
+            </div>
+        </form>
+    </search>
+
+    <!-- SATIŞ FİŞLERİ TABLOSU -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span id="salesTableTitle" class="fw-bold text-slate-900">SATIŞ & İADE FİŞLERİ (Sayfa {{ page_obj.number }}/{{ page_obj.paginator.num_pages }})</span>
+            <span class="badge bg-slate-100 text-slate-800 border border-slate-300 fs-8 fw-bold">Toplam {{ total_count }} Kayıt</span>
+        </div>
+        <div tabindex="0" role="region" aria-labelledby="salesTableTitle" class="table-responsive">
+            <table class="table mb-0 fs-8 align-middle">
+                <thead>
+                    <tr>
+                        <th class="ps-3">Fiş No</th>
+                        <th>Tarih / Saat</th>
+                        <th>Kasa / Kasiyer</th>
+                        <th>Müşteri / Ünvan</th>
+                        <th>Ödeme Türü</th>
+                        <th class="text-center">Durum</th>
+                        <th class="text-end">Tutar</th>
+                        <th class="text-end pe-3" style="min-width: 190px;">İşlemler</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sale in sales %}
+                        <tr class="{% if sale.is_cancelled %}table-secondary opacity-75{% elif sale.is_return %}table-warning{% endif %}">
+                            <td class="ps-3">
+                                <span class="font-monospace fw-bold text-primary d-block">{{ sale.receipt_number }}</span>
+                                <small class="text-slate-500">{{ sale.items.count }} Kalem</small>
+                            </td>
+                            <td class="text-slate-700 font-monospace">{{ sale.created_at|date:"d.m.Y H:i" }}</td>
+                            <td>
+                                <span class="fw-bold text-slate-800 d-block">{{ sale.shift.cash_register.name|default:"-" }}</span>
+                                <small class="text-slate-500">{% if sale.cashier %}{{ sale.cashier.get_full_name|default:sale.cashier.username }}{% else %}-{% endif %}</small>
+                            </td>
+                            <td>
+                                <span class="fw-semibold text-slate-800 d-block">{{ sale.customer_title }}</span>
+                                <small class="text-slate-500 font-monospace">{{ sale.customer_tax_number }}</small>
+                            </td>
+                            <td>
+                                <span class="badge bg-slate-100 text-slate-800 border border-slate-300 fw-bold">{{ sale.get_payment_type_display }}</span>
+                                {% if sale.payment_type == 'PARCALI' %}
+                                    <small class="text-slate-500 d-block mt-0.5">N:₺{{ sale.cash_paid|floatformat:2 }} · K:₺{{ sale.card_paid|floatformat:2 }}</small>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if sale.is_cancelled %}
+                                    <span class="badge bg-secondary text-white px-2 py-1 fw-bold">İPTAL</span>
+                                {% elif sale.is_return %}
+                                    <span class="badge bg-danger text-white px-2 py-1 fw-bold">İADE FİŞİ</span>
+                                {% else %}
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 fw-bold">SATIŞ</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end fw-extrabold font-monospace {% if sale.is_return %}text-danger{% elif sale.is_cancelled %}text-secondary text-decoration-line-through{% else %}text-slate-900{% endif %}">
+                                {% if sale.is_return %}-{% endif %}₺{{ sale.total_amount|floatformat:2 }}
+                            </td>
+                            <td class="text-end pe-3">
+                                <div class="d-inline-flex gap-1.5">
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-primary fw-bold px-2 py-1 fs-8 view-sale-detail-btn"
+                                            data-detail-url="{% url 'sale_detail_api' sale.id %}"
+                                            data-receipt-url="{% url 'receipt_view' sale.receipt_number %}"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#saleDetailModal">
+                                        <i class="bi bi-eye me-1"></i> Detay
+                                    </button>
+                                    <a href="{% url 'receipt_view' sale.receipt_number %}" target="_blank" class="btn btn-sm btn-light border fw-bold px-2 py-1 fs-8 text-slate-800" title="Termal Fişi Görüntüle / Yazdır">
+                                        <i class="bi bi-printer me-1"></i> Fiş
+                                    </a>
+                                    {% if not sale.is_cancelled and not sale.is_return %}
+                                        <button type="button" class="btn btn-sm btn-outline-danger fw-bold px-2 py-1 fs-8 cancel-sale-btn"
+                                                data-cancel-url="{% url 'sale_cancel_action' sale.id %}"
+                                                data-receipt="{{ sale.receipt_number }}"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#cancelSaleModal"
+                                                title="Fişi İptal Et ve Stokları İade Al">
+                                            <i class="bi bi-x-circle me-1"></i> İptal
+                                        </button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="8" class="text-center py-5 text-secondary">
+                                <i class="bi bi-receipt fs-1 d-block mb-2 text-slate-300"></i>
+                                <span class="fw-bold">Arama kriterlerine uygun satış fişi bulunamadı.</span>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if page_obj.has_other_pages %}
+            <div class="card-footer d-flex justify-content-between align-items-center py-2">
+                <small class="text-secondary">Sayfa {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</small>
+                <div class="btn-group btn-group-sm">
+                    {% if page_obj.has_previous %}
+                        <a class="btn btn-outline-secondary fw-bold" href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.previous_page_number }}">Önceki</a>
+                    {% endif %}
+                    {% if page_obj.has_next %}
+                        <a class="btn btn-outline-secondary fw-bold" href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.next_page_number }}">Sonraki</a>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- FİŞ DETAY MODALI -->
+<div class="modal fade" id="saleDetailModal" tabindex="-1" aria-labelledby="saleDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title h5 fw-bold text-slate-900" id="saleDetailModalLabel">Fiş Detayı</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Kapat"></button>
+            </div>
+            <div class="modal-body" id="saleDetailBody">
+                <div class="text-center py-4 text-secondary">Yükleniyor...</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light border fw-bold" data-bs-dismiss="modal">Kapat</button>
+                <a href="#" id="modalThermalReceiptLink" target="_blank" class="btn btn-primary text-white fw-bold">
+                    <i class="bi bi-printer me-1"></i> Termal Fişi Aç
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- FİŞ İPTAL MODALI -->
+<div class="modal fade" id="cancelSaleModal" tabindex="-1" aria-labelledby="cancelSaleModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form id="cancelSaleForm" method="post" action="">
+                {% csrf_token %}
+                <div class="modal-header bg-danger text-white py-2.5 px-3">
+                    <h5 class="modal-title fs-7 fw-bold" id="cancelSaleModalLabel">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i> Satış Fişini İptal Et
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Kapat"></button>
+                </div>
+                <div class="modal-body p-3">
+                    <p class="fs-8 text-slate-700 mb-2">
+                        <strong id="cancelReceiptNo" class="text-danger font-monospace"></strong> numaralı fiş iptal edilecek, fişteki ürünlerin stokları otomatik olarak geri yüklenecek ve varsa veresiye borcu silinecektir.
+                    </p>
+                    <div class="mb-3">
+                        <label for="cancelReasonInput" class="form-label fs-8 fw-bold text-slate-800 mb-1">İptal Gerekçesi *</label>
+                        <input type="text" id="cancelReasonInput" name="cancellation_reason" class="form-control form-control-sm" required placeholder="Örn: Müşteri vazgeçti / Hatalı barkod okutuldu">
+                    </div>
+                </div>
+                <div class="modal-footer py-2 px-3 bg-light">
+                    <button type="button" class="btn btn-sm btn-light border fw-bold" data-bs-dismiss="modal">Vazgeç</button>
+                    <button type="submit" class="btn btn-sm btn-danger fw-bold">
+                        <i class="bi bi-x-circle-fill me-1"></i> Fişi Kesin Olarak İptal Et
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const bodyEl = document.getElementById('saleDetailBody');
+    const titleEl = document.getElementById('saleDetailModalLabel');
+    const receiptLinkEl = document.getElementById('modalThermalReceiptLink');
+
+    document.querySelectorAll('.cancel-sale-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            document.getElementById('cancelSaleForm').action = btn.dataset.cancelUrl;
+            document.getElementById('cancelReceiptNo').textContent = '#' + btn.dataset.receipt;
+            document.getElementById('cancelReasonInput').value = '';
+        });
+    });
+
+    function addSummaryRow(parent, label, value, bold = false) {
+        const div = document.createElement('div');
+        div.className = 'd-flex justify-content-between py-1 border-bottom fs-8' + (bold ? ' fw-extrabold text-slate-900' : '');
+        const lSpan = document.createElement('span');
+        lSpan.className = 'text-secondary';
+        lSpan.textContent = label;
+        const vSpan = document.createElement('span');
+        vSpan.className = 'font-monospace';
+        vSpan.textContent = value;
+        div.append(lSpan, vSpan);
+        parent.appendChild(div);
+    }
+
+    document.querySelectorAll('.view-sale-detail-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            receiptLinkEl.href = btn.dataset.receiptUrl || '#';
+            titleEl.textContent = 'Fiş Detayı Yükleniyor...';
+            bodyEl.replaceChildren();
+            const loading = document.createElement('div');
+            loading.className = 'text-center py-4 text-secondary';
+            loading.textContent = 'Fiş bilgileri getiriliyor...';
+            bodyEl.appendChild(loading);
+
+            try {
+                const resp = await fetch(btn.dataset.detailUrl, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) {
+                    throw new Error('Fiş detayları yüklenemedi.');
+                }
+
+                const s = data.sale;
+                titleEl.textContent = `Fiş #${s.receipt_number} (${s.document_type_display})`;
+                bodyEl.replaceChildren();
+
+                const metaGrid = document.createElement('div');
+                metaGrid.className = 'p-3 rounded-2 bg-light border mb-3';
+                addSummaryRow(metaGrid, 'Tarih / Saat', s.created_at);
+                addSummaryRow(metaGrid, 'Kasa / Kasiyer', `${s.register} · ${s.cashier}`);
+                addSummaryRow(metaGrid, 'Müşteri', `${s.customer_title} (${s.customer_tax_number})`);
+                addSummaryRow(metaGrid, 'Ödeme Türü', s.payment_type_display);
+                if (s.is_return && s.return_reason) {
+                    addSummaryRow(metaGrid, 'İade Gerekçesi', s.return_reason);
+                }
+                if (s.is_cancelled && s.cancellation_reason) {
+                    addSummaryRow(metaGrid, 'İptal Gerekçesi', s.cancellation_reason);
+                }
+                bodyEl.appendChild(metaGrid);
+
+                const tableWrap = document.createElement('div');
+                tableWrap.className = 'table-responsive border rounded-2 mb-3';
+                const table = document.createElement('table');
+                table.className = 'table table-sm mb-0 fs-8';
+                const thead = document.createElement('thead');
+                const hRow = document.createElement('tr');
+                ['Ürün / Barkod', 'Miktar', 'Birim Fiyat', 'KDV', 'Toplam'].forEach((hdr) => {
+                    const th = document.createElement('th');
+                    th.textContent = hdr;
+                    hRow.appendChild(th);
+                });
+                thead.appendChild(hRow);
+                table.appendChild(thead);
+
+                const tbody = document.createElement('tbody');
+                data.items.forEach((it) => {
+                    const tr = document.createElement('tr');
+                    const tdName = document.createElement('td');
+                    const nameStrong = document.createElement('strong');
+                    nameStrong.textContent = it.product_name;
+                    const codeSmall = document.createElement('small');
+                    codeSmall.className = 'd-block text-secondary font-monospace';
+                    codeSmall.textContent = it.barcode;
+                    tdName.append(nameStrong, codeSmall);
+
+                    const tdQty = document.createElement('td');
+                    tdQty.className = 'font-monospace';
+                    tdQty.textContent = it.quantity;
+
+                    const tdPrice = document.createElement('td');
+                    tdPrice.className = 'font-monospace';
+                    tdPrice.textContent = `₺${it.unit_price}`;
+
+                    const tdVat = document.createElement('td');
+                    tdVat.className = 'font-monospace';
+                    tdVat.textContent = `%${it.vat_rate}`;
+
+                    const tdTotal = document.createElement('td');
+                    tdTotal.className = 'font-monospace fw-bold';
+                    tdTotal.textContent = `₺${it.total_price}`;
+
+                    tr.append(tdName, tdQty, tdPrice, tdVat, tdTotal);
+                    tbody.appendChild(tr);
+                });
+                table.appendChild(tbody);
+                tableWrap.appendChild(table);
+                bodyEl.appendChild(tableWrap);
+
+                const totalsBox = document.createElement('div');
+                totalsBox.className = 'p-3 rounded-2 border bg-white';
+                addSummaryRow(totalsBox, 'Ara Toplam (KDV Hariç)', `₺${s.subtotal}`);
+                addSummaryRow(totalsBox, 'Toplam KDV', `₺${s.total_vat}`);
+                addSummaryRow(totalsBox, 'İskonto', `₺${s.discount_amount}`);
+                addSummaryRow(totalsBox, 'Genel Toplam', `₺${s.total_amount}`, true);
+                addSummaryRow(totalsBox, 'Alınan Nakit / Kart / Para Üstü', `₺${s.cash_paid} / ₺${s.card_paid} / ₺${s.change_given}`);
+                bodyEl.appendChild(totalsBox);
+            } catch (err) {
+                bodyEl.replaceChildren();
+                const errDiv = document.createElement('div');
+                errDiv.className = 'alert alert-danger mb-0';
+                errDiv.textContent = err.message || 'Bir hata oluştu.';
+                bodyEl.appendChild(errDiv);
+            }
+        });
+    });
+});
+</script>
+{% endblock %}
+

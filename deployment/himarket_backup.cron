@@ -1,0 +1,11 @@
+# ==========================================================
+# Hİ MARKET - CRON OTOMATİK VERİTABANI YEDEKLEME GÖREVLERİ
+# ==========================================================
+# Kurulum için: crontab -e komutu ile bu satırları ekleyiniz.
+
+# 1. Her gece saat 03:00'da sıkıştırılmış (GZIP) ve SHA-256 özetli otomatik tam yedek al
+0 3 * * * cd /opt/HiMarket && /opt/HiMarket/.venv/bin/python manage.py backup_database --compress --keep 30 --reason CRON_GECE >> /opt/HiMarket/backups/backup.log 2>&1
+
+# 2. Her gün öğlen 13:00'da yoğun vardiya öncesi ara yedek al
+0 13 * * * cd /opt/HiMarket && /opt/HiMarket/.venv/bin/python manage.py backup_database --compress --keep 30 --reason CRON_OGLE >> /opt/HiMarket/backups/backup.log 2>&1
+

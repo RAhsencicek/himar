@@ -1,0 +1,79 @@
+================================================================================
+          Hİ MARKET - KURUMSAL KASA (POS) & STOK OTOMASYONU
+                   TÜM PROJE ÖZETİ VE KULLANIM REHBERİ
+================================================================================
+
+1. PROJE GENEL ÖZETİ VE AMACI
+--------------------------------------------------------------------------------
+Bu proje, perakende satış noktaları (marketler, şarküteriler, manavlar vb.) için
+geliştirilmiş; çoklu kasa (KASA-01 ve KASA-02) desteğine, rol tabanlı yetkilendirmeye,
+atomik stok kilitlemeye ve otomatik gün sonu yedekleme altyapısına sahip web tabanlı
+bir Market Kasa ve Stok Otomasyonudur.
+
+Sistem, Tek Doğruluk Kaynağı (Single Source of Truth - SSOT) prensibiyle tamamen
+Python / Django ORM ve SQLite WAL (Write-Ahead Logging) mimarisi üzerinde çalışır.
+
+
+2. TEKNOLOJİ YIĞINI (NE İÇİN NE KULLANILDI?)
+--------------------------------------------------------------------------------
+A) Python 3 & Django Framework (Ana Backend ve İş Mantığı):
+   - Kasa satış motoru, atomik stok düşümü (select_for_update + F ifadeleri),
+     müşteri iade yönetimi, KDV hesaplamaları, terazi barkod ayrıştırma,
+     kullanıcı/rol yetkilendirme (RBAC) ve Z raporu mutabakatı.
+
+B) SQLite WAL Veritabanı (db.sqlite3) & PostgreSQL Uyumluluğu:
+   - SQLite üzerinde PRAGMA journal_mode=WAL, synchronous=NORMAL ve busy_timeout
+     aktif edilerek çoklu kasa eşzamanlılığı sağlanmıştır.
+   - Ayrıca .env dosyası üzerinden tek satırla PostgreSQL sunucusuna geçiş desteklenir.
+
+C) Otomatik Veritabanı Yedekleme (backup_database):
+   - Z Raporu (vardiya) kapandığı anda otomatik olarak backups/ klasörüne zaman
+     damgalı, bozulmaz SQLite yedeği kaydedilir.
+   - Yönetici panelindeki 'Yedek İndir' butonuyla tek tıkla bilgisayara indirilir.
+
+D) ESC/POS Sessiz Termal Yazıcı & RJ11 Para Çekmecesi Servisi:
+   - Satış bittiğinde tarayıcı Ctrl+P penceresi açmadan arka planda doğrudan
+     ESC/POS termal fiş baytlarını üretir ve nakit satışta çekmeceyi tetikler.
+
+E) HTML5, CSS3, Bootstrap 5.3 & JavaScript:
+   - Dokunmatik POS ekranı, dokunmatik Numpad PIN girişi ve Tabler UI yönetim paneli.
+
+
+3. NELER YAPILDI VE HANGİ ÖZELLİKLER EKLENDİ?
+--------------------------------------------------------------------------------
+1. Kasiyer Dokunmatik PIN Pad ve Yönetici Yetkilendirme (RBAC):
+   - Giriş ekranında (login.html) dokunmatik Numpad üzerinden 4 haneli PIN koduyla
+     (Örn: 1234) veya standart kullanıcı adı/şifre ile giriş.
+   - Kasiyer ve Yönetici rolleri ayrıştırılmıştır; kasiyerler maliyet ve yönetim
+     sayfalarına erişemez.
+
+2. Bağımsız Çoklu Kasa (KASA-01 ve KASA-02):
+   - İki kasa birbirinden tamamen bağımsız vardiyalarla çalışır.
+   - Kasa 1'den Z raporu alınıp kapatıldığında Kasa 2 açık kalmaya devam eder.
+   - Dashboard ve Sistem Loglarında her kasa ayrı ayrı izlenir ve filtrelenir.
+
+3. Eşzamanlı Stok Kilidi ve Atomik Satış:
+   - Satış sırasında ürünler select_for_update() ile kilitlenir ve stok düşümü
+     veritabanı seviyesinde F('stock_quantity') ile yapılır.
+   - Stokta olmayan veya yetersiz ürünün satışı engellenir, eksi stok oluşmaz.
+
+4. Terazi / Tartılı Ürün Barkod Algoritması (27 / 28 Prefix):
+   - Manav ve şarküterilerde teraziden çıkan 13 haneli barkodları (Örn: 2700001014502)
+     otomatik çözümleyerek ürün kodunu ve gramajı (1.450 KG) fişe ekler.
+
+5. Gün Sonu Z Raporu ve Otomatik Yedekleme:
+   - Kasa açılış devri, net nakit, net kart, iadeler ve kasa farkı hesabı.
+   - Z raporu kapandığı anda backups/ klasörüne otomatik zaman damgalı yedek kaydı.
+
+
+4. NASIL ÇALIŞTIRILIR?
+--------------------------------------------------------------------------------
+1. Proje klasöründeki "BASLAT.bat" dosyasına çift tıklayın.
+2. Tarayıcınızda otomatik olarak Giriş Ekranı (http://127.0.0.1:8000/login/) açılır.
+
+
+5. VARSAYILAN GİRİŞ BİLGİLERİ
+--------------------------------------------------------------------------------
+- Kasa Hızlı PIN Girişi: 1234 (Kullanıcı: kasiyer / Şifre: 1234)
+- Yönetici Paneli: admin / admin123
+================================================================================

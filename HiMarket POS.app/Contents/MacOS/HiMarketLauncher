@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+cd "/Users/mac/HiMarket"
+exec /usr/bin/env bash "/Users/mac/HiMarket/BASLAT.sh"

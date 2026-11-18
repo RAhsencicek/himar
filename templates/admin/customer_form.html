@@ -1,0 +1,100 @@
+{% extends "admin/base_site.html" %}
+{% load static l10n %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-2 border-bottom">
+        <div>
+            <h1 class="h3 fw-bold text-slate-900 mb-0 d-flex align-items-center gap-2">
+                <i class="bi bi-person-lines-fill text-warning"></i>
+                {% if is_edit %}MÜŞTERİ BİLGİLERİNİ GÜNCELLE{% else %}YENİ MÜŞTERİ / VERESİYE KARTI{% endif %}
+            </h1>
+            <span class="text-secondary small fw-medium">
+                {% if is_edit %}Kayıtlı cari müşterinin iletişim, adres ve veresiye limit bilgilerini düzenleyin.{% else %}Sisteme yeni bir müşteri ve veresiye cari kartı tanımlayın.{% endif %}
+            </span>
+        </div>
+        <a href="{% url 'customer_list_view' %}" class="btn btn-sm btn-outline-secondary fw-bold px-3 py-1.5 d-flex align-items-center gap-1.5">
+            <i class="bi bi-arrow-left"></i> Deftere Dön
+        </a>
+    </div>
+
+    <!-- BİLGİ & UYARI MESAJLARI -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show mb-3 rounded-2 shadow-xs py-2 px-3 fs-7" role="alert">
+                <i class="bi bi-check-circle-fill me-1"></i> {{ message }}
+                <button type="button" class="btn-close py-2" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="row justify-content-center">
+        <div class="col-12 col-lg-8">
+            <div class="card shadow-xs border-2">
+                <div class="card-header bg-slate-900 text-white d-flex align-items-center gap-2 py-3 px-4">
+                    <i class="bi bi-card-heading text-warning"></i>
+                    <span class="fw-bold fs-6">MÜŞTERİ VE VERESİYE CARİ BİLGİLERİ</span>
+                </div>
+                <div class="card-body p-4 bg-slate-50">
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="row g-3">
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Müşteri Adı *</label>
+                                <input type="text" name="first_name" class="form-control" required value="{{ customer.first_name|default:'' }}" placeholder="Örn: Mehmet">
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Müşteri Soyadı</label>
+                                <input type="text" name="last_name" class="form-control" value="{{ customer.last_name|default:'' }}" placeholder="Örn: Demir">
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Telefon Numarası *</label>
+                                <input type="tel" name="phone" class="form-control font-monospace fw-bold" required value="{{ customer.phone|default:'' }}" placeholder="05XXXXXXXXX">
+                                <small class="text-slate-500 fs-9">Benzersiz olmalıdır, kasada arama bu numarayla yapılır.</small>
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Veresiye Borç Limiti (TL) *</label>
+                                <input type="number" step="0.01" name="credit_limit" class="form-control font-monospace fw-extrabold text-primary" required value="{% if customer %}{{ customer.credit_limit|unlocalize }}{% else %}5000.00{% endif %}">
+                                <small class="text-slate-500 fs-9">Bu tutarın üzerindeki satışlarda kasa uyarı verir ve bloke eder.</small>
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">TCKN / VKN (Resmi e-Arşiv Fatura)</label>
+                                <input type="text" name="tax_number" class="form-control font-monospace" maxlength="11" value="{{ customer.tax_number|default:'' }}" placeholder="11 veya 10 haneli">
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Ticari Ünvan / Firma Adı</label>
+                                <input type="text" name="company_title" class="form-control" value="{{ customer.company_title|default:'' }}" placeholder="Örn: Demir Ticaret Ltd.">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">İkametgah / Adres</label>
+                                <textarea name="address" class="form-control" rows="2" placeholder="Adres bilgisi...">{{ customer.address|default:'' }}</textarea>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Özel Müşteri Notu</label>
+                                <textarea name="notes" class="form-control" rows="2" placeholder="Müşteri hakkında hatırlatıcı notlar...">{{ customer.notes|default:'' }}</textarea>
+                            </div>
+                            <div class="col-12">
+                                <div class="form-check form-switch mt-2">
+                                    <input class="form-check-input" type="checkbox" id="isActiveCheck" name="is_active" {% if customer is None or customer.is_active %}checked{% endif %}>
+                                    <label class="form-check-label fw-bold text-slate-800 small" for="isActiveCheck">
+                                        Müşteri Hesabı Aktif (Kasada veresiye alışverişe açık)
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-4 pt-3 border-top d-flex justify-content-between">
+                            <a href="{% url 'customer_list_view' %}" class="btn btn-outline-secondary fw-semibold">Vazgeç</a>
+                            <button type="submit" class="btn btn-primary fw-bold px-4">
+                                <i class="bi bi-check2-circle me-1"></i>
+                                {% if is_edit %}Değişiklikleri Kaydet{% else %}Müşteriyi Oluştur{% endif %}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

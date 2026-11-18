@@ -1,0 +1,243 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <!-- SAYFA BAŞLIĞI VE AKSİYONLAR -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-2 border-bottom">
+        <div>
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="badge bg-primary text-white fs-8 px-2 py-0.5 rounded-1">SİSTEM VERİLERİ</span>
+                <span class="text-secondary fs-8 fw-semibold">/ Ürün Kategorileri</span>
+            </div>
+            <h1 class="h3 fw-bold text-slate-900 mb-0 d-flex align-items-center gap-2">
+                <i class="bi bi-tags-fill text-primary"></i> KATEGORİ YÖNETİMİ
+            </h1>
+            <span class="text-secondary small fw-medium">Ürün reyonlarını, sıralamasını ve aktiflik durumunu yönetin.</span>
+        </div>
+        <button type="button" id="newCategoryBtn" class="btn btn-primary text-white fw-bold px-3 py-2 shadow-xs d-flex align-items-center gap-1.5" data-bs-toggle="modal" data-bs-target="#categoryModal">
+            <i class="bi bi-plus-lg"></i> Yeni Kategori Ekle
+        </button>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show mb-3 rounded-2 shadow-xs py-2 px-3 fs-7" role="alert">
+                <i class="bi bi-info-circle-fill me-1"></i> {{ message }}
+                <button type="button" class="btn-close py-2" data-bs-dismiss="alert" aria-label="Kapat"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- KPI ÖZET KARTLARI -->
+    <div class="row g-2.5 mb-3">
+        <div class="col-6 col-md-3">
+            <div class="tabler-card border-start border-4 border-primary h-100 p-2.5">
+                <div class="text-secondary fs-8 fw-bold text-uppercase">TOPLAM KATEGORİ</div>
+                <div class="fs-4 fw-extrabold text-slate-900">{{ total_categories }}</div>
+                <div class="text-slate-500 fs-8 mt-0.5">Tanımlı tüm gruplar</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="tabler-card border-start border-4 border-success h-100 p-2.5">
+                <div class="text-secondary fs-8 fw-bold text-uppercase">AKTİF KATEGORİ</div>
+                <div class="fs-4 fw-extrabold text-success">{{ active_categories }}</div>
+                <div class="text-slate-500 fs-8 mt-0.5">Ürün formlarında listelenen</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="tabler-card border-start border-4 border-secondary h-100 p-2.5">
+                <div class="text-secondary fs-8 fw-bold text-uppercase">PASİF KATEGORİ</div>
+                <div class="fs-4 fw-extrabold text-slate-700">{{ passive_categories }}</div>
+                <div class="text-slate-500 fs-8 mt-0.5">Yeni ürün seçimine kapalı</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="tabler-card border-start border-4 border-info h-100 p-2.5">
+                <div class="text-secondary fs-8 fw-bold text-uppercase">KATEGORİLİ ÜRÜN</div>
+                <div class="fs-4 fw-extrabold text-info">{{ linked_products_total }}</div>
+                <div class="text-slate-500 fs-8 mt-0.5">Bir kategoriye bağlı ürün</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FİLTRE ÇUBUĞU -->
+    <search>
+        <form method="get" action="{% url 'category_list_view' %}" class="tabler-card mb-3 py-2 px-3" aria-label="Kategori arama ve durum filtresi">
+            <div class="row g-2 align-items-end">
+                <div class="col-12 col-md-5">
+                    <label for="catSearchInput" class="form-label fs-8 fw-bold text-secondary mb-1">Kategori Ara</label>
+                    <input type="search" id="catSearchInput" name="q" class="form-control form-control-sm" value="{{ search_q }}" placeholder="Kategori adı veya açıklama...">
+                </div>
+                <div class="col-12 col-md-4">
+                    <label for="catStatusSelect" class="form-label fs-8 fw-bold text-secondary mb-1">Durum</label>
+                    <select id="catStatusSelect" name="status" class="form-select form-select-sm">
+                        <option value="all" {% if status_filter == 'all' %}selected{% endif %}>Tümü</option>
+                        <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Yalnızca Aktifler</option>
+                        <option value="passive" {% if status_filter == 'passive' %}selected{% endif %}>Yalnızca Pasifler</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-3 d-flex gap-1.5">
+                    <button type="submit" class="btn btn-sm btn-primary text-white fw-bold w-100">Filtrele</button>
+                    {% if search_q or status_filter != 'all' %}
+                        <a href="{% url 'category_list_view' %}" class="btn btn-sm btn-light border" title="Filtreyi Temizle"><i class="bi bi-x-lg"></i></a>
+                    {% endif %}
+                </div>
+            </div>
+        </form>
+    </search>
+
+    <!-- KATEGORİ TABLOSU -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span id="categoryTableTitle" class="fw-bold text-slate-900">KATEGORİ LİSTESİ ({{ categories|length }})</span>
+            <span class="badge bg-slate-100 text-slate-800 border border-slate-300 fs-8 fw-bold">Reyon & Sıralama</span>
+        </div>
+        <div tabindex="0" role="region" aria-labelledby="categoryTableTitle" class="table-responsive">
+            <table class="table mb-0 fs-8 align-middle">
+                <thead>
+                    <tr>
+                        <th class="ps-3 text-center" style="width: 80px;">Sıra</th>
+                        <th style="min-width: 220px;">Kategori Adı</th>
+                        <th>Açıklama</th>
+                        <th class="text-center" style="width: 150px;">Bağlı Ürünler</th>
+                        <th class="text-center" style="width: 120px;">Durum</th>
+                        <th class="text-end pe-3" style="min-width: 220px;">İşlemler</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cat in categories %}
+                        <tr class="{% if not cat.is_active %}table-secondary opacity-75{% endif %}">
+                            <td class="ps-3 text-center font-monospace fw-bold text-slate-600">{{ cat.display_order }}</td>
+                            <td>
+                                <strong class="text-slate-900 fs-7">{{ cat.name }}</strong>
+                            </td>
+                            <td class="text-slate-600">{{ cat.description|default:"-"|truncatechars:80 }}</td>
+                            <td class="text-center">
+                                <a href="{% url 'product_catalog_view' %}?category={{ cat.id }}" class="badge bg-primary-subtle text-primary border border-primary-subtle text-decoration-none px-2.5 py-1 fw-bold" title="Bu kategorideki ürünleri katalogda gör">
+                                    {{ cat.product_count }} Ürün ({{ cat.active_product_count }} Aktif)
+                                </a>
+                            </td>
+                            <td class="text-center">
+                                {% if cat.is_active %}
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle px-2.5 py-1 fw-bold">Aktif</span>
+                                {% else %}
+                                    <span class="badge bg-secondary text-white px-2.5 py-1 fw-bold">PASİF</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-3">
+                                <div class="d-inline-flex gap-1.5">
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-primary fw-bold px-2 py-1 fs-8 edit-category-btn"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#categoryModal"
+                                            data-id="{{ cat.id }}"
+                                            data-name="{{ cat.name }}"
+                                            data-description="{{ cat.description|default:'' }}"
+                                            data-order="{{ cat.display_order }}"
+                                            data-active="{% if cat.is_active %}1{% else %}0{% endif %}">
+                                        <i class="bi bi-pencil-square me-1"></i> Düzenle
+                                    </button>
+                                    <form method="post" action="{% url 'category_toggle_status_action' cat.id %}" class="d-inline">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                        <button type="submit" class="btn btn-sm {% if cat.is_active %}btn-outline-secondary{% else %}btn-outline-success{% endif %} fw-bold px-2 py-1 fs-8">
+                                            {% if cat.is_active %}
+                                                <i class="bi bi-pause-circle me-1"></i> Pasife Al
+                                            {% else %}
+                                                <i class="bi bi-play-circle me-1"></i> Aktifleştir
+                                            {% endif %}
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center py-5 text-secondary">
+                                <i class="bi bi-tags fs-1 d-block mb-2 text-slate-300"></i>
+                                <span class="fw-bold">Kriterlere uygun kategori bulunamadı.</span>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- KATEGORİ EKLE / DÜZENLE MODALI -->
+<div class="modal fade" id="categoryModal" tabindex="-1" aria-labelledby="categoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form method="post" action="{% url 'category_save_action' %}">
+                {% csrf_token %}
+                <input type="hidden" name="category_id" id="modalCategoryId" value="">
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <div class="modal-header">
+                    <h2 class="modal-title h5 fw-bold text-slate-900" id="categoryModalLabel">Yeni Kategori Ekle</h2>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Kapat"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="modalCategoryName" class="form-label fw-bold">Kategori Adı *</label>
+                        <input type="text" id="modalCategoryName" name="name" class="form-control" required maxlength="100" placeholder="Örn: Süt ve Kahvaltılık">
+                    </div>
+                    <div class="mb-3">
+                        <label for="modalCategoryOrder" class="form-label fw-bold">Sıralama Numarası</label>
+                        <input type="number" id="modalCategoryOrder" name="display_order" class="form-control" min="0" step="1" value="0">
+                        <small class="text-secondary fs-8">Küçük numara listelerde üstte görünür.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="modalCategoryDesc" class="form-label fw-bold">Açıklama</label>
+                        <textarea id="modalCategoryDesc" name="description" class="form-control" rows="2" placeholder="İsteğe bağlı reyon veya kategori notu..."></textarea>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="modalCategoryActive" name="is_active" checked>
+                        <label class="form-check-label fw-semibold" for="modalCategoryActive">Aktif Kategori (Ürün tanımlamada seçilebilir)</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light border fw-bold" data-bs-dismiss="modal">İptal</button>
+                    <button type="submit" class="btn btn-primary text-white fw-bold px-4" id="modalCategorySubmitBtn">Kategoriyi Kaydet</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const titleEl = document.getElementById('categoryModalLabel');
+    const idEl = document.getElementById('modalCategoryId');
+    const nameEl = document.getElementById('modalCategoryName');
+    const descEl = document.getElementById('modalCategoryDesc');
+    const orderEl = document.getElementById('modalCategoryOrder');
+    const activeEl = document.getElementById('modalCategoryActive');
+    const submitBtn = document.getElementById('modalCategorySubmitBtn');
+
+    document.getElementById('newCategoryBtn')?.addEventListener('click', () => {
+        titleEl.textContent = 'Yeni Kategori Ekle';
+        submitBtn.textContent = 'Kategoriyi Kaydet';
+        idEl.value = '';
+        nameEl.value = '';
+        descEl.value = '';
+        orderEl.value = '0';
+        activeEl.checked = true;
+    });
+
+    document.querySelectorAll('.edit-category-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            titleEl.textContent = 'Kategoriyi Düzenle';
+            submitBtn.textContent = 'Değişiklikleri Kaydet';
+            idEl.value = btn.dataset.id || '';
+            nameEl.value = btn.dataset.name || '';
+            descEl.value = btn.dataset.description || '';
+            orderEl.value = btn.dataset.order || '0';
+            activeEl.checked = btn.dataset.active === '1';
+        });
+    });
+});
+</script>
+{% endblock %}
+

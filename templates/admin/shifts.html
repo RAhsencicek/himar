@@ -1,0 +1,206 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <!-- SAYFA BAŞLIĞI -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-2 border-bottom">
+        <div>
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="badge bg-primary text-white fs-8 px-2 py-0.5 rounded-1">SİSTEM VERİLERİ</span>
+                <span class="text-secondary fs-8 fw-semibold">/ Vardiya & Kasa Kapanışları</span>
+            </div>
+            <h1 class="h3 fw-bold text-slate-900 mb-0 d-flex align-items-center gap-2">
+                <i class="bi bi-clock-history text-primary"></i> KASA VARDİYALARI & FARK İZLEME
+            </h1>
+            <span class="text-secondary small fw-medium">Açık ve kapalı kasa vardiyalarını, kör sayım nakit farklarını ve Z raporlarını takip edin.</span>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{% url 'export_shifts_csv' %}{% if query_string %}?{{ query_string }}{% endif %}" class="btn btn-sm btn-outline-secondary fw-semibold px-3 py-1.5 d-flex align-items-center gap-1.5" title="Vardiya listesini CSV indir">
+                <i class="bi bi-file-earmark-spreadsheet"></i> CSV İndir
+            </a>
+            <a href="{% url 'z_report_view' %}" target="_blank" class="btn btn-sm btn-primary text-white fw-bold px-3 py-1.5 d-flex align-items-center gap-1.5">
+                <i class="bi bi-file-earmark-bar-graph"></i> Aktif Z Raporuna Git
+            </a>
+        </div>
+    </div>
+
+    <!-- KPI ÖZET KARTLARI -->
+    <div class="row g-2.5 mb-3">
+        <div class="col-6 col-lg-3">
+            <div class="tabler-card border-start border-4 border-primary h-100 p-2.5">
+                <div class="text-secondary fs-8 fw-bold text-uppercase">TOPLAM VARDİYA</div>
+                <div class="fs-4 fw-extrabold text-slate-900">{{ total_shifts_count }}</div>
+                <div class="text-slate-500 fs-8 mt-0.5">{{ open_shifts_count }} Açık · {{ closed_shifts_count }} Kapalı</div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="tabler-card border-start border-4 border-success h-100 p-2.5">
+                <div class="text-secondary fs-8 fw-bold text-uppercase">TOPLAM VARDİYA CİROSU</div>
+                <div class="fs-4 fw-extrabold text-success font-monospace">₺{{ total_turnover|floatformat:2 }}</div>
+                <div class="text-slate-500 fs-8 mt-0.5">Nakit + Kart + Veresiye</div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="tabler-card border-start border-4 border-warning h-100 p-2.5">
+                <div class="text-secondary fs-8 fw-bold text-uppercase">FARKLI KAPANAN VARDİYA</div>
+                <div class="fs-4 fw-extrabold text-warning">{{ diff_shifts_count }}</div>
+                <div class="text-slate-500 fs-8 mt-0.5">Açık/Fazla veren kapanışlar</div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="tabler-card border-start border-4 {% if net_difference < 0 %}border-danger{% elif net_difference > 0 %}border-info{% else %}border-secondary{% endif %} h-100 p-2.5">
+                <div class="text-secondary fs-8 fw-bold text-uppercase">NET KASA FARKI</div>
+                <div class="fs-4 fw-extrabold font-monospace {% if net_difference < 0 %}text-danger{% elif net_difference > 0 %}text-info{% else %}text-slate-900{% endif %}">
+                    ₺{{ net_difference|floatformat:2 }}
+                </div>
+                <div class="text-slate-500 fs-8 mt-0.5">Sayılan - Beklenen Nakit</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FİLTRE ÇUBUĞU -->
+    <search>
+        <form method="get" action="{% url 'shift_list_view' %}" class="tabler-card mb-3 py-2.5 px-3" aria-label="Vardiya filtreleme formu">
+            <div class="row g-2 align-items-end">
+                <div class="col-6 col-md-3">
+                    <label for="shiftRegisterSelect" class="form-label fs-8 fw-bold text-secondary mb-1">Kasa Terminali</label>
+                    <select id="shiftRegisterSelect" name="register" class="form-select form-select-sm">
+                        <option value="">Tüm Kasalar</option>
+                        {% for reg in registers %}
+                            <option value="{{ reg.register_code }}" {% if register_code == reg.register_code %}selected{% endif %}>{{ reg.name }} ({{ reg.register_code }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6 col-md-3">
+                    <label for="shiftStatusSelect" class="form-label fs-8 fw-bold text-secondary mb-1">Vardiya Durumu</label>
+                    <select id="shiftStatusSelect" name="status" class="form-select form-select-sm">
+                        <option value="all" {% if status_filter == 'all' %}selected{% endif %}>Tümü</option>
+                        <option value="open" {% if status_filter == 'open' %}selected{% endif %}>Yalnızca Açık Vardiyalar</option>
+                        <option value="closed" {% if status_filter == 'closed' %}selected{% endif %}>Kapalı (Z Raporu Alınmış)</option>
+                        <option value="diff" {% if status_filter == 'diff' %}selected{% endif %}>Nakit Farkı Olanlar</option>
+                    </select>
+                </div>
+                <div class="col-6 col-md-2">
+                    <label for="shiftDateFrom" class="form-label fs-8 fw-bold text-secondary mb-1">Açılış Başlangıç</label>
+                    <input type="date" id="shiftDateFrom" name="date_from" class="form-control form-control-sm" value="{{ date_from }}">
+                </div>
+                <div class="col-6 col-md-2">
+                    <label for="shiftDateTo" class="form-label fs-8 fw-bold text-secondary mb-1">Açılış Bitiş</label>
+                    <input type="date" id="shiftDateTo" name="date_to" class="form-control form-control-sm" value="{{ date_to }}">
+                </div>
+                <div class="col-12 col-md-2 d-flex gap-1.5">
+                    <button type="submit" class="btn btn-sm btn-primary text-white fw-bold w-100">Filtrele</button>
+                    {% if register_code or status_filter != 'all' or date_from or date_to %}
+                        <a href="{% url 'shift_list_view' %}" class="btn btn-sm btn-light border" title="Filtreyi Temizle"><i class="bi bi-x-lg"></i></a>
+                    {% endif %}
+                </div>
+            </div>
+        </form>
+    </search>
+
+    <!-- VARDİYA TABLOSU -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span id="shiftsTableTitle" class="fw-bold text-slate-900">KASA VARDİYALARI ({{ total_shifts_count }} Kayıt)</span>
+            <span class="badge bg-slate-100 text-slate-800 border border-slate-300 fs-8 fw-bold">Z Raporu Geçmişi</span>
+        </div>
+        <div tabindex="0" role="region" aria-labelledby="shiftsTableTitle" class="table-responsive">
+            <table class="table mb-0 fs-8 align-middle">
+                <thead>
+                    <tr>
+                        <th class="ps-3">Vardiya & Kasa</th>
+                        <th>Kasiyer</th>
+                        <th>Açılış / Kapanış</th>
+                        <th class="text-center">Fiş</th>
+                        <th class="text-end">Satışlar (Nakit / Kart / Ver.)</th>
+                        <th class="text-end">Beklenen / Sayılan</th>
+                        <th class="text-end">Kasa Farkı</th>
+                        <th class="text-center">Durum</th>
+                        <th class="text-end pe-3" style="min-width: 150px;">Z Raporu</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in shifts %}
+                        <tr class="{% if not s.is_closed %}table-success{% elif s.difference != 0 %}table-warning{% endif %}">
+                            <td class="ps-3">
+                                <span class="fw-bold text-slate-900 d-block">#{{ s.id }} · {{ s.cash_register.name }}</span>
+                                <small class="text-slate-500 font-monospace">{{ s.cash_register.register_code }}</small>
+                            </td>
+                            <td class="fw-semibold text-slate-700">
+                                {% if s.cashier %}{{ s.cashier.get_full_name|default:s.cashier.username }}{% else %}-{% endif %}
+                            </td>
+                            <td class="font-monospace">
+                                <span class="d-block text-slate-800">Açılış: {{ s.opened_at|date:"d.m.Y H:i" }}</span>
+                                <small class="text-slate-500">
+                                    {% if s.closed_at %}Kapanış: {{ s.closed_at|date:"d.m.Y H:i" }}{% else %}Devam ediyor{% endif %}
+                                </small>
+                            </td>
+                            <td class="text-center font-monospace fw-bold">{{ s.total_sales_count }}</td>
+                            <td class="text-end font-monospace">
+                                <span class="d-block fw-bold text-slate-900">N:₺{{ s.total_cash_sales|floatformat:2 }} · K:₺{{ s.total_card_sales|floatformat:2 }}</span>
+                                <small class="text-slate-500">Ver:₺{{ s.total_veresiye_sales|floatformat:2 }} · Tah:₺{{ s.total_collections|floatformat:2 }}</small>
+                            </td>
+                            <td class="text-end font-monospace">
+                                {% if s.is_closed %}
+                                    <span class="d-block">B: ₺{{ s.expected_cash|floatformat:2 }}</span>
+                                    <small class="text-slate-600">S: ₺{{ s.actual_cash|floatformat:2 }}</small>
+                                {% else %}
+                                    <span class="text-secondary">Açık</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if s.is_closed %}
+                                    {% if s.difference < 0 %}
+                                        <span class="badge bg-danger text-white font-monospace px-2 py-1">₺{{ s.difference|floatformat:2 }} (EKSİK)</span>
+                                    {% elif s.difference > 0 %}
+                                        <span class="badge bg-info text-white font-monospace px-2 py-1">+₺{{ s.difference|floatformat:2 }} (FAZLA)</span>
+                                    {% else %}
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle font-monospace px-2 py-1">₺0.00 (TAM)</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-secondary">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                {% if s.is_closed %}
+                                    <span class="badge bg-secondary text-white px-2 py-1 fw-bold">KAPALI</span>
+                                {% else %}
+                                    <span class="badge bg-success text-white px-2 py-1 fw-bold">AÇIK</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-3">
+                                <a href="{% url 'z_report_view' %}?shift_id={{ s.id }}" target="_blank" class="btn btn-sm btn-outline-primary fw-bold px-2.5 py-1 fs-8">
+                                    <i class="bi bi-file-earmark-bar-graph me-1"></i> Z Raporu
+                                </a>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="9" class="text-center py-5 text-secondary">
+                                <i class="bi bi-clock-history fs-1 d-block mb-2 text-slate-300"></i>
+                                <span class="fw-bold">Kriterlere uygun vardiya kaydı bulunamadı.</span>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if page_obj.has_other_pages %}
+            <div class="card-footer d-flex justify-content-between align-items-center py-2">
+                <small class="text-secondary">Sayfa {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</small>
+                <div class="btn-group btn-group-sm">
+                    {% if page_obj.has_previous %}
+                        <a class="btn btn-outline-secondary fw-bold" href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.previous_page_number }}">Önceki</a>
+                    {% endif %}
+                    {% if page_obj.has_next %}
+                        <a class="btn btn-outline-secondary fw-bold" href="?{% if query_string %}{{ query_string }}&{% endif %}page={{ page_obj.next_page_number }}">Sonraki</a>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+

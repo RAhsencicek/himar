@@ -1,0 +1,4304 @@
+{% extends 'base.html' %}
+{% load l10n static %}
+
+{% block title %}Hİ MARKET - Kasa Satış Ekranı (POS){% endblock %}
+
+{% block navbar %}{% endblock %}
+
+{% block main_class %}pos-shell{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --pos-navy: #1e3a5f;
+        --pos-navy-dark: #162c48;
+        --pos-steel: #355c7d;
+        --pos-steel-dark: #2a4964;
+        --pos-card-tender: #2b4c7e;
+        --pos-card-tender-dark: #213c65;
+        --pos-cash: #2f6f4e;
+        --pos-cash-dark: #24573d;
+        --pos-split: #475569;
+        --pos-split-dark: #334155;
+        --pos-return: #9e2a2b;
+        --pos-return-dark: #7f2021;
+        --pos-rose-tint: #f8e8e8;
+        --pos-rose-border: #dfb8b8;
+        --pos-rose-ink: #842029;
+        --pos-sand: #fbf6ea;
+        --pos-sand-border: #dfd1ae;
+        --pos-ice: #eef4fb;
+        --pos-ice-border: #b8cbe0;
+        --pos-surface: #ffffff;
+        --pos-bg-canvas: #eef2f6;
+        --pos-border-subtle: #d5dee8;
+        --pos-ink: #0f172a;
+        --pos-ink-muted: #475569;
+    }
+
+    html, body {
+        background: var(--pos-bg-canvas);
+        color: var(--pos-ink);
+        margin: 0;
+        padding: 0;
+    }
+
+    /* Tek ekran kilitli 3 kolon + alt dock POS yerleşimi (masaüstü 100dvb) */
+    .pos-shell {
+        padding: 8px;
+        background: var(--pos-bg-canvas);
+        block-size: 100dvb;
+        min-block-size: 100dvb;
+        overflow: clip;
+        display: grid;
+        grid-template-columns: minmax(228px, 2.25fr) minmax(280px, 3fr) minmax(420px, 4.75fr);
+        grid-template-rows: minmax(0, 1fr) auto;
+        grid-template-areas:
+            "receipt ops catalog"
+            "dock    dock dock";
+        gap: 8px;
+    }
+
+    .pos-pane {
+        background: var(--pos-surface);
+        border: 1px solid var(--pos-border-subtle);
+        border-radius: 10px;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+        min-inline-size: 0;
+        min-block-size: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: clip;
+    }
+
+    .pos-cart-card {
+        grid-area: receipt;
+        container: receipt / inline-size;
+    }
+
+    .pos-ops-card {
+        grid-area: ops;
+        container: ops / inline-size;
+        padding: 10px;
+        gap: 9px;
+        justify-content: flex-start;
+    }
+
+    .pos-catalog-card {
+        grid-area: catalog;
+        container: catalog / inline-size;
+        padding: 8px;
+        gap: 8px;
+    }
+
+    .pos-bottom-dock {
+        grid-area: dock;
+        background: var(--pos-surface);
+        border: 1px solid var(--pos-border-subtle);
+        border-radius: 10px;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+        padding: 6px 8px;
+        display: flex;
+        align-items: safe center;
+        gap: 6px;
+        min-inline-size: 0;
+    }
+
+    /* ============================================================
+       SOL KOLON: ÖDENECEK TUTAR BANNERI + BARKOD + SEPET TABLOSU
+       ============================================================ */
+    .pos-payable-box {
+        background: var(--pos-navy);
+        color: #ffffff;
+        padding: 12px 18px;
+        min-block-size: clamp(78px, 10.5dvb, 98px);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        flex-shrink: 0;
+    }
+
+    .pos-payable-box--return {
+        background: var(--pos-return);
+    }
+
+    .pos-payable-meta {
+        min-inline-size: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .pos-payable-eyebrow {
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #dbe8f6;
+        line-height: 1.2;
+    }
+
+    .pos-payable-box--return .pos-payable-eyebrow {
+        color: #fde8e8;
+    }
+
+    .pos-payable-badges {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .pos-mini-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        background: rgba(255, 255, 255, 0.14);
+        color: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        white-space: nowrap;
+        max-inline-size: 100%;
+    }
+
+    button.pos-mini-pill {
+        cursor: pointer;
+    }
+
+    button.pos-mini-pill:hover {
+        background: rgba(255, 255, 255, 0.24);
+    }
+
+    .pos-mini-pill--cari {
+        background: #f5efe0;
+        color: #1e3a5f;
+        border-color: #dfd1ae;
+    }
+
+    .pos-mini-pill--cari-over {
+        background: #f8e8e8;
+        color: #842029;
+        border-color: #dfb8b8;
+    }
+
+    .pos-payable-amount {
+        display: flex;
+        align-items: baseline;
+        gap: 5px;
+        flex-shrink: 0;
+        line-height: 1;
+    }
+
+    .pos-grand-value {
+        font-family: 'Roboto Mono', monospace;
+        font-variant-numeric: tabular-nums;
+        font-size: clamp(2.15rem, 3.1vw, 3.15rem);
+        font-weight: 900;
+        color: #ffffff;
+        letter-spacing: -0.02em;
+    }
+
+    .pos-grand-currency {
+        font-size: 1.15rem;
+        font-weight: 800;
+        color: #dbe8f6;
+    }
+
+    /* Barkod Okuma & Arama Şeridi */
+    .pos-barcode-strip {
+        background: var(--pos-sand);
+        border-block-end: 1px solid var(--pos-sand-border);
+        padding: 10px 12px 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        flex-shrink: 0;
+    }
+
+    .pos-barcode-row {
+        display: flex;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .pos-barcode-input-wrap {
+        flex: 1 1 0;
+        min-inline-size: 0;
+        min-block-size: 46px;
+        display: flex;
+        align-items: center;
+        background: #ffffff;
+        border: 1.5px solid #b6c5d6;
+        border-radius: 8px;
+        padding-inline: 12px 6px;
+        gap: 8px;
+    }
+
+    .pos-barcode-input-wrap:focus-within {
+        border-color: var(--pos-navy);
+        box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.14);
+    }
+
+    .pos-barcode-icon {
+        color: var(--pos-navy);
+        font-size: 1.25rem;
+        flex-shrink: 0;
+    }
+
+    #barcodeInput {
+        flex: 1 1 0;
+        min-inline-size: 0;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--pos-ink);
+        padding-block: 8px;
+    }
+
+    #barcodeInput::placeholder {
+        color: #64748b;
+        font-weight: 500;
+        font-size: 0.88rem;
+    }
+
+    .pos-barcode-cam-btn {
+        background: #eef2f6;
+        color: var(--pos-navy);
+        border: 1.5px solid #b6c5d6;
+        border-radius: 8px;
+        padding: 0 11px;
+        font-weight: 800;
+        font-size: 0.82rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        cursor: pointer;
+        flex-shrink: 0;
+        min-block-size: 46px;
+        transition: background-color 0.14s ease, border-color 0.14s ease;
+    }
+
+    .pos-barcode-cam-btn:hover {
+        background: #dce6f2;
+        border-color: var(--pos-navy);
+    }
+
+    .pos-barcode-submit {
+        background: var(--pos-navy);
+        color: #ffffff;
+        border: 0;
+        border-radius: 8px;
+        padding: 0 16px;
+        font-weight: 800;
+        font-size: 0.86rem;
+        letter-spacing: 0.02em;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        flex-shrink: 0;
+        min-block-size: 46px;
+    }
+
+    .pos-barcode-submit:hover {
+        background: var(--pos-navy-dark);
+    }
+
+    .pos-status-line {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 0.74rem;
+        font-weight: 600;
+        color: var(--pos-ink-muted);
+        min-block-size: 20px;
+    }
+
+    .pos-status-left {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-inline-size: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .pos-ready-dot {
+        inline-size: 8px;
+        block-size: 8px;
+        border-radius: 50%;
+        background: var(--pos-cash);
+        flex-shrink: 0;
+    }
+
+    .pos-status-pills {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        flex-shrink: 0;
+    }
+
+    .pos-chip-discount {
+        background: var(--pos-rose-tint);
+        color: var(--pos-rose-ink);
+        border: 1px solid var(--pos-rose-border);
+        border-radius: 5px;
+        padding: 1px 7px;
+        font-size: 0.72rem;
+        font-weight: 800;
+        cursor: pointer;
+    }
+
+    /* Sepet Tablosu */
+    .table-wrapper {
+        flex: 1 1 0;
+        min-block-size: 0;
+        overflow-y: auto;
+        overflow-x: auto;
+        scrollbar-gutter: stable;
+        overscroll-behavior: contain;
+        background: #ffffff;
+    }
+
+    .pos-receipt-table {
+        inline-size: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: 0.85rem;
+    }
+
+    .pos-receipt-table thead {
+        position: sticky;
+        inset-block-start: 0;
+        z-index: 2;
+    }
+
+    .pos-receipt-table th {
+        background: #eef2f6;
+        color: #334155;
+        font-size: 0.7rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        padding: 7px 8px;
+        border-block-end: 1px solid var(--pos-border-subtle);
+        white-space: nowrap;
+    }
+
+    .pos-receipt-table td {
+        padding: 7px 8px;
+        border-block-end: 1px solid #edf2f7;
+        vertical-align: middle;
+        color: var(--pos-ink);
+    }
+
+    .pos-cart-row {
+        cursor: pointer;
+        transition: background-color 0.1s ease;
+    }
+
+    .pos-cart-row:hover {
+        background: #f1f5f9;
+    }
+
+    /* Seçili aktif sepet satırı: net kurumsal lacivert vurgu */
+    .pos-cart-row.cart-row--active {
+        background: var(--pos-navy);
+        color: #ffffff;
+    }
+
+    .pos-cart-row.cart-row--active td {
+        color: #ffffff;
+        border-block-end-color: #294b78;
+    }
+
+    .pos-cart-row.cart-row--active .pos-row-sub {
+        color: #dbe8f6;
+    }
+
+    .pos-cart-row.cart-row--active .pos-row-delisted {
+        color: #fbd38d;
+    }
+
+    .pos-row-barcode {
+        font-family: 'Roboto Mono', monospace;
+        font-size: 0.74rem;
+        color: var(--pos-ink-muted);
+        white-space: nowrap;
+    }
+
+    .pos-row-name {
+        font-weight: 700;
+        font-size: 0.84rem;
+        line-height: 1.25;
+        word-break: break-word;
+    }
+
+    .pos-row-sub {
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: var(--pos-ink-muted);
+    }
+
+    .pos-row-delisted {
+        font-size: 0.7rem;
+        text-decoration: line-through;
+        color: #64748b;
+        display: block;
+    }
+
+    .pos-qty-inline {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        background: #f1f5f9;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        padding: 2px;
+    }
+
+    .pos-cart-row.cart-row--active .pos-qty-inline {
+        background: rgba(255, 255, 255, 0.14);
+        border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .pos-qty-step-btn {
+        border: 0;
+        background: #ffffff;
+        color: var(--pos-ink);
+        inline-size: 26px;
+        block-size: 26px;
+        border-radius: 4px;
+        font-weight: 800;
+        font-size: 0.85rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+    }
+
+    .pos-qty-step-btn:hover {
+        background: #e2e8f0;
+    }
+
+    .pos-qty-val-btn {
+        border: 0;
+        background: transparent;
+        color: inherit;
+        min-inline-size: 40px;
+        padding: 2px 5px;
+        font-family: 'Roboto Mono', monospace;
+        font-variant-numeric: tabular-nums;
+        font-weight: 800;
+        font-size: 0.82rem;
+        text-align: center;
+        cursor: pointer;
+    }
+
+    .pos-row-del-btn {
+        border: 1px solid #f0c2c2;
+        background: var(--pos-rose-tint);
+        color: var(--pos-rose-ink);
+        inline-size: 30px;
+        block-size: 30px;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+    }
+
+    .pos-row-del-btn:hover {
+        background: var(--pos-return);
+        color: #ffffff;
+        border-color: var(--pos-return);
+    }
+
+    @container receipt (inline-size < 515px) {
+        .col-barcode {
+            display: none;
+        }
+    }
+
+    @container receipt (inline-size < 410px) {
+        .pos-payable-box {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 6px;
+            padding: 10px 12px;
+            min-block-size: auto;
+        }
+
+        .pos-payable-meta {
+            flex-direction: row;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 5px;
+        }
+
+        .pos-payable-amount {
+            justify-content: flex-end;
+        }
+
+        .pos-grand-value {
+            font-size: clamp(1.85rem, 2.6vw, 2.55rem);
+        }
+
+        .pos-barcode-strip {
+            padding: 8px 9px 7px;
+            gap: 5px;
+        }
+
+        .pos-barcode-row {
+            gap: 5px;
+        }
+
+        .pos-barcode-input-wrap {
+            min-block-size: 40px;
+            padding-inline: 8px 4px;
+            gap: 5px;
+        }
+
+        #barcodeInput {
+            font-size: 0.86rem;
+            padding-block: 6px;
+        }
+
+        .pos-barcode-cam-btn {
+            min-block-size: 40px;
+            padding: 0 10px;
+        }
+
+        .pos-barcode-cam-btn .pos-cam-label {
+            display: none;
+        }
+
+        .pos-barcode-submit {
+            min-block-size: 40px;
+            padding: 0 10px;
+            font-size: 0.78rem;
+        }
+
+        .col-unit-price {
+            display: none;
+        }
+
+        .pos-receipt-table th,
+        .pos-receipt-table td {
+            padding: 6px 5px;
+            font-size: 0.78rem;
+        }
+
+        .pos-row-name {
+            font-size: 0.79rem;
+            line-height: 1.2;
+        }
+
+        .pos-row-sub {
+            font-size: 0.67rem;
+        }
+
+        .pos-qty-inline {
+            padding: 1px;
+            gap: 1px;
+        }
+
+        .pos-qty-step-btn {
+            inline-size: 21px;
+            block-size: 22px;
+            font-size: 0.76rem;
+        }
+
+        .pos-qty-val-btn {
+            min-inline-size: 24px;
+            padding: 1px 3px;
+            font-size: 0.75rem;
+        }
+
+        .pos-row-del-btn {
+            inline-size: 24px;
+            block-size: 24px;
+            font-size: 0.72rem;
+        }
+
+        .pos-cart-footer {
+            padding: 6px 9px;
+            font-size: 0.73rem;
+        }
+    }
+
+    @container receipt (inline-size < 275px) {
+        .pos-barcode-strip {
+            padding: 7px 6px 6px;
+        }
+
+        .pos-barcode-row {
+            gap: 4px;
+        }
+
+        .pos-barcode-input-wrap {
+            padding-inline: 6px 4px;
+            gap: 4px;
+        }
+
+        .pos-barcode-cam-btn {
+            padding: 0 8px;
+        }
+
+        .pos-barcode-submit {
+            padding: 0 8px;
+        }
+
+        .pos-submit-icon {
+            display: none;
+        }
+
+        .pos-receipt-table {
+            font-size: 0.72rem;
+        }
+
+        .pos-receipt-table th,
+        .pos-receipt-table td {
+            padding: 4px 2px;
+            font-size: 0.7rem;
+        }
+
+        .pos-row-name {
+            font-size: 0.72rem;
+        }
+
+        .pos-row-sub {
+            font-size: 0.62rem;
+        }
+
+        .pos-qty-step-btn {
+            inline-size: 16px;
+            block-size: 19px;
+            font-size: 0.68rem;
+        }
+
+        .pos-qty-val-btn {
+            min-inline-size: 16px;
+            padding: 1px 2px;
+            font-size: 0.68rem;
+        }
+
+        .pos-row-del-btn {
+            inline-size: 19px;
+            block-size: 19px;
+            font-size: 0.65rem;
+        }
+    }
+
+    .pos-cart-footer {
+        background: #f8fafc;
+        border-block-start: 1px solid var(--pos-border-subtle);
+        padding: 6px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: var(--pos-ink-muted);
+        flex-shrink: 0;
+    }
+
+    #itemCountDisplay {
+        flex-shrink: 0;
+        white-space: nowrap;
+    }
+
+    #selectedRowHint {
+        min-inline-size: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* ============================================================
+       ORTA KOLON: 2x2 TAHSİLAT + SABİT NUMPAD + ÇARPAN + SATIR AKSİYONLARI
+       ============================================================ */
+    .pos-tenders-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 7px;
+        flex-shrink: 0;
+    }
+
+    .pos-tender-btn {
+        border: 1px solid transparent;
+        border-radius: 9px;
+        padding: 9px 10px;
+        min-block-size: clamp(62px, 8.6dvb, 88px);
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 8px;
+        text-align: left;
+        cursor: pointer;
+        transition: transform 0.08s ease, background-color 0.15s ease;
+    }
+
+    .pos-tender-btn:active {
+        transform: scale(0.985);
+    }
+
+    .pos-tender-btn--card {
+        background: var(--pos-card-tender);
+        color: #ffffff;
+    }
+    .pos-tender-btn--card:hover { background: var(--pos-card-tender-dark); }
+
+    .pos-tender-btn--cash {
+        background: var(--pos-cash);
+        color: #ffffff;
+    }
+    .pos-tender-btn--cash:hover { background: var(--pos-cash-dark); }
+
+    .pos-tender-btn--credit {
+        background: var(--pos-ice);
+        color: var(--pos-navy);
+        border-color: var(--pos-ice-border);
+    }
+    .pos-tender-btn--credit:hover { background: #dce8f6; }
+
+    .pos-tender-btn--credit.has-customer {
+        background: var(--pos-steel);
+        color: #ffffff;
+        border-color: var(--pos-steel-dark);
+    }
+
+    .pos-tender-btn--split {
+        background: var(--pos-split);
+        color: #ffffff;
+    }
+    .pos-tender-btn--split:hover { background: var(--pos-split-dark); }
+
+    .pos-tender-icon {
+        inline-size: 32px;
+        block-size: 32px;
+        border-radius: 7px;
+        background: rgba(255, 255, 255, 0.16);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.05rem;
+        flex-shrink: 0;
+    }
+
+    .pos-tender-btn--credit:not(.has-customer) .pos-tender-icon {
+        background: #dce8f6;
+        color: var(--pos-navy);
+    }
+
+    .pos-tender-copy {
+        min-inline-size: 0;
+        display: flex;
+        flex-direction: column;
+        line-height: 1.15;
+    }
+
+    .pos-tender-title {
+        font-weight: 800;
+        font-size: 0.8rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .pos-tender-hint {
+        font-size: 0.67rem;
+        font-weight: 700;
+        opacity: 0.88;
+        margin-block-start: 2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    @container ops (inline-size < 335px) {
+        .pos-ops-ext {
+            display: none;
+        }
+    }
+
+    @container ops (inline-size < 315px) {
+        .pos-tender-btn {
+            padding: 6px 7px;
+            gap: 5px;
+        }
+        .pos-tender-icon {
+            inline-size: 22px;
+            block-size: 22px;
+            font-size: 0.82rem;
+        }
+        .pos-tender-title {
+            font-size: 0.72rem;
+        }
+        .pos-tender-hint {
+            font-size: 0.61rem;
+        }
+        .pos-row-modifiers {
+            gap: 5px;
+        }
+        .pos-mod-btn {
+            padding: 4px 6px;
+            font-size: 0.72rem;
+            gap: 4px;
+        }
+    }
+
+    @container ops (inline-size < 275px) {
+        .pos-tender-icon {
+            display: none;
+        }
+    }
+
+    /* Sabit Orantılı Numpad Alanı (Sade 4×4 + Tam Yükseklik Yayılımı) */
+    .pos-numpad-section {
+        flex: 1 1 0;
+        min-block-size: 0;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 9px;
+        padding: 9px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    #numpadDisplay {
+        inline-size: 100%;
+        background: #ffffff;
+        border: 1.5px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 6px 12px;
+        font-family: 'Roboto Mono', monospace;
+        font-variant-numeric: tabular-nums;
+        font-size: clamp(1.22rem, 1.7vw, 1.55rem);
+        font-weight: 800;
+        color: var(--pos-ink);
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        min-block-size: clamp(40px, 5dvb, 54px);
+        overflow: hidden;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    .pos-numpad-grid {
+        flex: 1 1 0;
+        min-block-size: 0;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-rows: repeat(5, minmax(36px, 1fr));
+        gap: 5px;
+    }
+
+    .pos-pad-key {
+        border: 1px solid transparent;
+        border-radius: 8px;
+        font-weight: 800;
+        font-size: clamp(0.96rem, 1.3vw, 1.2rem);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        user-select: none;
+        transition: transform 0.06s ease, background-color 0.12s ease;
+        min-block-size: 38px;
+    }
+
+    .pos-pad-key:active {
+        transform: scale(0.96);
+    }
+
+    .pos-pad-key--digit {
+        background: var(--pos-steel);
+        color: #ffffff;
+        font-family: 'Roboto Mono', monospace;
+    }
+    .pos-pad-key--digit:hover { background: var(--pos-steel-dark); }
+
+    .pos-pad-key--qty {
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fde68a;
+        font-size: 0.88rem;
+    }
+    .pos-pad-key--qty:hover { background: #fde68a; }
+
+    .pos-pad-key--disc {
+        background: #f3e8ff;
+        color: #6b21a8;
+        border: 1px solid #e9d5ff;
+        font-size: 0.88rem;
+    }
+    .pos-pad-key--disc:hover { background: #e9d5ff; }
+
+    .pos-pad-key--price {
+        background: #e0f2fe;
+        color: #0369a1;
+        border: 1px solid #bae6fd;
+        font-size: 0.88rem;
+    }
+    .pos-pad-key--price:hover { background: #bae6fd; }
+
+    .pos-pad-key--quickcash {
+        background: #15803d;
+        color: #ffffff;
+        border: 1px solid #166534;
+        font-size: 0.95rem;
+    }
+    .pos-pad-key--quickcash:hover { background: #166534; }
+
+    .pos-pad-key--enter {
+        background: var(--pos-navy);
+        color: #ffffff;
+        font-size: 0.95rem;
+    }
+    .pos-pad-key--enter:hover { background: var(--pos-navy-dark); }
+
+    .pos-pad-key--back {
+        background: var(--pos-rose-tint);
+        border-color: var(--pos-rose-border);
+        color: var(--pos-rose-ink);
+        font-size: 1.05rem;
+    }
+    .pos-pad-key--back:hover { background: #f2d5d5; }
+
+    .pos-pad-key--util {
+        background: #eef2f6;
+        border-color: #cbd5e1;
+        color: var(--pos-navy);
+        font-size: 0.96rem;
+        font-weight: 800;
+    }
+    .pos-pad-key--util:hover { background: #dfe7ef; }
+
+    .pos-row-modifiers {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 7px;
+        flex-shrink: 0;
+    }
+
+    .pos-mod-btn {
+        background: #f8fafc;
+        border: 1px solid #cbd5e1;
+        border-radius: 9px;
+        color: var(--pos-navy);
+        min-block-size: clamp(44px, 5.8dvb, 58px);
+        padding: 6px 8px;
+        font-weight: 800;
+        font-size: 0.82rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        cursor: pointer;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .pos-mod-btn:hover {
+        background: var(--pos-ice);
+        border-color: var(--pos-ice-border);
+    }
+
+    .pos-mod-btn--warn {
+        background: var(--pos-rose-tint);
+        border-color: var(--pos-rose-border);
+        color: var(--pos-rose-ink);
+    }
+    .pos-mod-btn--warn:hover {
+        background: #f2d5d5;
+        border-color: #d6a2a2;
+    }
+
+    .pos-mod-btn--sand {
+        background: var(--pos-sand);
+        border-color: var(--pos-sand-border);
+        color: #6c4e13;
+    }
+    .pos-mod-btn--sand:hover {
+        background: #ebe2cb;
+        border-color: #cfc09b;
+    }
+
+    .pos-mod-btn--ice {
+        background: var(--pos-ice);
+        border-color: var(--pos-ice-border);
+        color: var(--pos-navy);
+    }
+    .pos-mod-btn--ice:hover {
+        background: #dce8f6;
+        border-color: #b4cbe4;
+    }
+
+    /* ============================================================
+       SAĞ KOLON: KATEGORİ FİLTRELERİ + GÖRSELLİ HIZLI ÜRÜNLER
+       ============================================================ */
+    .pos-catalog-search {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: #f8fafc;
+        border: 1px solid #cbd5e1;
+        border-radius: 7px;
+        padding-inline: 10px 6px;
+        flex-shrink: 0;
+    }
+
+    .pos-catalog-search:focus-within {
+        border-color: var(--pos-navy);
+        background: #ffffff;
+    }
+
+    #quickSearchInput {
+        flex: 1 1 0;
+        min-inline-size: 0;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        font-size: 0.84rem;
+        font-weight: 600;
+        color: var(--pos-ink);
+        padding-block: 6px;
+    }
+
+    .pos-cat-pills {
+        display: flex;
+        flex-wrap: wrap;
+        flex-wrap: balance;
+        gap: 5px;
+        max-block-size: 74px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        flex-shrink: 0;
+    }
+
+    .quick-cat-filter {
+        background: #f1f5f9;
+        color: #334155;
+        border: 1px solid #cbd5e1;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 0.74rem;
+        font-weight: 700;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .quick-cat-filter:hover {
+        background: #e2e8f0;
+    }
+
+    .quick-cat-filter.active {
+        background: var(--pos-navy);
+        color: #ffffff;
+        border-color: var(--pos-navy);
+    }
+
+    .pos-catalog-scroll {
+        flex: 1 1 0;
+        min-block-size: 0;
+        overflow-y: auto;
+        scrollbar-gutter: stable;
+        overscroll-behavior: contain;
+        padding-inline-end: 2px;
+    }
+
+    .pos-products-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+        grid-auto-rows: max-content;
+        gap: 9px;
+        align-content: start;
+    }
+
+    .quick-product-item {
+        display: flex;
+        align-items: stretch;
+    }
+
+    .quick-btn {
+        inline-size: 100%;
+        block-size: 100%;
+        height: auto;
+        min-block-size: 122px;
+        background: #ffffff;
+        border: 1px solid #d5dee8;
+        border-radius: 9px;
+        padding: 6px;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        gap: 5px;
+        text-align: center;
+        cursor: pointer;
+        transition: border-color 0.12s ease, transform 0.08s ease, box-shadow 0.12s ease;
+    }
+
+    .quick-btn:hover {
+        border-color: var(--pos-navy);
+        box-shadow: 0 3px 8px rgba(30, 58, 95, 0.1);
+    }
+
+    .quick-btn:active {
+        transform: scale(0.97);
+    }
+
+    .quick-btn--out {
+        opacity: 0.62;
+    }
+
+    .quick-tile-media {
+        position: relative;
+        flex-shrink: 0;
+        inline-size: 100%;
+        aspect-ratio: 4 / 3;
+        border-radius: 6px;
+        background: #ffffff;
+        border: 1px solid #eef2f6;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: clip;
+    }
+
+    .quick-tile-media img {
+        display: block;
+        inline-size: 100%;
+        block-size: 100%;
+        object-fit: cover;
+        padding: 0;
+    }
+
+    .quick-tile-icon {
+        font-size: 1.45rem;
+        color: var(--pos-steel);
+    }
+
+    .quick-tile-badge {
+        position: absolute;
+        inset-block-start: 3px;
+        inset-inline-end: 3px;
+        font-size: 0.62rem;
+        font-weight: 800;
+        padding: 1px 5px;
+        border-radius: 4px;
+        background: var(--pos-navy);
+        color: #ffffff;
+    }
+
+    .quick-tile-badge--out {
+        background: var(--pos-return);
+        color: #ffffff;
+    }
+
+    .quick-tile-name {
+        flex-shrink: 0;
+        font-size: 0.74rem;
+        font-weight: 700;
+        color: var(--pos-ink);
+        line-height: 1.2;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        line-clamp: 2;
+        overflow: clip;
+        min-block-size: 1.78rem;
+    }
+
+    .quick-tile-price {
+        margin-block-start: auto;
+        flex-shrink: 0;
+        background: var(--pos-ice);
+        color: var(--pos-navy);
+        border-radius: 5px;
+        padding: 2px 5px;
+        font-family: 'Roboto Mono', monospace;
+        font-variant-numeric: tabular-nums;
+        font-size: 0.78rem;
+        font-weight: 800;
+    }
+
+    /* ============================================================
+       ALT ARAÇ ÇUBUĞU (BOTTOM DOCK + SAĞDA ÇIKIŞ İKONU)
+       ============================================================ */
+    .pos-dock-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 1 1 auto;
+        min-inline-size: 0;
+        overflow-x: auto;
+        scrollbar-width: thin;
+    }
+
+    .pos-dock-btn {
+        background: #f8fafc;
+        border: 1px solid #cbd5e1;
+        color: var(--pos-ink);
+        border-radius: 8px;
+        padding: 6px 10px;
+        min-block-size: 42px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
+    .pos-dock-btn i {
+        font-size: 1rem;
+        color: var(--pos-navy);
+    }
+
+    .pos-dock-btn:hover {
+        background: var(--pos-ice);
+        border-color: var(--pos-navy);
+    }
+
+    .pos-dock-btn--active,
+    .pos-dock-btn--active:hover {
+        background: var(--pos-navy);
+        color: #ffffff;
+        border-color: var(--pos-navy);
+    }
+    .pos-dock-btn--active i {
+        color: #ffffff;
+    }
+
+    .pos-dock-btn--warn {
+        background: #fdf6e9;
+        border-color: #dec99e;
+        color: #5c4009;
+    }
+    .pos-dock-btn--warn i { color: #7a540c; }
+    .pos-dock-btn--warn:hover { background: #faeccf; }
+
+    .pos-dock-btn--return-active {
+        background: var(--pos-return);
+        border-color: var(--pos-return);
+        color: #ffffff;
+    }
+    .pos-dock-btn--return-active:hover {
+        background: var(--pos-return-dark);
+        border-color: var(--pos-return-dark);
+        color: #ffffff;
+    }
+    .pos-dock-btn--return-active i { color: #ffffff; }
+
+    .pos-dock-btn--danger {
+        background: var(--pos-rose-tint);
+        border-color: var(--pos-rose-border);
+        color: var(--pos-rose-ink);
+    }
+    .pos-dock-btn--danger i { color: var(--pos-rose-ink); }
+    .pos-dock-btn--danger:hover {
+        background: var(--pos-return);
+        color: #ffffff;
+        border-color: var(--pos-return);
+    }
+    .pos-dock-btn--danger:hover i { color: #ffffff; }
+
+    .pos-dock-badge {
+        background: var(--pos-navy);
+        color: #ffffff;
+        border-radius: 999px;
+        padding: 1px 6px;
+        font-size: 0.68rem;
+        font-weight: 800;
+    }
+
+    .pos-exit-btn {
+        margin-inline-start: auto;
+        background: var(--pos-rose-tint);
+        border: 1.5px solid var(--pos-rose-border);
+        color: var(--pos-rose-ink);
+        border-radius: 8px;
+        padding: 6px 12px;
+        min-block-size: 42px;
+        font-size: 0.8rem;
+        font-weight: 800;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        text-decoration: none;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    .pos-exit-btn:hover {
+        background: var(--pos-return);
+        color: #ffffff;
+        border-color: var(--pos-return);
+    }
+
+    .pos-exit-btn--login {
+        background: var(--pos-ice);
+        border-color: var(--pos-ice-border);
+        color: var(--pos-navy);
+    }
+
+    /* ============================================================
+       NATIVE <dialog> MODALLARI (Modern Web Guidance Standardı)
+       ============================================================ */
+    dialog.pos-dialog {
+        border: 1px solid var(--pos-border-subtle);
+        border-radius: 14px;
+        padding: 0;
+        margin: auto;
+        inline-size: min(94vw, 520px);
+        max-block-size: 90dvb;
+        background: #ffffff;
+        color: var(--pos-ink);
+        box-shadow: 0 24px 48px rgba(15, 23, 42, 0.24);
+        overflow: clip;
+    }
+
+    dialog.pos-dialog--wide {
+        inline-size: min(95vw, 780px);
+    }
+
+    dialog.pos-dialog[open] {
+        display: flex;
+        flex-direction: column;
+    }
+
+    dialog:modal {
+        overscroll-behavior: contain;
+    }
+
+    dialog::backdrop {
+        background: rgba(15, 23, 42, 0.56);
+        backdrop-filter: blur(2px);
+        overflow: hidden;
+        overscroll-behavior: contain;
+    }
+
+    /* Kamera Barkod Tarayıcı Modalı */
+    .pos-camera-reader {
+        background: #0f172a;
+        border: 1.5px solid #cbd5e1;
+        border-radius: 10px;
+        overflow: hidden;
+        inline-size: 100%;
+        min-block-size: 240px;
+        max-block-size: 320px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #cbd5e1;
+    }
+
+    .pos-camera-reader video {
+        inline-size: 100% !important;
+        max-block-size: 320px !important;
+        object-fit: cover !important;
+        border-radius: 8px;
+    }
+
+    .pos-camera-status {
+        border-radius: 8px;
+        padding: 8px 11px;
+        font-size: 0.84rem;
+        font-weight: 700;
+        background: #eef2f6;
+        border: 1px solid #cbd5e1;
+        color: var(--pos-navy);
+    }
+
+    .pos-camera-status--success {
+        background: #dcfce7;
+        border-color: #86efac;
+        color: #166534;
+    }
+
+    .pos-camera-status--warn {
+        background: #fef3c7;
+        border-color: #fcd34d;
+        color: #92400e;
+    }
+
+    .pos-dialog-head {
+        background: var(--pos-navy);
+        color: #ffffff;
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        flex-shrink: 0;
+    }
+
+    .pos-dialog-head--return {
+        background: var(--pos-return);
+    }
+
+    .pos-dialog-title {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #ffffff;
+    }
+
+    .pos-dialog-close {
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        background: rgba(255, 255, 255, 0.12);
+        color: #ffffff;
+        inline-size: 34px;
+        block-size: 34px;
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 1rem;
+    }
+
+    .pos-dialog-close:hover {
+        background: rgba(255, 255, 255, 0.24);
+    }
+
+    .pos-dialog-body {
+        padding: 14px 16px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        background: #f8fafc;
+        flex: 1 1 auto;
+    }
+
+    .pos-dialog-foot {
+        padding: 10px 16px;
+        background: #ffffff;
+        border-block-start: 1px solid var(--pos-border-subtle);
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+
+    .pos-modal-pad-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 7px;
+    }
+
+    .pos-modal-key {
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        min-block-size: 46px;
+        font-size: 1.15rem;
+        font-weight: 800;
+        color: var(--pos-ink);
+        cursor: pointer;
+    }
+
+    .pos-modal-key:hover {
+        background: var(--pos-ice);
+        border-color: var(--pos-navy);
+    }
+
+    .pos-bill-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+    }
+
+    .pos-bill-chip {
+        background: var(--pos-ice);
+        border: 1px solid var(--pos-ice-border);
+        color: var(--pos-navy);
+        border-radius: 7px;
+        min-block-size: 40px;
+        font-weight: 800;
+        font-size: 0.84rem;
+        font-family: 'Roboto Mono', monospace;
+        cursor: pointer;
+    }
+
+    .pos-bill-chip:hover {
+        background: var(--pos-navy);
+        color: #ffffff;
+    }
+
+    /* Toast Bildirim */
+    .pos-toast-region {
+        position: fixed;
+        inset-block-end: 66px;
+        inset-inline-end: 14px;
+        z-index: 2000;
+        pointer-events: none;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+    }
+
+    .pos-toast {
+        background: var(--pos-navy);
+        color: #ffffff;
+        padding: 9px 16px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        font-weight: 700;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.24);
+        max-inline-size: min(92vw, 480px);
+        text-align: center;
+    }
+
+    .pos-toast--error {
+        background: var(--pos-return);
+    }
+
+    .pos-toast--success {
+        background: var(--pos-cash);
+    }
+
+    /* Responsive Breakpoints (Tablet & Mobil) */
+    @media (max-width: 991.98px) {
+        .pos-shell {
+            block-size: auto;
+            min-block-size: 100dvb;
+            overflow: visible;
+            grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+            grid-template-rows: auto auto auto;
+            grid-template-areas:
+                "receipt ops"
+                "catalog catalog"
+                "dock    dock";
+        }
+
+        .pos-cart-card {
+            min-block-size: 440px;
+            max-block-size: 560px;
+        }
+
+        .pos-ops-card {
+            overflow: visible;
+        }
+
+        .pos-numpad-section {
+            flex: 0 0 auto;
+        }
+
+        .pos-numpad-grid {
+            flex: 0 0 auto;
+            min-block-size: auto;
+            grid-template-rows: repeat(5, 42px);
+        }
+
+        .pos-catalog-card {
+            max-block-size: 460px;
+        }
+
+        .pos-dock-actions {
+            flex-wrap: wrap;
+        }
+    }
+
+    @media (max-width: 599.98px) {
+        .pos-shell {
+            padding: 6px;
+            gap: 6px;
+            grid-template-columns: minmax(0, 1fr);
+            grid-template-rows: auto auto auto auto;
+            grid-template-areas:
+                "receipt"
+                "ops"
+                "catalog"
+                "dock";
+        }
+
+        .pos-cart-card {
+            min-block-size: 340px;
+            max-block-size: 460px;
+        }
+
+        .pos-catalog-card {
+            max-block-size: 380px;
+        }
+
+        .pos-bottom-dock {
+            flex-wrap: wrap;
+        }
+
+        .pos-dock-actions {
+            flex-wrap: wrap;
+            overflow-x: visible;
+        }
+    }
+
+    @media (min-width: 992px) and (max-height: 700px) {
+        .pos-shell {
+            padding: 6px;
+            gap: 6px;
+        }
+
+        .pos-ops-card {
+            padding: 7px;
+            gap: 6px;
+        }
+
+        .pos-payable-box {
+            min-block-size: 68px;
+            padding: 8px 14px;
+        }
+
+        .pos-barcode-strip {
+            padding: 7px 10px 6px;
+        }
+
+        .pos-barcode-input-wrap,
+        .pos-barcode-cam-btn,
+        .pos-barcode-submit {
+            min-block-size: 40px;
+        }
+
+        .pos-tender-btn {
+            min-block-size: 48px;
+            padding: 6px 8px;
+        }
+
+        .pos-numpad-section {
+            padding: 6px;
+            gap: 5px;
+        }
+
+        #numpadDisplay {
+            min-block-size: 36px;
+            font-size: 1.18rem;
+        }
+
+        .pos-numpad-grid {
+            grid-template-rows: repeat(5, minmax(36px, 1fr));
+            gap: 5px;
+        }
+
+        .pos-pad-key {
+            font-size: 1.05rem;
+        }
+
+        .pos-mod-btn {
+            min-block-size: 36px;
+            font-size: 0.76rem;
+        }
+
+        .pos-dock-btn,
+        .pos-exit-btn {
+            min-block-size: 38px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- SOL KOLON: ÖDENECEK TUTAR + BARKOD GİRİŞ + SEPET TABLOSU -->
+<section class="pos-pane pos-cart-card" aria-label="Satış Fişi ve Barkod">
+    <div id="payableTotalBox" class="pos-payable-box">
+        <div class="pos-payable-meta">
+            <span id="totalCardMainTitle" class="pos-payable-eyebrow">ÖDENECEK TUTAR</span>
+            <div class="pos-payable-badges">
+                <span class="pos-mini-pill">
+                    <i class="bi bi-pc-display"></i> {{ register.register_code }}
+                </span>
+                <button type="button" class="pos-mini-pill" id="receiptNumberBadge" onclick="previewReceipt()">
+                    <i class="bi bi-receipt"></i> YENİ FİŞ
+                </button>
+                <span class="pos-mini-pill d-none" id="returnModeBanner">
+                    <i class="bi bi-arrow-return-left"></i> İADE MODU
+                </span>
+                <button type="button" class="pos-mini-pill pos-mini-pill--cari d-none" id="activeCustomerBadge" onclick="clearSelectedCustomer()" title="Seçili Cari Müşteriyi Kaldır">
+                    <i class="bi bi-person-check-fill"></i>
+                    <span id="activeCustomerLabel">Cari</span>
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        </div>
+        <div class="pos-payable-amount">
+            <span id="grandTotalDisplay" class="pos-grand-value">0.00</span>
+            <span class="pos-grand-currency">TL</span>
+        </div>
+    </div>
+
+    <div class="pos-barcode-strip">
+        <div class="pos-barcode-row">
+            <div class="pos-barcode-input-wrap">
+                <i class="bi bi-upc-scan pos-barcode-icon" aria-hidden="true"></i>
+                <input type="text"
+                       id="barcodeInput"
+                       placeholder="Barkod okut..."
+                       autocomplete="off"
+                       inputmode="text"
+                       aria-label="Barkod veya ürün arama">
+            </div>
+            <button type="button" id="btnCameraScan" class="pos-barcode-cam-btn" onclick="openCameraModal()" title="Kamera ile Barkod / QR Okut" aria-label="Kamera ile Barkod Okut">
+                <i class="bi bi-camera-video-fill" aria-hidden="true"></i>
+                <span class="pos-cam-label">Kamera</span>
+            </button>
+            <button type="button" id="btnSubmitBarcode" class="pos-barcode-submit" onclick="submitBarcode()">
+                <i class="bi bi-plus-circle-fill pos-submit-icon" aria-hidden="true"></i> EKLE
+            </button>
+        </div>
+        <div class="pos-status-line">
+            <span class="pos-status-left">
+                <span class="pos-ready-dot" aria-hidden="true"></span>
+                <span id="scannerStatus">Hazır — Kasiyer: {{ cashier_name }}</span>
+            </span>
+            <span class="pos-status-pills">
+                <button type="button" id="discountSummaryPill" class="pos-chip-discount d-none" onclick="clearAllDiscounts()" title="Uygulanan iskontoyu kaldır">
+                    İskonto: -0.00 TL ×
+                </button>
+            </span>
+        </div>
+    </div>
+
+    <div tabindex="0" role="region" aria-labelledby="cartRegionTitle" class="table-wrapper">
+        <span id="cartRegionTitle" class="visually-hidden">Sepet Satış Kalemleri</span>
+        <table class="pos-receipt-table">
+            <thead>
+                <tr>
+                    <th scope="col" class="col-barcode">Barkod</th>
+                    <th scope="col">Ürün Adı</th>
+                    <th scope="col" class="col-unit-price text-end">Br. Fiyat</th>
+                    <th scope="col" class="text-center">Miktar</th>
+                    <th scope="col" class="text-end">Toplam</th>
+                    <th scope="col" class="text-center">Sil</th>
+                </tr>
+            </thead>
+            <tbody id="cartTableBody">
+                <tr id="emptyCartRow">
+                    <td colspan="6" class="text-center py-5 text-slate-600 border-0">
+                        <i class="bi bi-upc-scan fs-1 d-block mb-2 text-slate-500" aria-hidden="true"></i>
+                        <div class="fw-bold text-slate-700 mb-1">Fiş henüz boş</div>
+                        <div class="small">Barkod okutun, ürün adına dokunun veya sağ katalogdan ürün seçin.</div>
+                        <div class="small mt-2 text-slate-600">Kısayollar: F2 Nakit · F3 Kart · F7 Parçalı · F8 İade · F9 Açık Hesap</div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pos-cart-footer">
+        <span id="itemCountDisplay">Adet: 0</span>
+        <span id="selectedRowHint">Satır seçmek için kaleme dokunun</span>
+    </div>
+</section>
+
+<!-- ORTA KOLON: 2x2 TAHSİLAT + SABİT NUMPAD + SATIR DÜZENLEME -->
+<section class="pos-pane pos-ops-card" aria-label="Ödeme ve Tuş Takımı">
+    <div class="pos-tenders-grid">
+        <button type="button" id="btnCardSale" class="pos-tender-btn pos-tender-btn--card" onclick="completeCardSale()">
+            <span class="pos-tender-icon"><i class="bi bi-credit-card-2-front-fill"></i></span>
+            <span class="pos-tender-copy">
+                <span class="pos-tender-title">POS / KART</span>
+                <span class="pos-tender-hint">F3 · Tek Çekim</span>
+            </span>
+        </button>
+        <button type="button" id="btnCreditSale" class="pos-tender-btn pos-tender-btn--credit" onclick="startCreditSale()">
+            <span class="pos-tender-icon"><i class="bi bi-journal-check"></i></span>
+            <span class="pos-tender-copy">
+                <span class="pos-tender-title">AÇIK HESAP</span>
+                <span class="pos-tender-hint" id="creditBtnHint">F9 · Veresiye</span>
+            </span>
+        </button>
+        <button type="button" id="btnCashModal" class="pos-tender-btn pos-tender-btn--cash" onclick="handleCashButtonClick()">
+            <span class="pos-tender-icon"><i class="bi bi-cash-coin"></i></span>
+            <span class="pos-tender-copy">
+                <span class="pos-tender-title">NAKİT</span>
+                <span class="pos-tender-hint">F2 · Para Üstü</span>
+            </span>
+        </button>
+        <button type="button" id="btnSplitModal" class="pos-tender-btn pos-tender-btn--split" onclick="openSplitModal()">
+            <span class="pos-tender-icon"><i class="bi bi-columns-gap"></i></span>
+            <span class="pos-tender-copy">
+                <span class="pos-tender-title">KISMİ ÖDEME</span>
+                <span class="pos-tender-hint">F7 · Nakit + Kart</span>
+            </span>
+        </button>
+    </div>
+
+    <div class="pos-numpad-section">
+        <div class="d-flex align-items-center justify-content-between mb-1">
+            <span id="posMultiplierBadge" class="badge bg-warning text-dark fw-bold px-2 py-0.5 d-none" style="font-size: 0.74rem;">1× ÇARPAN</span>
+            <div id="numpadDisplay" aria-live="polite" aria-label="Sayısal giriş göstergesi">0</div>
+        </div>
+
+        <div class="pos-numpad-grid" role="group" aria-label="Sayısal Tuş Takımı">
+            <button type="button" class="pos-pad-key pos-pad-key--digit" onclick="touchType('7')">7</button>
+            <button type="button" class="pos-pad-key pos-pad-key--digit" onclick="touchType('8')">8</button>
+            <button type="button" class="pos-pad-key pos-pad-key--digit" onclick="touchType('9')">9</button>
+            <button type="button" class="pos-pad-key pos-pad-key--back" onclick="touchBackspace()" aria-label="Sil" title="Bir Karakter Sil (Backspace)">
+                <i class="bi bi-backspace-fill" aria-hidden="true"></i>
+            </button>
+
+            <button type="button" class="pos-pad-key pos-pad-key--digit" onclick="touchType('4')">4</button>
+            <button type="button" class="pos-pad-key pos-pad-key--digit" onclick="touchType('5')">5</button>
+            <button type="button" class="pos-pad-key pos-pad-key--digit" onclick="touchType('6')">6</button>
+            <button type="button" class="pos-pad-key pos-pad-key--util" onclick="touchClear()" title="Girişi Temizle (C)">C</button>
+
+            <button type="button" class="pos-pad-key pos-pad-key--digit" onclick="touchType('1')">1</button>
+            <button type="button" class="pos-pad-key pos-pad-key--digit" onclick="touchType('2')">2</button>
+            <button type="button" class="pos-pad-key pos-pad-key--digit" onclick="touchType('3')">3</button>
+            <button type="button" class="pos-pad-key pos-pad-key--qty" onclick="applyNumpadQtyOrMultiplier()" title="Miktar Ata veya Çarpan Belirle (*)">
+                <span>× Adet</span>
+            </button>
+
+            <button type="button" class="pos-pad-key pos-pad-key--digit" onclick="touchType('0')">0</button>
+            <button type="button" class="pos-pad-key pos-pad-key--digit" onclick="touchType('.')">,</button>
+            <button type="button" class="pos-pad-key pos-pad-key--disc" onclick="applyNumpadDiscount()" title="Yüzde İskonto / İndirim">
+                <span>% İsk</span>
+            </button>
+            <button type="button" class="pos-pad-key pos-pad-key--price" onclick="applyNumpadPrice()" title="Satır Fiyatını Güncelle">
+                <span>Fiyat</span>
+            </button>
+
+            <button type="button" class="pos-pad-key pos-pad-key--enter" onclick="submitNumpadEnter()" title="Barkodu / Kodu Onayla" aria-label="Onayla ve Ekle" style="grid-column: span 2;">
+                <i class="bi bi-arrow-return-left me-1"></i> Ekle / Barkod
+            </button>
+            <button type="button" class="pos-pad-key pos-pad-key--quickcash" onclick="quickCashSale()" title="Hızlı Nakit Satış ve Para Üstü" style="grid-column: span 2;">
+                <i class="bi bi-cash-coin me-1"></i> Hızlı Nakit
+            </button>
+        </div>
+    </div>
+
+    <div class="pos-row-modifiers">
+        <button type="button" id="btnEditPrice" class="pos-mod-btn" onclick="applyNumpadPrice()">
+            <i class="bi bi-tag-fill"></i> Fiyat / İskonto
+        </button>
+        <button type="button" id="btnEditQty" class="pos-mod-btn" onclick="applyNumpadQtyOrMultiplier()">
+            <i class="bi bi-123"></i> Miktar Gir (×)
+        </button>
+        <button type="button" id="btnRemoveSelected" class="pos-mod-btn pos-mod-btn--warn" onclick="removeSelectedRow()">
+            <i class="bi bi-dash-circle-fill"></i> Seçili Satırı Sil
+        </button>
+        <button type="button" id="btnParkSale" class="pos-mod-btn pos-mod-btn--sand" onclick="parkSale()">
+            <i class="bi bi-pause-circle-fill"></i> Fişi Beklet (F4)
+        </button>
+        <button type="button" id="btnCustomerLookup" class="pos-mod-btn pos-mod-btn--ice" onclick="openCustomerModal()">
+            <i class="bi bi-person-vcard-fill"></i> <span>Cari<span class="pos-ops-ext"> / Müşteri</span> Seç</span>
+        </button>
+        <button type="button" id="btnStockLookup" class="pos-mod-btn pos-mod-btn--ice" onclick="openStockLookupModal()">
+            <i class="bi bi-boxes"></i> Stok &amp; Fiyat Bul
+        </button>
+    </div>
+</section>
+
+<!-- SAĞ KOLON: KATEGORİ FİLTRELERİ + GÖRSELLİ HIZLI ÜRÜN KATALOĞU -->
+<section class="pos-pane pos-catalog-card" aria-label="Hızlı Ürün Kataloğu">
+    <div class="pos-catalog-search">
+        <i class="bi bi-search text-slate-600" aria-hidden="true"></i>
+        <input type="search" id="quickSearchInput" placeholder="Katalogda hızlı ürün ara..." autocomplete="off" aria-label="Katalogda hızlı ürün ara">
+        <button type="button" class="btn btn-sm p-1 text-slate-600" onclick="clearQuickSearch()" title="Aramayı Temizle" aria-label="Aramayı Temizle">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+
+    <div class="pos-cat-pills" id="quickCategoryBar" role="tablist" aria-label="Ürün Kategorileri">
+        <button type="button" class="quick-cat-filter active" data-cat="all" onclick="filterQuickCategory('all', this)">Tümü</button>
+        {% for cat in categories %}
+        <button type="button" class="quick-cat-filter" data-cat="{{ cat.id }}" onclick="filterQuickCategory('{{ cat.id }}', this)">{{ cat.name }}</button>
+        {% endfor %}
+    </div>
+
+    <div class="pos-catalog-scroll">
+        <div class="pos-products-grid" id="quickProductsGrid">
+            {% for p in quick_buttons %}
+            <div class="quick-product-item" data-cat-id="{{ p.category_id|default:'none' }}" data-search="{{ p.name|lower }} {{ p.barcode|lower }}">
+                <button type="button"
+                        class="quick-btn {% if p.stock_quantity <= 0 %}quick-btn--out{% endif %}"
+                        data-id="{{ p.id }}"
+                        data-name="{{ p.name }}"
+                        data-barcode="{{ p.barcode }}"
+                        data-price="{{ p.sell_price|unlocalize }}"
+                        data-vat="{{ p.vat_rate|unlocalize }}"
+                        data-unit="{{ p.unit }}"
+                        data-weighted="{{ p.is_weighted|yesno:'true,false' }}"
+                        data-stock="{{ p.stock_quantity|unlocalize }}"
+                        onclick="handleQuickButtonClick(this)">
+                    <div class="quick-tile-media">
+                        {% if p.image %}
+                        <img src="{{ p.image.url }}" alt="" decoding="async">
+                        {% elif p.is_weighted %}
+                        <i class="bi bi-speedometer2 quick-tile-icon" aria-hidden="true"></i>
+                        {% else %}
+                        <i class="bi bi-basket2-fill quick-tile-icon" aria-hidden="true"></i>
+                        {% endif %}
+                        {% if p.stock_quantity <= 0 %}
+                        <span class="quick-tile-badge quick-tile-badge--out">Tükendi</span>
+                        {% elif p.is_weighted %}
+                        <span class="quick-tile-badge">{{ p.unit }}</span>
+                        {% endif %}
+                    </div>
+                    <span class="quick-tile-name">{{ p.name }}</span>
+                    <span class="quick-tile-price">{{ p.sell_price|floatformat:2 }} ₺</span>
+                </button>
+            </div>
+            {% empty %}
+            <div class="text-center text-slate-600 p-4" style="grid-column: 1 / -1;">
+                Katalogda aktif ürün bulunamadı.
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<!-- ALT ARAÇ ÇUBUĞU (BOTTOM DOCK + SAĞDA ÇIKIŞ) -->
+<nav class="pos-bottom-dock" aria-label="Kasa Alt Araç Çubuğu">
+    <div class="pos-dock-actions">
+        <button type="button" id="btnRestoreSale" class="pos-dock-btn" onclick="handleRestoreButton()">
+            <i class="bi bi-play-circle-fill"></i> Askı
+            <span class="pos-dock-badge" id="parkedCount">0</span>
+        </button>
+        <button type="button" id="btnLastReceipt" class="pos-dock-btn" onclick="previewReceipt()">
+            <i class="bi bi-printer-fill"></i> Dekont
+        </button>
+        <button type="button" id="btnToggleReturn" class="pos-dock-btn" onclick="toggleReturnMode()">
+            <i class="bi bi-arrow-return-left"></i> İade [F8]
+        </button>
+        <button type="button" id="btnClearCart" class="pos-dock-btn pos-dock-btn--danger" onclick="clearCart()">
+            <i class="bi bi-trash3-fill"></i> Satış İptal
+        </button>
+        <button type="button" id="btnPosTools" class="pos-dock-btn" onclick="openPosToolsModal()">
+            <i class="bi bi-gear-fill"></i> İşlemler
+        </button>
+    </div>
+
+    {% if user.is_authenticated %}
+    <a href="{% url 'logout_view' %}" class="pos-exit-btn" title="Oturumu Kapat (Çıkış)" aria-label="Çıkış Yap">
+        <i class="bi bi-box-arrow-right"></i> Çıkış
+    </a>
+    {% else %}
+    <a href="{% url 'login_view' %}" class="pos-exit-btn pos-exit-btn--login" title="Giriş Yap" aria-label="Giriş Yap">
+        <i class="bi bi-box-arrow-in-right"></i> Giriş
+    </a>
+    {% endif %}
+</nav>
+
+<!-- ============================================================
+     NATIVE <dialog> MODALLARI
+     ============================================================ -->
+
+<!-- 1. Miktar / Tartı Modalı (#qtyModal) -->
+<dialog id="qtyModal" class="pos-dialog" closedby="any" aria-labelledby="qtyModalTitle">
+    <div class="pos-dialog-head">
+        <h2 id="qtyModalTitle" class="pos-dialog-title">
+            <i class="bi bi-box-seam-fill"></i> Miktar / Gramaj Girişi
+        </h2>
+        <form method="dialog">
+            <button type="submit" value="cancel" class="pos-dialog-close" aria-label="Kapat">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </form>
+    </div>
+    <div class="pos-dialog-body">
+        <div class="mb-2 d-flex justify-content-between align-items-center">
+            <span class="fw-bold text-slate-900" id="qtyModalProductName">Ürün Adı</span>
+            <span class="badge bg-primary" id="qtyModalProductPrice">0.00 TL</span>
+        </div>
+        <input type="text"
+               id="qtyModalValueDisplay"
+               class="form-control form-control-lg text-end fw-extrabold mono mb-3"
+               value=""
+               placeholder="1"
+               inputmode="decimal"
+               aria-label="Ürün miktarı"
+               autofocus>
+        <div class="pos-modal-pad-grid">
+            <button type="button" class="pos-modal-key" onclick="qtyModalType('7')">7</button>
+            <button type="button" class="pos-modal-key" onclick="qtyModalType('8')">8</button>
+            <button type="button" class="pos-modal-key" onclick="qtyModalType('9')">9</button>
+            <button type="button" class="pos-modal-key" onclick="qtyModalType('4')">4</button>
+            <button type="button" class="pos-modal-key" onclick="qtyModalType('5')">5</button>
+            <button type="button" class="pos-modal-key" onclick="qtyModalType('6')">6</button>
+            <button type="button" class="pos-modal-key" onclick="qtyModalType('1')">1</button>
+            <button type="button" class="pos-modal-key" onclick="qtyModalType('2')">2</button>
+            <button type="button" class="pos-modal-key" onclick="qtyModalType('3')">3</button>
+            <button type="button" class="pos-modal-key" onclick="qtyModalType('0')">0</button>
+            <button type="button" class="pos-modal-key" onclick="qtyModalType('.')">.</button>
+            <button type="button" class="pos-modal-key text-danger" onclick="qtyModalClear()">C</button>
+        </div>
+        <div class="d-grid gap-2 mt-2" style="grid-template-columns: repeat(4, minmax(0, 1fr));">
+            <button type="button" class="pos-bill-chip" onclick="qtyModalSetQuick(0.250)">250g</button>
+            <button type="button" class="pos-bill-chip" onclick="qtyModalSetQuick(0.500)">500g</button>
+            <button type="button" class="pos-bill-chip" onclick="qtyModalSetQuick(1)">1 Ad/Kg</button>
+            <button type="button" class="pos-bill-chip" onclick="qtyModalSetQuick(5)">5 Ad/Kg</button>
+        </div>
+    </div>
+    <div class="pos-dialog-foot">
+        <button type="button" class="btn btn-outline-secondary fw-bold" onclick="readScaleIntoQtyModal()">
+            <i class="bi bi-speedometer2"></i> Teraziden Oku
+        </button>
+        <button type="button" class="btn btn-light border fw-bold ms-auto" onclick="document.getElementById('qtyModal').close('cancel')">Vazgeç</button>
+        <button type="button" class="btn btn-success fw-bold px-4" onclick="confirmModalQty()">
+            <i class="bi bi-check2-circle"></i> Onayla (Enter)
+        </button>
+    </div>
+</dialog>
+
+<!-- 2. Nakit Ödeme Modalı (#cashModal) -->
+<dialog id="cashModal" class="pos-dialog" closedby="any" aria-labelledby="cashModalTitle">
+    <div id="cashModalHead" class="pos-dialog-head">
+        <h2 id="cashModalTitle" class="pos-dialog-title">
+            <i class="bi bi-cash-coin"></i> NAKİT ÖDEME ALMA
+        </h2>
+        <form method="dialog">
+            <button type="submit" value="cancel" class="pos-dialog-close" aria-label="Kapat">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </form>
+    </div>
+    <div class="pos-dialog-body">
+        <div class="d-flex justify-content-between align-items-center bg-white border rounded-3 p-3 mb-3">
+            <div>
+                <small class="text-slate-600 d-block fw-bold" id="modalTotalLabel">ÖDENECEK NET TUTAR</small>
+                <span class="fs-2 fw-extrabold text-slate-900 mono" id="modalTotalDisplay">0.00 TL</span>
+            </div>
+            <div class="text-end" id="changeContainer">
+                <small class="text-slate-600 d-block fw-bold">PARA ÜSTÜ</small>
+                <span class="fs-2 fw-extrabold mono text-success" id="modalChangeDisplay">0.00 TL</span>
+            </div>
+        </div>
+
+        <label for="cashPaidInput" class="form-label fw-bold text-slate-700" id="modalCashLabel">ALINAN NAKİT</label>
+        <div class="input-group input-group-lg mb-3">
+            <input type="number" step="0.01" min="0" id="cashPaidInput" class="form-control fw-extrabold mono text-end" placeholder="0.00" autofocus>
+            <button class="btn btn-outline-secondary fw-bold" type="button" onclick="cashClear()">C</button>
+        </div>
+
+        <div class="pos-bill-grid">
+            <button type="button" class="pos-bill-chip" onclick="cashExactTotal()">TAM TUTAR</button>
+            <button type="button" class="pos-bill-chip" onclick="addCashPreset(20)">+20 ₺</button>
+            <button type="button" class="pos-bill-chip" onclick="addCashPreset(50)">+50 ₺</button>
+            <button type="button" class="pos-bill-chip" onclick="addCashPreset(100)">+100 ₺</button>
+            <button type="button" class="pos-bill-chip" onclick="setCashExact(50)">50 ₺</button>
+            <button type="button" class="pos-bill-chip" onclick="setCashExact(100)">100 ₺</button>
+            <button type="button" class="pos-bill-chip" onclick="setCashExact(200)">200 ₺</button>
+            <button type="button" class="pos-bill-chip" onclick="addCashPreset(500)">+500 ₺</button>
+        </div>
+    </div>
+    <div class="pos-dialog-foot">
+        <button type="button" class="btn btn-light border fw-bold" onclick="document.getElementById('cashModal').close('cancel')">İptal (ESC)</button>
+        <button type="button" class="btn btn-success btn-lg fw-extrabold px-4" id="btnConfirmCashSale" onclick="submitCashSale()">
+            <i class="bi bi-printer-fill me-1"></i> SATIŞI BİTİR & FİŞ BAS (ENTER)
+        </button>
+    </div>
+</dialog>
+
+<!-- 3. Parçalı / Kısmi Ödeme Modalı (#splitPayModal) -->
+<dialog id="splitPayModal" class="pos-dialog" closedby="any" aria-labelledby="splitModalTitle">
+    <div class="pos-dialog-head">
+        <h2 id="splitModalTitle" class="pos-dialog-title">
+            <i class="bi bi-columns-gap"></i> KISMİ / PARÇALI ÖDEME (NAKİT + KART)
+        </h2>
+        <form method="dialog">
+            <button type="submit" value="cancel" class="pos-dialog-close" aria-label="Kapat">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </form>
+    </div>
+    <div class="pos-dialog-body">
+        <div class="bg-white border rounded-3 p-3 mb-3 d-flex justify-content-between align-items-center">
+            <div>
+                <small class="text-slate-600 fw-bold d-block">TOPLAM FİŞ TUTARI</small>
+                <span class="fs-3 fw-extrabold mono text-slate-900" id="splitTotalDisplay">0.00 TL</span>
+            </div>
+            <div class="text-end">
+                <small class="text-slate-600 fw-bold d-block">KALAN / PARA ÜSTÜ</small>
+                <span class="fs-4 fw-extrabold mono text-primary" id="splitBalanceDisplay">0.00 TL</span>
+            </div>
+        </div>
+        <div class="row g-2">
+            <div class="col-6">
+                <label for="splitCashInput" class="form-label fw-bold text-slate-700">Nakit Alınan (TL)</label>
+                <input type="number" step="0.01" min="0" id="splitCashInput" class="form-control form-control-lg mono fw-bold text-end" oninput="onSplitCashChange()" autofocus>
+            </div>
+            <div class="col-6">
+                <label for="splitCardInput" class="form-label fw-bold text-slate-700">Kart / POS Çekilen (TL)</label>
+                <input type="number" step="0.01" min="0" id="splitCardInput" class="form-control form-control-lg mono fw-bold text-end" oninput="updateSplitSummary()">
+            </div>
+        </div>
+        <div class="pos-bill-grid mt-3">
+            <button type="button" class="pos-bill-chip" onclick="setSplitPreset(0.5)">%50 / %50</button>
+            <button type="button" class="pos-bill-chip" onclick="setSplitCashFixed(50)">50 ₺ Nakit</button>
+            <button type="button" class="pos-bill-chip" onclick="setSplitCashFixed(100)">100 ₺ Nakit</button>
+            <button type="button" class="pos-bill-chip" onclick="setSplitCashFixed(200)">200 ₺ Nakit</button>
+        </div>
+    </div>
+    <div class="pos-dialog-foot">
+        <button type="button" class="btn btn-light border fw-bold" onclick="document.getElementById('splitPayModal').close('cancel')">Vazgeç</button>
+        <button type="button" class="btn btn-primary btn-lg fw-extrabold px-4" id="btnConfirmSplitSale" onclick="submitSplitSale()">
+            <i class="bi bi-check2-circle me-1"></i> PARÇALI ÖDEMEYİ BİTİR
+        </button>
+    </div>
+</dialog>
+
+<!-- 4. Cari Bul Modalı (#customerModal) -->
+<dialog id="customerModal" class="pos-dialog pos-dialog--wide" closedby="any" aria-labelledby="customerModalTitle">
+    <div class="pos-dialog-head">
+        <h2 id="customerModalTitle" class="pos-dialog-title">
+            <i class="bi bi-person-vcard-fill"></i> CARİ / MÜŞTERİ SEÇİMİ
+        </h2>
+        <form method="dialog">
+            <button type="submit" value="cancel" class="pos-dialog-close" aria-label="Kapat">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </form>
+    </div>
+    <div class="pos-dialog-body">
+        <div id="customerContextNotice" class="alert alert-info py-2 px-3 small fw-bold d-none mb-2">
+            Veresiye (Açık Hesap) satış için lütfen müşteri seçiniz.
+        </div>
+        <div class="input-group mb-3">
+            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+            <input type="search" id="customerSearchInput" class="form-control" placeholder="Müşteri adı, soyadı, telefon, vergi no veya ünvan ara..." oninput="fetchCustomers(this.value)" autofocus>
+            <button type="button" class="btn btn-outline-secondary fw-bold" onclick="fetchCustomers('')">Tümünü Listele</button>
+        </div>
+        <div id="customerListContainer" class="d-flex flex-column gap-2" style="max-block-size: 360px; overflow-y: auto;"></div>
+    </div>
+    <div class="pos-dialog-foot">
+        <button type="button" class="btn btn-outline-danger fw-bold me-auto" onclick="clearSelectedCustomer(); document.getElementById('customerModal').close('clear');">
+            Seçili Cariyi Temizle
+        </button>
+        <button type="button" class="btn btn-light border fw-bold" onclick="document.getElementById('customerModal').close('cancel')">Kapat</button>
+    </div>
+</dialog>
+
+<!-- 5. Veresiye / Açık Hesap Onay Modalı (#creditConfirmModal) -->
+<dialog id="creditConfirmModal" class="pos-dialog" closedby="any" aria-labelledby="creditConfirmTitle">
+    <div class="pos-dialog-head">
+        <h2 id="creditConfirmTitle" class="pos-dialog-title">
+            <i class="bi bi-journal-check"></i> AÇIK HESAP (VERESİYE) ONAYI
+        </h2>
+        <form method="dialog">
+            <button type="submit" value="cancel" class="pos-dialog-close" aria-label="Kapat">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </form>
+    </div>
+    <div class="pos-dialog-body">
+        <div class="bg-white border rounded-3 p-3">
+            <div class="fw-extrabold fs-5 text-slate-900 mb-2" id="creditCustName">-</div>
+            <div class="row g-2 small">
+                <div class="col-6">Mevcut Bakiye: <strong class="mono d-block fs-6" id="creditCustBalance">0.00 TL</strong></div>
+                <div class="col-6">Kredi Limiti: <strong class="mono d-block fs-6" id="creditCustLimit">0.00 TL</strong></div>
+                <div class="col-6">Bu Satış Tutarı: <strong class="mono d-block fs-5 text-primary" id="creditSaleAmount">0.00 TL</strong></div>
+                <div class="col-6">İşlem Sonrası Borç: <strong class="mono d-block fs-5 text-slate-900" id="creditAfterBalance">0.00 TL</strong></div>
+            </div>
+            <div id="creditLimitWarning" class="alert alert-danger py-2 px-3 small fw-bold mt-2 mb-0 d-none"></div>
+        </div>
+    </div>
+    <div class="pos-dialog-foot">
+        <button type="button" class="btn btn-outline-secondary fw-bold me-auto" onclick="document.getElementById('creditConfirmModal').close('change'); openCustomerModal('VERESIYE');">Cari Değiştir</button>
+        <button type="button" class="btn btn-light border fw-bold" onclick="document.getElementById('creditConfirmModal').close('cancel')">Vazgeç</button>
+        <button type="button" class="btn btn-primary fw-extrabold px-4" id="btnConfirmCreditSale" onclick="submitCreditSale()" autofocus>
+            <i class="bi bi-check2-circle me-1"></i> VERESİYE SATIŞI ONAYLA
+        </button>
+    </div>
+</dialog>
+
+<!-- 6. Stok Bul Modalı (#stockLookupModal) -->
+<dialog id="stockLookupModal" class="pos-dialog pos-dialog--wide" closedby="any" aria-labelledby="stockLookupTitle">
+    <div class="pos-dialog-head">
+        <h2 id="stockLookupTitle" class="pos-dialog-title">
+            <i class="bi bi-boxes"></i> CANLI STOK & FİYAT SORGULAMA
+        </h2>
+        <form method="dialog">
+            <button type="submit" value="cancel" class="pos-dialog-close" aria-label="Kapat">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </form>
+    </div>
+    <div class="pos-dialog-body">
+        <div class="row g-2 mb-3">
+            <div class="col-md-8">
+                <input type="search" id="stockLookupInput" class="form-control" placeholder="Ürün adı veya barkod ile canlı stok sorgula..." oninput="fetchStockLookup()" autofocus>
+            </div>
+            <div class="col-md-4">
+                <select id="stockLookupCategory" class="form-select" onchange="fetchStockLookup()">
+                    <option value="">Tüm Kategoriler</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat.id }}">{{ cat.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="bg-white border rounded-3" style="max-block-size: 380px; overflow-y: auto;">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light sticky-top">
+                    <tr>
+                        <th>Barkod</th>
+                        <th>Ürün Adı</th>
+                        <th>Kategori</th>
+                        <th class="text-end">Stok</th>
+                        <th class="text-end">Satış Fiyatı</th>
+                        <th class="text-end">Ekle</th>
+                    </tr>
+                </thead>
+                <tbody id="stockLookupTbody"></tbody>
+            </table>
+        </div>
+    </div>
+    <div class="pos-dialog-foot">
+        <button type="button" class="btn btn-light border fw-bold" onclick="document.getElementById('stockLookupModal').close('cancel')">Kapat</button>
+    </div>
+</dialog>
+
+<!-- 7. Fiyat Değiştir / İskonto Modalı (#priceModal) -->
+<dialog id="priceModal" class="pos-dialog" closedby="any" aria-labelledby="priceModalTitle">
+    <div class="pos-dialog-head">
+        <h2 id="priceModalTitle" class="pos-dialog-title">
+            <i class="bi bi-tag-fill"></i> FİYAT İNDİRİMİ & İSKONTO
+        </h2>
+        <form method="dialog">
+            <button type="submit" value="cancel" class="pos-dialog-close" aria-label="Kapat">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </form>
+    </div>
+    <div class="pos-dialog-body">
+        <div class="bg-white border rounded-3 p-3 mb-3" id="priceRowBox">
+            <div class="small fw-bold text-slate-600 mb-1">SEÇİLİ SATIR (İNDİRİMLİ BİRİM FİYAT)</div>
+            <div class="fw-extrabold text-slate-900 mb-2" id="priceRowProductName">-</div>
+            <div class="row g-2 align-items-end">
+                <div class="col-6">
+                    <span class="small text-slate-600 d-block">Liste Fiyatı: <strong id="priceRowCatalogPrice">0.00 TL</strong></span>
+                </div>
+                <div class="col-6">
+                    <label for="priceRowNewInput" class="form-label small fw-bold mb-1">Yeni Birim Fiyat (≤ Liste)</label>
+                    <input type="number" step="0.01" min="0" id="priceRowNewInput" class="form-control mono fw-bold text-end" autofocus>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white border rounded-3 p-3">
+            <div class="small fw-bold text-slate-600 mb-2">GENEL FİŞ İSKONTOSU (TL VEYA %)</div>
+            <div class="row g-2 mb-2">
+                <div class="col-6">
+                    <label for="cartDiscountInput" class="form-label small fw-bold mb-1">Ek Fiş İskontosu (TL)</label>
+                    <input type="number" step="0.01" min="0" id="cartDiscountInput" class="form-control mono fw-bold text-end">
+                </div>
+                <div class="col-6 d-flex align-items-end gap-1 flex-wrap">
+                    <button type="button" class="pos-bill-chip px-2" onclick="applyPercentCartDiscount(5)">%5</button>
+                    <button type="button" class="pos-bill-chip px-2" onclick="applyPercentCartDiscount(10)">%10</button>
+                    <button type="button" class="pos-bill-chip px-2" onclick="roundDownCartCents()">Küsurat Sil</button>
+                </div>
+            </div>
+            <div class="small text-slate-600">Liste fiyatını kalıcı değiştirmek için Yönetici Ürün Kataloğu kullanılmalıdır.</div>
+        </div>
+    </div>
+    <div class="pos-dialog-foot">
+        <button type="button" class="btn btn-outline-danger fw-bold me-auto" onclick="clearAllDiscounts(); document.getElementById('priceModal').close('clear');">İskontoyu Sıfırla</button>
+        <button type="button" class="btn btn-light border fw-bold" onclick="document.getElementById('priceModal').close('cancel')">Vazgeç</button>
+        <button type="button" class="btn btn-primary fw-bold px-4" onclick="confirmPriceOrDiscount()">Uygula</button>
+    </div>
+</dialog>
+
+<!-- 8. Askıdaki Fişler Modalı (#parkedModal) -->
+<dialog id="parkedModal" class="pos-dialog" closedby="any" aria-labelledby="parkedModalTitle">
+    <div class="pos-dialog-head">
+        <h2 id="parkedModalTitle" class="pos-dialog-title">
+            <i class="bi bi-pause-circle-fill"></i> ASKIDAKİ BEKLEYEN FİŞLER
+        </h2>
+        <form method="dialog">
+            <button type="submit" value="cancel" class="pos-dialog-close" aria-label="Kapat">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </form>
+    </div>
+    <div class="pos-dialog-body">
+        <div id="parkedListContainer" class="d-flex flex-column gap-2"></div>
+    </div>
+    <div class="pos-dialog-foot">
+        <button type="button" class="btn btn-light border fw-bold" onclick="document.getElementById('parkedModal').close('cancel')">Kapat</button>
+    </div>
+</dialog>
+
+<!-- 9. Kasa İşlemleri / Ayarlar Modalı (#posToolsModal) -->
+<dialog id="posToolsModal" class="pos-dialog" closedby="any" aria-labelledby="posToolsTitle">
+    <div class="pos-dialog-head">
+        <h2 id="posToolsTitle" class="pos-dialog-title">
+            <i class="bi bi-gear-fill"></i> KASA İŞLEMLERİ & DONANIM
+        </h2>
+        <form method="dialog">
+            <button type="submit" value="cancel" class="pos-dialog-close" aria-label="Kapat">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </form>
+    </div>
+    <div class="pos-dialog-body d-flex flex-column gap-3">
+        <div class="bg-white border rounded-3 p-3">
+            <div class="small fw-bold text-slate-600 mb-1.5">MÜHÜRLÜ KASA TERMİNALİ</div>
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <span class="badge bg-primary text-white py-1.5 px-3 fs-7 fw-bold font-monospace d-inline-flex align-items-center gap-1.5 shadow-xs">
+                    <i class="bi bi-shield-lock-fill text-warning"></i> {{ register.name }} [{{ register.register_code }}]
+                </span>
+                <form method="post" action="{% url 'unpair_terminal_action' %}" class="m-0">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-danger fw-semibold py-1 px-2.5 fs-8" onclick="return confirm('Bu bilgisayarın kasa kilidini çözmek istediğinize emin misiniz?');" title="Yetkili şifresiyle bu cihazı başka bir kasaya bağlamak için mührü kaldırır">
+                        <i class="bi bi-arrow-repeat me-1"></i> Kasa Bağını Değiştir
+                    </button>
+                </form>
+            </div>
+            <small class="text-slate-500 d-block mt-1.5 fs-9">
+                <i class="bi bi-info-circle me-1"></i> Cihaz bu kasaya kilitlidir. Yanlış kasadan satış yapılmasını önlemek için kasalar arası serbest geçiş engellenmiştir.
+            </small>
+        </div>
+
+        <div class="row g-2">
+            <div class="col-6">
+                <button type="button" class="btn btn-outline-primary w-100 fw-bold py-2" onclick="triggerOpenCashDrawer()">
+                    <i class="bi bi-inboxes-fill d-block fs-4 mb-1"></i> Para Çekmecesini Aç
+                </button>
+            </div>
+            <div class="col-6">
+                <button type="button" class="btn btn-outline-secondary w-100 fw-bold py-2" onclick="document.getElementById('posToolsModal').close(); openQuickCreateModal();">
+                    <i class="bi bi-plus-square-fill d-block fs-4 mb-1"></i> Hızlı Ürün Tanımla
+                </button>
+            </div>
+            <div class="col-6">
+                <a href="{% url 'z_report_view' %}" target="_blank" rel="noopener" class="btn btn-outline-dark w-100 fw-bold py-2">
+                    <i class="bi bi-file-earmark-bar-graph-fill d-block fs-4 mb-1"></i> Gün Sonu (Z Raporu)
+                </a>
+            </div>
+            <div class="col-6">
+                <a href="{% url 'customer_display_view' %}" target="_blank" rel="noopener" class="btn btn-outline-dark w-100 fw-bold py-2">
+                    <i class="bi bi-display-fill d-block fs-4 mb-1"></i> Müşteri 2. Ekranı
+                </a>
+            </div>
+            {% if is_supervisor %}
+            <div class="col-12">
+                <a href="{% url 'admin_dashboard_view' %}" class="btn btn-primary w-100 fw-extrabold py-2">
+                    <i class="bi bi-speedometer2 me-1"></i> Yönetici Kontrol Paneline Git
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    <div class="pos-dialog-foot">
+        <button type="button" id="btnSoundToggle" class="btn btn-outline-secondary fw-bold me-auto" onclick="toggleSoundEffects()">
+            <i class="bi bi-volume-up-fill"></i> Barkod Sesi: Açık
+        </button>
+        <button type="button" class="btn btn-light border fw-bold" onclick="document.getElementById('posToolsModal').close('cancel')">Kapat</button>
+    </div>
+</dialog>
+
+<!-- 10. Hızlı Barkodsuz / Eksik Ürün Tanımlama Modalı (#quickCreateModal) -->
+<dialog id="quickCreateModal" class="pos-dialog" closedby="any" aria-labelledby="quickCreateTitle">
+    <div class="pos-dialog-head">
+        <h2 id="quickCreateTitle" class="pos-dialog-title">
+            <i class="bi bi-plus-circle-fill"></i> KASADA HIZLI ÜRÜN TANIMLA
+        </h2>
+        <form method="dialog">
+            <button type="submit" value="cancel" class="pos-dialog-close" aria-label="Kapat">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </form>
+    </div>
+    <div class="pos-dialog-body">
+        <div class="row g-2">
+            <div class="col-12">
+                <label for="qcBarcode" class="form-label small fw-bold mb-1">Barkod</label>
+                <input type="text" id="qcBarcode" class="form-control mono" autofocus>
+            </div>
+            <div class="col-12">
+                <label for="qcName" class="form-label small fw-bold mb-1">Ürün Adı</label>
+                <input type="text" id="qcName" class="form-control" placeholder="Örn: Doğal Soda 200ml">
+            </div>
+            <div class="col-6">
+                <label for="qcPrice" class="form-label small fw-bold mb-1">Satış Fiyatı (TL)</label>
+                <input type="number" step="0.01" min="0" id="qcPrice" class="form-control mono" placeholder="0.00">
+            </div>
+            <div class="col-6">
+                <label for="qcStock" class="form-label small fw-bold mb-1">Başlangıç Stok</label>
+                <input type="number" step="0.01" min="0" id="qcStock" class="form-control mono" value="50">
+            </div>
+        </div>
+    </div>
+    <div class="pos-dialog-foot">
+        <button type="button" class="btn btn-light border fw-bold" onclick="document.getElementById('quickCreateModal').close('cancel')">Vazgeç</button>
+        <button type="button" class="btn btn-success fw-bold px-4" onclick="submitQuickCreateProduct()">Kaydet & Sepete Ekle</button>
+    </div>
+</dialog>
+
+<!-- 11. Yetkili (Supervisor) PIN Onay Modalı (#supervisorPinModal) -->
+<dialog id="supervisorPinModal" class="pos-dialog" closedby="closerequest" aria-labelledby="supervisorPinTitle">
+    <div class="pos-dialog-head pos-dialog-head--return">
+        <h2 id="supervisorPinTitle" class="pos-dialog-title">
+            <i class="bi bi-shield-lock-fill"></i> YETKİLİ (YÖNETİCİ) PIN ONAYI
+        </h2>
+        <form method="dialog">
+            <button type="submit" value="cancel" class="pos-dialog-close" aria-label="Kapat">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </form>
+    </div>
+    <div class="pos-dialog-body">
+        <p class="small fw-bold text-slate-700 mb-2" id="supervisorActionNotice">
+            Bu işlem işletme ayarı gereği yönetici PIN onayı gerektirir.
+        </p>
+        <input type="password" id="supervisorPinInput" class="form-control form-control-lg text-center mono fw-extrabold" placeholder="Yönetici PIN" autocomplete="off" autofocus>
+        <div id="supervisorErrorBox" class="text-danger small fw-bold mt-2 d-none"></div>
+    </div>
+    <div class="pos-dialog-foot">
+        <button type="button" class="btn btn-light border fw-bold" onclick="document.getElementById('supervisorPinModal').close('cancel')">Vazgeç</button>
+        <button type="button" class="btn btn-danger fw-bold px-4" onclick="confirmSupervisorPin()">Onayla & Devam Et</button>
+    </div>
+</dialog>
+
+<!-- 12. Popup Engellendiyse Fiş Önizleme Alternatif Modalı (#receiptModal) -->
+<dialog id="receiptModal" class="pos-dialog" closedby="any" aria-labelledby="receiptModalTitle">
+    <div class="pos-dialog-head">
+        <h2 id="receiptModalTitle" class="pos-dialog-title">
+            <i class="bi bi-receipt"></i> DEKONT / FİŞ ÖNİZLEME
+        </h2>
+        <form method="dialog">
+            <button type="submit" value="cancel" class="pos-dialog-close" aria-label="Kapat">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </form>
+    </div>
+    <div class="pos-dialog-body p-0" style="min-block-size: 420px;">
+        <iframe id="receiptModalFrame" title="Fiş Önizleme" style="inline-size: 100%; block-size: 420px; border: 0; display: block;"></iframe>
+    </div>
+    <div class="pos-dialog-foot">
+        <button type="button" class="btn btn-primary fw-bold" onclick="printReceiptIframe()">
+            <i class="bi bi-printer-fill"></i> Yazdır
+        </button>
+        <button type="button" class="btn btn-light border fw-bold" onclick="document.getElementById('receiptModal').close('cancel')">Kapat</button>
+    </div>
+</dialog>
+
+<!-- 13. Kamera ile Canlı Barkod / QR Tarama Modalı (#cameraModal) -->
+<dialog id="cameraModal" class="pos-dialog" closedby="any" aria-labelledby="cameraModalTitle">
+    <div class="pos-dialog-head">
+        <h2 id="cameraModalTitle" class="pos-dialog-title">
+            <i class="bi bi-camera-video-fill"></i> KAMERA İLE BARKOD OKUTMA
+        </h2>
+        <form method="dialog">
+            <button type="submit" value="cancel" class="pos-dialog-close" aria-label="Kapat">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </form>
+    </div>
+    <div class="pos-dialog-body d-flex flex-column gap-2">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div class="flex-grow-1" style="min-inline-size: 180px;">
+                <select id="cameraDeviceSelect" class="form-select form-select-sm fw-semibold" aria-label="Kamera seçimi" onchange="switchCameraDevice()">
+                    <option value="">Varsayılan Arka Kamera</option>
+                </select>
+            </div>
+            <div class="form-check form-switch m-0">
+                <input class="form-check-input" type="checkbox" id="cameraContinuousToggle" checked>
+                <label class="form-check-label small fw-bold text-slate-700" for="cameraContinuousToggle">
+                    Sürekli Okuma
+                </label>
+            </div>
+        </div>
+
+        <div id="cameraReaderRegion" class="pos-camera-reader">
+            <span class="small fw-semibold">Kamera başlatılıyor...</span>
+        </div>
+
+        <div id="cameraScanStatus" class="pos-camera-status" aria-live="polite">
+            Barkodu veya QR kodu kamera çerçevesine yaklaştırın.
+        </div>
+
+        <div class="input-group input-group-sm">
+            <span class="input-group-text bg-light fw-bold">Manuel Kod</span>
+            <input type="text"
+                   id="camManualBarcodeInput"
+                   class="form-control mono fw-semibold"
+                   placeholder="Barkod yazıp Enter'a basın...">
+            <button type="button" id="btnCamManualAdd" class="btn btn-primary fw-bold" onclick="submitManualCameraBarcode()">
+                <i class="bi bi-plus-lg"></i> Ekle
+            </button>
+        </div>
+    </div>
+    <div class="pos-dialog-foot">
+        <button type="button" class="btn btn-light border fw-bold" onclick="closeDialog('cameraModal')">Kapat</button>
+    </div>
+</dialog>
+
+<div id="posToastRegion" class="pos-toast-region" aria-live="polite"></div>
+<div id="printFrameContainer" style="display: none;"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/html5-qrcode.min.js' %}"></script>
+<script>
+    const REGISTER_CODE = '{{ register.register_code|escapejs }}';
+    const SUPERVISOR_CANCEL_REQUIRED = {{ supervisor_cancel_required|yesno:'true,false' }};
+    const IS_SUPERVISOR = {{ is_supervisor|yesno:'true,false' }};
+
+    const URL_BARCODE_SEARCH = "{% url 'search_barcode' %}";
+    const URL_PRODUCT_SEARCH = "{% url 'product_search_api' %}";
+    const URL_CUSTOMER_SEARCH = "{% url 'customer_search_api' %}";
+    const URL_PROCESS_SALE = "{% url 'process_sale' %}";
+    const URL_OPEN_DRAWER = "{% url 'open_cash_drawer_api' %}";
+    const URL_VERIFY_SUPERVISOR = "{% url 'verify_supervisor_pin_api' %}";
+    const URL_SCALE_READ = "{% url 'scale_read_api' %}";
+    const URL_QUICK_CREATE = "{% url 'quick_create_product_api' %}";
+
+    // Uygulama Durumu
+    let cart = [];
+    let selectedRowIndex = -1;
+    let selectedCustomer = null;
+    let pendingActionAfterCustomer = null;
+    let cartGlobalDiscount = 0; // Manuel fiş geneli indirim (TL)
+    let parkedSales = [];
+    let lastReceiptNumber = null;
+    let currentQtyProduct = null;
+    let currentQtyMode = 'new'; // 'new' veya 'edit_row'
+    let currentQtyRowIdx = -1;
+    let isReturnMode = false;
+    let numpadBuffer = '';
+    let soundEnabled = true;
+    let supervisorCallback = null;
+
+    const barcodeInput = document.getElementById('barcodeInput');
+    const scannerStatusEl = document.getElementById('scannerStatus');
+    const quickSearchInput = document.getElementById('quickSearchInput');
+
+    // Safari dahil progressive closedby="any" desteği & returnValue sıfırlama
+    (function setupNativeDialogs() {
+        if (!('closedBy' in HTMLDialogElement.prototype)) {
+            const outside = (e, dialog) => {
+                const r = dialog.getBoundingClientRect();
+                return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+            };
+            for (const dialog of document.querySelectorAll('dialog[closedby="any"]')) {
+                let pressedOutside = false;
+                dialog.addEventListener('pointerdown', (e) => { pressedOutside = outside(e, dialog); });
+                dialog.addEventListener('pointerup', (e) => {
+                    if (pressedOutside && outside(e, dialog)) dialog.close('backdrop');
+                });
+            }
+        }
+        for (const dialog of document.querySelectorAll('dialog.pos-dialog')) {
+            dialog.addEventListener('close', () => {
+                dialog.returnValue = '';
+                if (!anyModalOpen()) {
+                    focusBarcodeInput();
+                }
+            });
+        }
+    })();
+
+    function anyModalOpen() {
+        return Array.from(document.querySelectorAll('dialog.pos-dialog')).some(d => d.open);
+    }
+
+    function openDialog(id) {
+        const dlg = document.getElementById(id);
+        if (!dlg) return;
+        if (!dlg.open) dlg.showModal();
+        const auto = dlg.querySelector('[autofocus]');
+        if (auto) setTimeout(() => auto.focus(), 20);
+    }
+
+    function closeDialog(id) {
+        const dlg = document.getElementById(id);
+        if (dlg && dlg.open) dlg.close('cancel');
+    }
+
+    function focusBarcodeInput() {
+        if (window.innerWidth >= 992 && !anyModalOpen() && barcodeInput) {
+            barcodeInput.focus({ preventScroll: true });
+        }
+    }
+
+    let __toastTimer = null;
+    function showPosToast(message, variant = 'info') {
+        const region = document.getElementById('posToastRegion');
+        if (!region) return;
+        if (__toastTimer) clearTimeout(__toastTimer);
+        region.innerHTML = '';
+        const el = document.createElement('div');
+        el.className = `pos-toast${variant === 'error' ? ' pos-toast--error' : (variant === 'success' ? ' pos-toast--success' : '')}`;
+        el.textContent = message;
+        region.appendChild(el);
+        __toastTimer = setTimeout(() => {
+            if (el.parentNode === region) el.remove();
+        }, 2300);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        if (window.innerWidth >= 992 && barcodeInput) {
+            barcodeInput.focus();
+        }
+        loadParkedFromStorage();
+
+        if (quickSearchInput) {
+            quickSearchInput.addEventListener('input', applyQuickCatalogFilters);
+        }
+
+        barcodeInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                submitBarcode();
+            }
+        });
+
+        // Kasa Donanım Klavye Kısayolları
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'F2') { e.preventDefault(); handleCashButtonClick(); return; }
+            if (e.key === 'F3') { e.preventDefault(); completeCardSale(); return; }
+            if (e.key === 'F4') { e.preventDefault(); parkSale(); return; }
+            if (e.key === 'F6') { e.preventDefault(); handleRestoreButton(); return; }
+            if (e.key === 'F7') { e.preventDefault(); openSplitModal(); return; }
+            if (e.key === 'F8') { e.preventDefault(); toggleReturnMode(); return; }
+            if (e.key === 'F9') { e.preventDefault(); startCreditSale(); return; }
+            if (e.key === 'F10') { e.preventDefault(); openCustomerModal(); return; }
+            if (e.key === 'F11') { e.preventDefault(); openStockLookupModal(); return; }
+
+            if (e.key === '*' && document.activeElement !== barcodeInput && document.activeElement !== quickSearchInput) {
+                e.preventDefault();
+                applyNumpadQtyOrMultiplier();
+                return;
+            }
+
+            if (anyModalOpen()) {
+                if (e.key === 'Enter') {
+                    if (document.getElementById('cashModal').open) {
+                        e.preventDefault();
+                        submitCashSale();
+                    } else if (document.getElementById('qtyModal').open) {
+                        e.preventDefault();
+                        confirmModalQty();
+                    } else if (document.getElementById('creditConfirmModal').open) {
+                        e.preventDefault();
+                        submitCreditSale();
+                    } else if (document.getElementById('supervisorPinModal').open) {
+                        e.preventDefault();
+                        confirmSupervisorPin();
+                    }
+                }
+                return;
+            }
+
+            if (e.key === 'Delete' && document.activeElement !== barcodeInput && document.activeElement !== quickSearchInput) {
+                e.preventDefault();
+                removeSelectedRow();
+            }
+        });
+
+        document.getElementById('cashPaidInput').addEventListener('input', updateCashChange);
+        document.getElementById('qtyModalValueDisplay').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); confirmModalQty(); }
+        });
+        document.getElementById('barcodeInput').addEventListener('input', syncBarcodeStatusHint);
+
+        const camManualInput = document.getElementById('camManualBarcodeInput');
+        if (camManualInput) {
+            camManualInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitManualCameraBarcode();
+                }
+            });
+        }
+
+        const camDlg = document.getElementById('cameraModal');
+        if (camDlg) {
+            camDlg.addEventListener('close', () => {
+                stopCameraScanner();
+            });
+        }
+
+        // Harici USB/klavye barkod okuyucunun odağını korumak için boş alana tıklamada yeniden odakla
+        document.addEventListener('click', (e) => {
+            if (window.innerWidth < 992 || anyModalOpen()) return;
+            const target = e.target;
+            if (!target || target.closest('button, a, input, textarea, select, label, dialog, .pos-barcode-row, .pos-quick-search-wrap, .pos-receipt-table')) {
+                return;
+            }
+            const sel = window.getSelection ? window.getSelection().toString() : '';
+            if (!sel) focusBarcodeInput();
+        });
+    });
+
+    function syncBarcodeStatusHint() {
+        const val = barcodeInput.value.trim();
+        if (!val && !numpadBuffer) {
+            scannerStatusEl.textContent = 'Hazır — Kasiyer: {{ cashier_name|escapejs }}';
+        }
+    }
+
+    /* ============================================================
+       KATALOG FİLTRELEME (KATEGORİ + CANLI ARAMA)
+       ============================================================ */
+    let activeCategoryFilter = 'all';
+
+    function filterQuickCategory(catId, btnEl) {
+        activeCategoryFilter = String(catId);
+        document.querySelectorAll('.quick-cat-filter').forEach(b => b.classList.remove('active'));
+        if (btnEl) btnEl.classList.add('active');
+        applyQuickCatalogFilters();
+    }
+
+    function clearQuickSearch() {
+        if (quickSearchInput) quickSearchInput.value = '';
+        applyQuickCatalogFilters();
+    }
+
+    function applyQuickCatalogFilters() {
+        const q = (quickSearchInput ? quickSearchInput.value : '').trim().toLocaleLowerCase('tr-TR');
+        const cards = document.querySelectorAll('#quickProductsGrid .quick-product-item');
+        cards.forEach(c => {
+            const matchesCat = activeCategoryFilter === 'all' || c.dataset.catId === activeCategoryFilter;
+            const hay = (c.dataset.search || '').toLocaleLowerCase('tr-TR');
+            const matchesText = !q || hay.includes(q);
+            c.classList.toggle('d-none', !(matchesCat && matchesText));
+        });
+    }
+
+    /* ============================================================
+       SABİT NUMPAD VE MİKTAR / KOD GİRİŞ MANTIĞI
+       ============================================================ */
+    function updateNumpadDisplay() {
+        const disp = document.getElementById('numpadDisplay');
+        if (!disp) return;
+        disp.textContent = numpadBuffer || '0';
+    }
+
+    function touchType(ch) {
+        if (ch === '.' && numpadBuffer.includes('.')) return;
+        if (ch === '.' && !numpadBuffer) numpadBuffer = '0.';
+        else numpadBuffer += ch;
+        updateNumpadDisplay();
+    }
+
+    function touchBackspace() {
+        if (numpadBuffer.length > 0) {
+            numpadBuffer = numpadBuffer.slice(0, -1);
+            updateNumpadDisplay();
+            return;
+        }
+        if (barcodeInput.value.length > 0) {
+            barcodeInput.value = barcodeInput.value.slice(0, -1);
+        }
+    }
+
+    function touchClear() {
+        numpadBuffer = '';
+        barcodeInput.value = '';
+        updateNumpadDisplay();
+        syncBarcodeStatusHint();
+        focusBarcodeInput();
+    }
+
+    let activeMultiplier = 1.0;
+
+    function updateMultiplierBadge() {
+        const badge = document.getElementById('posMultiplierBadge');
+        if (!badge) return;
+        if (activeMultiplier > 1.0) {
+            badge.textContent = `${activeMultiplier}× ÇARPAN`;
+            badge.classList.remove('d-none');
+        } else {
+            badge.classList.add('d-none');
+        }
+    }
+
+    function submitNumpadEnter() {
+        if (barcodeInput.value.trim()) {
+            submitBarcode();
+            return;
+        }
+        if (numpadBuffer) {
+            const raw = numpadBuffer;
+            numpadBuffer = '';
+            updateNumpadDisplay();
+            const parsedVal = parseFloat(raw);
+            if (!isNaN(parsedVal) && raw.length <= 5 && cart.length > 0 && parsedVal >= getGrandTotal() - 0.005) {
+                quickCashSale(parsedVal);
+                return;
+            }
+            barcodeInput.value = raw;
+            submitBarcode();
+        } else if (cart.length > 0) {
+            quickCashSale();
+        } else {
+            openCashModal();
+        }
+    }
+
+    function applyNumpadQtyOrMultiplier() {
+        const rawVal = parseFloat(numpadBuffer);
+        if (!isNaN(rawVal) && rawVal > 0) {
+            if (cart.length > 0 && selectedRowIndex >= 0 && selectedRowIndex < cart.length) {
+                const item = cart[selectedRowIndex];
+                item.quantity = Number(rawVal.toFixed(3));
+                numpadBuffer = '';
+                updateNumpadDisplay();
+                renderCart();
+                showPosToast(`${item.name} miktarı ${formatQty(rawVal, item.unit)} olarak güncellendi.`, 'success');
+                focusBarcodeInput();
+                return;
+            } else {
+                activeMultiplier = rawVal;
+                updateMultiplierBadge();
+                numpadBuffer = '';
+                updateNumpadDisplay();
+                showPosToast(`Çarpan ayarlandı: ${rawVal}× (Sonraki okutulan ürün bu miktarla eklenecek).`, 'info');
+                focusBarcodeInput();
+                return;
+            }
+        }
+
+        if (cart.length > 0 && selectedRowIndex >= 0 && selectedRowIndex < cart.length) {
+            cart[selectedRowIndex].quantity += 1;
+            renderCart();
+            showPosToast(`${cart[selectedRowIndex].name} miktarı +1 artırıldı (${formatQty(cart[selectedRowIndex].quantity, cart[selectedRowIndex].unit)}).`, 'success');
+            focusBarcodeInput();
+            return;
+        }
+
+        showPosToast('Önce numpad ile miktar yazıp × Adet tuşuna basınız (örn: 5).', 'info');
+        focusBarcodeInput();
+    }
+
+    function applyNumpadPrice() {
+        if (cart.length === 0) {
+            showPosToast('Fiyat değiştirmek için sepete ürün ekleyiniz.', 'error');
+            return;
+        }
+        const rawVal = parseFloat(numpadBuffer);
+        if (isNaN(rawVal) || rawVal < 0) {
+            showPosToast('Lütfen önce numpad ile geçerli bir fiyat yazıp Fiyat tuşuna basınız (örn: 25.50).', 'info');
+            return;
+        }
+
+        const idx = (selectedRowIndex >= 0 && selectedRowIndex < cart.length) ? selectedRowIndex : (cart.length - 1);
+        const item = cart[idx];
+        item.unit_price = Number(rawVal.toFixed(2));
+        numpadBuffer = '';
+        updateNumpadDisplay();
+        renderCart();
+        showPosToast(`${item.name} yeni satış fiyatı: ₺${rawVal.toFixed(2)}`, 'success');
+        focusBarcodeInput();
+    }
+
+    function applyNumpadDiscount() {
+        if (cart.length === 0) {
+            showPosToast('İskonto uygulamak için sepete ürün ekleyiniz.', 'error');
+            return;
+        }
+        const rawVal = parseFloat(numpadBuffer);
+        if (isNaN(rawVal) || rawVal <= 0 || rawVal > 100) {
+            showPosToast('Lütfen %1 ile %100 arasında bir iskonto oranı yazıp % İsk tuşuna basınız (örn: 10).', 'info');
+            return;
+        }
+
+        const idx = (selectedRowIndex >= 0 && selectedRowIndex < cart.length) ? selectedRowIndex : (cart.length - 1);
+        const item = cart[idx];
+        const catalogP = (item.catalog_price && item.catalog_price > 0) ? item.catalog_price : item.unit_price;
+        const newPrice = Math.max(0, catalogP * (1 - (rawVal / 100)));
+        item.unit_price = Number(newPrice.toFixed(2));
+        numpadBuffer = '';
+        updateNumpadDisplay();
+        renderCart();
+        showPosToast(`${item.name} satırına %${rawVal} iskonto uygulandı (Yeni: ₺${newPrice.toFixed(2)})`, 'success');
+        focusBarcodeInput();
+    }
+
+    function quickCashSale(forcedAmount = null) {
+        if (cart.length === 0) {
+            showPosToast('Ödeme alabilmek için önce sepete ürün ekleyiniz.', 'error');
+            return;
+        }
+        const total = getGrandTotal();
+        let cashPaid = total;
+
+        if (forcedAmount !== null) {
+            cashPaid = parseFloat(forcedAmount) || total;
+        } else if (numpadBuffer) {
+            const parsed = parseFloat(numpadBuffer);
+            if (!isNaN(parsed) && parsed > 0) {
+                cashPaid = parsed;
+            }
+        }
+
+        if (!isReturnMode && cashPaid < total - 0.005) {
+            showPosToast(`Alınan nakit (₺${cashPaid.toFixed(2)}), toplam tutardan (₺${total.toFixed(2)}) az olamaz!`, 'error');
+            return;
+        }
+
+        numpadBuffer = '';
+        updateNumpadDisplay();
+        processSaleApi('NAKIT', cashPaid, 0);
+    }
+
+    function handleCashButtonClick() {
+        if (cart.length === 0) {
+            showPosToast('Ödeme alabilmek için önce sepete ürün ekleyiniz.', 'error');
+            return;
+        }
+        if (numpadBuffer) {
+            quickCashSale();
+        } else {
+            openCashModal();
+        }
+    }
+
+    /* ============================================================
+       BARKOD OKUMA & SEPETE ÜRÜN EKLEME
+       ============================================================ */
+    async function processScannedCode(rawCode, { openLookupOnMiss = true, fromCamera = false } = {}) {
+        const raw = String(rawCode || '').trim();
+        if (!raw) return { ok: false, message: 'Boş barkod.' };
+
+        let qty = 1.0;
+        let query = raw;
+
+        if (raw.includes('*')) {
+            const parts = raw.split('*');
+            const parsedQty = parseFloat(parts[0]);
+            if (!isNaN(parsedQty) && parsedQty > 0 && parts.slice(1).join('*').trim()) {
+                qty = parsedQty;
+                query = parts.slice(1).join('*').trim();
+            }
+        }
+
+        scannerStatusEl.textContent = 'Sorgulanıyor...';
+        try {
+            const resp = await fetch(`${URL_BARCODE_SEARCH}?barcode=${encodeURIComponent(query)}`);
+            const data = await resp.json();
+
+            if (resp.ok && data.success) {
+                const finalQty = data.is_weighted_barcode ? data.quantity : qty;
+                addToCart(data.product, finalQty);
+                if (!fromCamera) barcodeInput.value = '';
+                scannerStatusEl.textContent = `Eklendi: ${data.product.name}`;
+                playBeep(880, 0.08);
+                return { ok: true, product: data.product, quantity: finalQty };
+            }
+
+            playBeep(260, 0.16);
+            if (!fromCamera) barcodeInput.value = '';
+            if (!fromCamera && openLookupOnMiss && query.length >= 2 && !/^\d{6,}$/.test(query)) {
+                openStockLookupModal(query);
+                return { ok: false, message: data.message || 'Ürün arama penceresi açıldı.' };
+            }
+            const errMsg = data.message || `Barkod bulunamadı: ${query}`;
+            scannerStatusEl.textContent = data.message || 'Barkod bulunamadı!';
+            showPosToast(errMsg, 'error');
+            return { ok: false, message: errMsg };
+        } catch {
+            if (!fromCamera) barcodeInput.value = '';
+            scannerStatusEl.textContent = 'Bağlantı hatası!';
+            showPosToast('Barkod sunucu sorgusunda bağlantı hatası.', 'error');
+            return { ok: false, message: 'Bağlantı hatası.' };
+        }
+    }
+
+    async function submitBarcode() {
+        const raw = barcodeInput.value.trim();
+        if (!raw) return;
+        await processScannedCode(raw, { openLookupOnMiss: true, fromCamera: false });
+        focusBarcodeInput();
+    }
+
+    function handleQuickButtonClick(btn) {
+        const prod = {
+            id: parseInt(btn.dataset.id, 10),
+            name: btn.dataset.name,
+            barcode: btn.dataset.barcode || '',
+            sell_price: parseFloat(btn.dataset.price),
+            vat_rate: parseFloat(btn.dataset.vat),
+            unit: btn.dataset.unit || 'Adet',
+            is_weighted: btn.dataset.weighted === 'true',
+            stock_quantity: parseFloat(btn.dataset.stock || '0'),
+        };
+
+        if (prod.is_weighted) {
+            openQtyModalForNew(prod);
+        } else {
+            addDirectProduct(prod);
+        }
+    }
+
+    function addDirectProduct(prod) {
+        addToCart(prod, 1.0);
+        playBeep(880, 0.08);
+        scannerStatusEl.textContent = `Eklendi: ${prod.name}`;
+        focusBarcodeInput();
+    }
+
+    function addToCart(product, quantity) {
+        let qty = Number(quantity) || 1;
+        if (activeMultiplier > 1.0) {
+            qty = Number((activeMultiplier * qty).toFixed(3));
+            activeMultiplier = 1.0;
+            updateMultiplierBadge();
+        }
+        const existingIndex = cart.findIndex(item => item.product_id === product.id);
+        if (existingIndex >= 0) {
+            cart[existingIndex].quantity = Number((cart[existingIndex].quantity + qty).toFixed(3));
+            selectedRowIndex = existingIndex;
+        } else {
+            cart.push({
+                product_id: product.id,
+                name: product.name,
+                barcode: product.barcode || '',
+                unit_price: parseFloat(product.sell_price),
+                catalog_price: parseFloat(product.sell_price),
+                vat_rate: parseFloat(product.vat_rate || 0),
+                unit: product.unit || 'Adet',
+                is_weighted: Boolean(product.is_weighted),
+                quantity: Number(qty.toFixed(3)),
+            });
+            selectedRowIndex = cart.length - 1;
+        }
+        renderCart();
+    }
+
+    function selectCartRow(idx) {
+        if (idx < 0 || idx >= cart.length) return;
+        selectedRowIndex = idx;
+        renderCart();
+    }
+
+    function changeQuantity(idx, delta) {
+        if (!cart[idx]) return;
+        const nextQty = Number((cart[idx].quantity + delta).toFixed(3));
+        if (nextQty <= 0) {
+            removeRow(idx);
+        } else {
+            cart[idx].quantity = nextQty;
+            selectedRowIndex = idx;
+            renderCart();
+        }
+        focusBarcodeInput();
+    }
+
+    function removeRow(idx) {
+        if (idx < 0 || idx >= cart.length) return;
+        cart.splice(idx, 1);
+        if (cart.length === 0) {
+            selectedRowIndex = -1;
+            cartGlobalDiscount = 0;
+        } else if (selectedRowIndex >= cart.length) {
+            selectedRowIndex = cart.length - 1;
+        }
+        renderCart();
+        focusBarcodeInput();
+    }
+
+    function removeSelectedRow() {
+        if (cart.length === 0) return;
+        const idx = (selectedRowIndex >= 0 && selectedRowIndex < cart.length) ? selectedRowIndex : (cart.length - 1);
+        removeRow(idx);
+    }
+
+    function clearCart() {
+        if (cart.length === 0) {
+            cartGlobalDiscount = 0;
+            renderCart();
+            return;
+        }
+        if (SUPERVISOR_CANCEL_REQUIRED && !IS_SUPERVISOR) {
+            openSupervisorModal(
+                'Fiş İptali (Sepeti Temizleme)',
+                `${cart.length} kalemlik sepet iptal edilmek istendi.`,
+                executeClearCart
+            );
+            return;
+        }
+        executeClearCart();
+    }
+
+    function executeClearCart() {
+        cart = [];
+        selectedRowIndex = -1;
+        cartGlobalDiscount = 0;
+        clearSelectedCustomer();
+        renderCart();
+        scannerStatusEl.textContent = 'Satış iptal edildi — Yeni fişe hazır.';
+        showPosToast('Fiş temizlendi.', 'info');
+        focusBarcodeInput();
+    }
+
+    /* ============================================================
+       SEPET HESAPLAMA VE TABLO RENDER
+       ============================================================ */
+    function getLineDiscountsTotal() {
+        return cart.reduce((acc, item) => {
+            const diff = Math.max(0, (item.catalog_price - item.unit_price) * item.quantity);
+            return acc + diff;
+        }, 0);
+    }
+
+    function getTotalDiscountAmount() {
+        const gross = cart.reduce((acc, item) => acc + (item.catalog_price * item.quantity), 0);
+        const totalDisc = getLineDiscountsTotal() + Math.max(0, cartGlobalDiscount);
+        return Math.min(gross, Number(totalDisc.toFixed(2)));
+    }
+
+    function getGrandTotal() {
+        const gross = cart.reduce((acc, item) => acc + (item.catalog_price * item.quantity), 0);
+        return Math.max(0, gross - getTotalDiscountAmount());
+    }
+
+    function formatQty(q, unit) {
+        const num = Number(q);
+        if (Math.abs(num - Math.round(num)) < 0.0005 && (!unit || unit.toLowerCase() !== 'kg')) {
+            return String(Math.round(num));
+        }
+        return num.toFixed(3).replace(/\.?0+$/, '');
+    }
+
+    function renderCart() {
+        const tbody = document.getElementById('cartTableBody');
+        if (!tbody) return;
+
+        if (cart.length === 0) {
+            tbody.innerHTML = `
+                <tr id="emptyCartRow">
+                    <td colspan="6" class="text-center py-5 text-slate-600 border-0">
+                        <i class="bi bi-upc-scan fs-1 d-block mb-2 text-slate-500" aria-hidden="true"></i>
+                        <div class="fw-bold text-slate-700 mb-1">Fiş henüz boş</div>
+                        <div class="small">Barkod okutun, ürün adına dokunun veya sağ katalogdan ürün seçin.</div>
+                        <div class="small mt-2 text-slate-600">Kısayollar: F2 Nakit · F3 Kart · F7 Parçalı · F8 İade · F9 Açık Hesap</div>
+                    </td>
+                </tr>`;
+            updateTotals();
+            return;
+        }
+
+        if (selectedRowIndex < 0 || selectedRowIndex >= cart.length) {
+            selectedRowIndex = cart.length - 1;
+        }
+
+        tbody.innerHTML = cart.map((item, idx) => {
+            const isSelected = idx === selectedRowIndex;
+            const hasLineDisc = item.unit_price < item.catalog_price - 0.005;
+            const lineTotal = item.unit_price * item.quantity;
+            const safeName = escapeHtml(item.name);
+            const safeBarcode = escapeHtml(item.barcode || '—');
+            const safeUnit = escapeHtml(item.unit || 'Adet');
+
+            return `
+                <tr class="pos-cart-row ${isSelected ? 'cart-row--active' : ''}"
+                    aria-selected="${isSelected ? 'true' : 'false'}"
+                    onclick="selectCartRow(${idx})">
+                    <td class="col-barcode pos-row-barcode">${safeBarcode}</td>
+                    <td>
+                        <div class="pos-row-name">${safeName}</div>
+                        <div class="pos-row-sub">${item.unit_price.toFixed(2)} ₺ / ${safeUnit}${hasLineDisc ? ' · İndirimli' : ''}</div>
+                    </td>
+                    <td class="col-unit-price text-end mono fw-bold">
+                        ${hasLineDisc ? `<span class="pos-row-delisted">${item.catalog_price.toFixed(2)}</span>` : ''}
+                        ${item.unit_price.toFixed(2)}
+                    </td>
+                    <td class="text-center">
+                        <div class="pos-qty-inline">
+                            <button type="button" class="pos-qty-step-btn" onclick="event.stopPropagation(); changeQuantity(${idx}, -1)" aria-label="Azalt">−</button>
+                            <button type="button" class="pos-qty-val-btn" onclick="event.stopPropagation(); openQtyModalForRow(${idx})" title="Miktarı Düzenle">
+                                ${formatQty(item.quantity, item.unit)}
+                            </button>
+                            <button type="button" class="pos-qty-step-btn" onclick="event.stopPropagation(); changeQuantity(${idx}, 1)" aria-label="Artır">+</button>
+                        </div>
+                    </td>
+                    <td class="text-end mono fw-extrabold">${lineTotal.toFixed(2)}</td>
+                    <td class="text-center">
+                        <button type="button" class="pos-row-del-btn" onclick="event.stopPropagation(); removeRow(${idx})" aria-label="${safeName} satırını sil" title="Satırı Sil">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        updateTotals();
+    }
+
+    function updateTotals() {
+        const total = getGrandTotal();
+        const discount = getTotalDiscountAmount();
+        const totalUnits = cart.reduce((acc, item) => acc + (item.is_weighted ? 1 : item.quantity), 0);
+
+        const grandEl = document.getElementById('grandTotalDisplay');
+        if (grandEl) grandEl.textContent = total.toFixed(2);
+
+        const countEl = document.getElementById('itemCountDisplay');
+        if (countEl) {
+            const qtyLabel = Math.abs(totalUnits - Math.round(totalUnits)) < 0.01 ? Math.round(totalUnits) : totalUnits.toFixed(2);
+            countEl.textContent = `Kalem: ${cart.length} (${qtyLabel} Adet)`;
+        }
+
+        const hintEl = document.getElementById('selectedRowHint');
+        if (hintEl) {
+            hintEl.textContent = (selectedRowIndex >= 0 && cart[selectedRowIndex])
+                ? `Seçili: ${cart[selectedRowIndex].name}`
+                : 'Satır seçmek için kaleme dokunun';
+        }
+
+        const discPill = document.getElementById('discountSummaryPill');
+        if (discPill) {
+            if (discount > 0.005) {
+                discPill.textContent = `İskonto: -${discount.toFixed(2)} TL ×`;
+                discPill.classList.remove('d-none');
+            } else {
+                discPill.classList.add('d-none');
+            }
+        }
+    }
+
+    /* ============================================================
+       MİKTAR MODAL İŞLEMLERİ
+       ============================================================ */
+    function openQtyModalForNew(prod) {
+        currentQtyMode = 'new';
+        currentQtyProduct = prod;
+        document.getElementById('qtyModalProductName').textContent = prod.name;
+        document.getElementById('qtyModalProductPrice').textContent = `${prod.sell_price.toFixed(2)} TL / ${prod.unit}`;
+        document.getElementById('qtyModalValueDisplay').value = prod.is_weighted ? '0.500' : '1';
+        openDialog('qtyModal');
+    }
+
+    function openQtyModalForRow(idx) {
+        if (!cart[idx]) return;
+        currentQtyMode = 'edit_row';
+        currentQtyRowIdx = idx;
+        selectedRowIndex = idx;
+        const item = cart[idx];
+        document.getElementById('qtyModalProductName').textContent = item.name;
+        document.getElementById('qtyModalProductPrice').textContent = `${item.unit_price.toFixed(2)} TL / ${item.unit}`;
+        document.getElementById('qtyModalValueDisplay').value = formatQty(item.quantity, item.unit);
+        openDialog('qtyModal');
+    }
+
+    function qtyModalType(ch) {
+        const inp = document.getElementById('qtyModalValueDisplay');
+        if (ch === '.' && inp.value.includes('.')) return;
+        inp.value += ch;
+    }
+
+    function qtyModalClear() {
+        document.getElementById('qtyModalValueDisplay').value = '';
+    }
+
+    function qtyModalSetQuick(val) {
+        document.getElementById('qtyModalValueDisplay').value = String(val);
+    }
+
+    async function readScaleIntoQtyModal() {
+        try {
+            const resp = await fetch(URL_SCALE_READ);
+            const data = await resp.json();
+            if (data.success && data.weight > 0) {
+                document.getElementById('qtyModalValueDisplay').value = Number(data.weight).toFixed(3);
+                showPosToast(`Terazi okundu: ${Number(data.weight).toFixed(3)} kg`, 'success');
+            } else {
+                showPosToast(data.message || 'Teraziden ağırlık okunamadı.', 'error');
+            }
+        } catch {
+            showPosToast('Terazi bağlantısına erişilemedi.', 'error');
+        }
+    }
+
+    function confirmModalQty() {
+        const val = parseFloat(document.getElementById('qtyModalValueDisplay').value);
+        if (isNaN(val) || val <= 0) {
+            showPosToast('Lütfen 0\'dan büyük geçerli bir miktar giriniz.', 'error');
+            return;
+        }
+        if (currentQtyMode === 'new' && currentQtyProduct) {
+            addToCart(currentQtyProduct, val);
+            playBeep(880, 0.08);
+        } else if (currentQtyMode === 'edit_row' && cart[currentQtyRowIdx]) {
+            cart[currentQtyRowIdx].quantity = Number(val.toFixed(3));
+            selectedRowIndex = currentQtyRowIdx;
+            renderCart();
+        }
+        closeDialog('qtyModal');
+    }
+
+    /* ============================================================
+       FİYAT DEĞİŞTİR / İSKONTO MODAL İŞLEMLERİ
+       ============================================================ */
+    function openPriceModal() {
+        if (cart.length === 0) {
+            showPosToast('Fiyat veya iskonto uygulamak için sepete ürün ekleyiniz.', 'error');
+            return;
+        }
+        const idx = (selectedRowIndex >= 0 && selectedRowIndex < cart.length) ? selectedRowIndex : (cart.length - 1);
+        selectedRowIndex = idx;
+        const item = cart[idx];
+        document.getElementById('priceRowProductName').textContent = `${item.name} (×${formatQty(item.quantity, item.unit)})`;
+        document.getElementById('priceRowCatalogPrice').textContent = `${item.catalog_price.toFixed(2)} TL`;
+        document.getElementById('priceRowNewInput').value = item.unit_price.toFixed(2);
+        document.getElementById('cartDiscountInput').value = cartGlobalDiscount > 0 ? cartGlobalDiscount.toFixed(2) : '';
+        openDialog('priceModal');
+    }
+
+    function applyPercentCartDiscount(pct) {
+        const afterLineTotal = cart.reduce((acc, i) => acc + (i.unit_price * i.quantity), 0);
+        const disc = Number((afterLineTotal * (pct / 100)).toFixed(2));
+        document.getElementById('cartDiscountInput').value = disc.toFixed(2);
+    }
+
+    function roundDownCartCents() {
+        const gross = cart.reduce((acc, i) => acc + (i.catalog_price * i.quantity), 0);
+        const lineDisc = getLineDiscountsTotal();
+        const subtotal = Math.max(0, gross - lineDisc);
+        const floorInt = Math.floor(subtotal);
+        const frac = Number((subtotal - floorInt).toFixed(2));
+        document.getElementById('cartDiscountInput').value = frac > 0 ? frac.toFixed(2) : '0.00';
+    }
+
+    function clearAllDiscounts() {
+        cart.forEach(item => { item.unit_price = item.catalog_price; });
+        cartGlobalDiscount = 0;
+        renderCart();
+        showPosToast('Tüm fiyat indirimleri ve iskontolar temizlendi.', 'info');
+    }
+
+    function confirmPriceOrDiscount() {
+        const idx = (selectedRowIndex >= 0 && selectedRowIndex < cart.length) ? selectedRowIndex : (cart.length - 1);
+        const item = cart[idx];
+        const newUnit = parseFloat(document.getElementById('priceRowNewInput').value);
+
+        if (!isNaN(newUnit)) {
+            if (newUnit > item.catalog_price + 0.001) {
+                showPosToast(`Kasa güvenliği gereği yalnızca liste fiyatı (${item.catalog_price.toFixed(2)} TL) veya altında indirimli fiyat girilebilir.`, 'error');
+                return;
+            }
+            if (newUnit < 0) {
+                showPosToast('Birim fiyat negatif olamaz.', 'error');
+                return;
+            }
+            item.unit_price = Number(newUnit.toFixed(2));
+        }
+
+        const globalDiscRaw = document.getElementById('cartDiscountInput').value.trim();
+        cartGlobalDiscount = globalDiscRaw ? Math.max(0, parseFloat(globalDiscRaw) || 0) : 0;
+
+        renderCart();
+        closeDialog('priceModal');
+        showPosToast('Fiyat / iskonto güncellendi.', 'success');
+    }
+
+    /* ============================================================
+       CARİ BUL & VERESİYE (AÇIK HESAP) İŞLEMLERİ
+       ============================================================ */
+    function openCustomerModal(pendingAction = null) {
+        pendingActionAfterCustomer = pendingAction;
+        const notice = document.getElementById('customerContextNotice');
+        notice.classList.toggle('d-none', pendingAction !== 'VERESIYE');
+        document.getElementById('customerSearchInput').value = '';
+        openDialog('customerModal');
+        fetchCustomers('');
+    }
+
+    async function fetchCustomers(q) {
+        const container = document.getElementById('customerListContainer');
+        container.innerHTML = '<div class="text-center py-3 text-slate-600 small">Müşteriler yükleniyor...</div>';
+        try {
+            const resp = await fetch(`${URL_CUSTOMER_SEARCH}?q=${encodeURIComponent(q || '')}`);
+            const data = await resp.json();
+            if (!resp.ok || !data.success) {
+                container.innerHTML = `<div class="alert alert-danger py-2 small">${escapeHtml(data.message || 'Cari listesi alınamadı.')}</div>`;
+                return;
+            }
+            if (!data.customers || data.customers.length === 0) {
+                container.innerHTML = '<div class="text-center py-4 text-slate-600">Eşleşen müşteri kaydı bulunamadı.</div>';
+                return;
+            }
+            window.__cachedCustomers = data.customers;
+            container.innerHTML = data.customers.map((c, idx) => {
+                const limitClass = c.is_over_limit ? 'text-danger' : 'text-success';
+                return `
+                    <button type="button"
+                            class="btn btn-light border text-start p-2 d-flex justify-content-between align-items-center"
+                            onclick="selectCustomerByIdx(${idx})">
+                        <div>
+                            <div class="fw-bold text-slate-900">${escapeHtml(c.full_name)} ${c.company_title ? `<small class="text-slate-600">(${escapeHtml(c.company_title)})</small>` : ''}</div>
+                            <div class="small text-slate-600">${escapeHtml(c.phone || 'Telefon yok')}${c.tax_number ? ' · VKN: ' + escapeHtml(c.tax_number) : ''}</div>
+                        </div>
+                        <div class="text-end mono small">
+                            <div class="fw-extrabold text-slate-900">Borç: ${c.balance.toFixed(2)} TL</div>
+                            <div class="fw-bold ${limitClass}">Kalan Limit: ${c.remaining_credit.toFixed(2)} TL</div>
+                        </div>
+                    </button>
+                `;
+            }).join('');
+        } catch {
+            container.innerHTML = '<div class="alert alert-danger py-2 small">Cari sunucusuna bağlanılamadı.</div>';
+        }
+    }
+
+    function selectCustomerByIdx(idx) {
+        const list = window.__cachedCustomers || [];
+        const cust = list[idx];
+        if (!cust) return;
+        selectedCustomer = cust;
+        renderActiveCustomerUI();
+        closeDialog('customerModal');
+
+        if (pendingActionAfterCustomer === 'VERESIYE') {
+            pendingActionAfterCustomer = null;
+            openCreditConfirmModal();
+        } else {
+            showPosToast(`Cari seçildi: ${cust.full_name}`, 'success');
+        }
+    }
+
+    function clearSelectedCustomer() {
+        selectedCustomer = null;
+        pendingActionAfterCustomer = null;
+        renderActiveCustomerUI();
+    }
+
+    function renderActiveCustomerUI() {
+        const badge = document.getElementById('activeCustomerBadge');
+        const label = document.getElementById('activeCustomerLabel');
+        const btnCredit = document.getElementById('btnCreditSale');
+        const btnHint = document.getElementById('creditBtnHint');
+
+        if (selectedCustomer) {
+            label.textContent = `Cari: ${selectedCustomer.full_name} (${selectedCustomer.balance.toFixed(2)} TL)`;
+            badge.classList.remove('d-none');
+            badge.classList.toggle('pos-mini-pill--cari-over', Boolean(selectedCustomer.is_over_limit));
+            btnCredit.classList.add('has-customer');
+            btnHint.textContent = selectedCustomer.full_name;
+        } else {
+            badge.classList.add('d-none');
+            badge.classList.remove('pos-mini-pill--cari-over');
+            btnCredit.classList.remove('has-customer');
+            btnHint.textContent = 'F9 · Veresiye';
+        }
+    }
+
+    function startCreditSale() {
+        if (cart.length === 0) {
+            showPosToast('Veresiye satış için önce sepete ürün ekleyiniz.', 'error');
+            return;
+        }
+        if (!selectedCustomer) {
+            openCustomerModal('VERESIYE');
+            return;
+        }
+        openCreditConfirmModal();
+    }
+
+    function openCreditConfirmModal() {
+        if (!selectedCustomer) return;
+        const saleAmt = getGrandTotal();
+        const afterBal = isReturnMode
+            ? Math.max(0, selectedCustomer.balance - saleAmt)
+            : (selectedCustomer.balance + saleAmt);
+
+        document.getElementById('creditCustName').textContent = selectedCustomer.full_name;
+        document.getElementById('creditCustBalance').textContent = `${selectedCustomer.balance.toFixed(2)} TL`;
+        document.getElementById('creditCustLimit').textContent = `${selectedCustomer.credit_limit.toFixed(2)} TL`;
+        document.getElementById('creditSaleAmount').textContent = `${saleAmt.toFixed(2)} TL`;
+        document.getElementById('creditAfterBalance').textContent = `${afterBal.toFixed(2)} TL`;
+
+        const warnEl = document.getElementById('creditLimitWarning');
+        if (!isReturnMode && afterBal > selectedCustomer.credit_limit) {
+            warnEl.textContent = `Uyarı: Bu satış ile müşteri veresiye limiti (${selectedCustomer.credit_limit.toFixed(2)} TL) aşılıyor!`;
+            warnEl.classList.remove('d-none');
+        } else {
+            warnEl.classList.add('d-none');
+        }
+        openDialog('creditConfirmModal');
+    }
+
+    function submitCreditSale() {
+        if (!selectedCustomer) return;
+        closeDialog('creditConfirmModal');
+        processSaleApi('VERESIYE', 0, 0);
+    }
+
+    /* ============================================================
+       STOK BUL MODAL İŞLEMLERİ
+       ============================================================ */
+    function openStockLookupModal(initialQuery = '') {
+        document.getElementById('stockLookupInput').value = initialQuery;
+        openDialog('stockLookupModal');
+        fetchStockLookup();
+    }
+
+    async function fetchStockLookup() {
+        const q = document.getElementById('stockLookupInput').value.trim();
+        const cat = document.getElementById('stockLookupCategory').value;
+        const tbody = document.getElementById('stockLookupTbody');
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3 small text-slate-600">Yükleniyor...</td></tr>';
+
+        try {
+            const resp = await fetch(`${URL_PRODUCT_SEARCH}?q=${encodeURIComponent(q)}&category=${encodeURIComponent(cat)}`);
+            const data = await resp.json();
+            if (!resp.ok || !data.success) {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-3">${escapeHtml(data.message || 'Stok verisi alınamadı')}</td></tr>`;
+                return;
+            }
+            if (!data.products || data.products.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-slate-600">Aranan kritere uygun ürün bulunamadı.</td></tr>';
+                return;
+            }
+            window.__stockLookupList = data.products;
+            tbody.innerHTML = data.products.map((p, idx) => {
+                const stockClass = p.stock_quantity <= 0 ? 'text-danger fw-extrabold' : (p.stock_quantity <= p.min_stock_level ? 'text-warning fw-bold' : 'text-success fw-bold');
+                return `
+                    <tr>
+                        <td class="mono small text-slate-600">${escapeHtml(p.barcode || '—')}</td>
+                        <td class="fw-bold text-slate-900">${escapeHtml(p.name)}</td>
+                        <td class="small text-slate-600">${escapeHtml(p.category_name)}</td>
+                        <td class="text-end mono ${stockClass}">${Number(p.stock_quantity).toFixed(p.is_weighted ? 3 : 0)} ${escapeHtml(p.unit)}</td>
+                        <td class="text-end mono fw-extrabold">${p.sell_price.toFixed(2)} TL</td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-primary fw-bold" onclick="addFromStockLookup(${idx})">
+                                <i class="bi bi-plus-lg"></i> Ekle
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        } catch {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-3">Bağlantı hatası.</td></tr>';
+        }
+    }
+
+    function addFromStockLookup(idx) {
+        const p = (window.__stockLookupList || [])[idx];
+        if (!p) return;
+        closeDialog('stockLookupModal');
+        if (p.is_weighted) {
+            openQtyModalForNew(p);
+        } else {
+            addDirectProduct(p);
+        }
+    }
+
+    /* ============================================================
+       ASKIYA ALMA (BEKLET) VE GERİ ÇAĞIRMA
+       ============================================================ */
+    function loadParkedFromStorage() {
+        try {
+            const raw = localStorage.getItem('himarket_parked_sales_v2');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) parkedSales = parsed;
+            }
+        } catch {
+            parkedSales = [];
+        }
+        updateParkedBadge();
+    }
+
+    function saveParkedToStorage() {
+        try {
+            localStorage.setItem('himarket_parked_sales_v2', JSON.stringify(parkedSales));
+        } catch {}
+        updateParkedBadge();
+    }
+
+    function updateParkedBadge() {
+        const el = document.getElementById('parkedCount');
+        if (el) el.textContent = String(parkedSales.length);
+    }
+
+    function parkSale() {
+        if (cart.length === 0) {
+            showPosToast('Bekletilecek ürün yok; sepet boş.', 'error');
+            return;
+        }
+        parkedSales.push({
+            id: Date.now(),
+            time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+            total: getGrandTotal(),
+            items: JSON.parse(JSON.stringify(cart)),
+            customer: selectedCustomer ? JSON.parse(JSON.stringify(selectedCustomer)) : null,
+            globalDiscount: cartGlobalDiscount,
+            isReturnMode: isReturnMode,
+        });
+        saveParkedToStorage();
+        cart = [];
+        selectedRowIndex = -1;
+        cartGlobalDiscount = 0;
+        clearSelectedCustomer();
+        renderCart();
+        scannerStatusEl.textContent = `Fiş askıya alındı (Toplam askı: ${parkedSales.length}).`;
+        showPosToast('Fiş beklemeye alındı.', 'success');
+        focusBarcodeInput();
+    }
+
+    function handleRestoreButton() {
+        if (parkedSales.length === 0) {
+            showPosToast('Askıda bekleyen fiş bulunmuyor.', 'info');
+            return;
+        }
+        if (parkedSales.length === 1 && cart.length === 0) {
+            restoreParkedSale(0);
+            return;
+        }
+        renderParkedModalList();
+        openDialog('parkedModal');
+    }
+
+    function renderParkedModalList() {
+        const container = document.getElementById('parkedListContainer');
+        if (!parkedSales.length) {
+            container.innerHTML = '<div class="text-center py-4 text-slate-600">Askıda fiş yok.</div>';
+            return;
+        }
+        container.innerHTML = parkedSales.map((p, idx) => `
+            <div class="bg-white border rounded-3 p-2 d-flex justify-content-between align-items-center gap-2">
+                <div>
+                    <div class="fw-bold text-slate-900">Fiş #${idx + 1} · ${p.time} (${p.items.length} kalem)</div>
+                    <div class="small text-slate-600">${p.customer ? 'Cari: ' + escapeHtml(p.customer.full_name) + ' · ' : ''}Tutar: <strong class="mono">${Number(p.total).toFixed(2)} TL</strong></div>
+                </div>
+                <div class="d-flex gap-1">
+                    <button type="button" class="btn btn-sm btn-primary fw-bold" onclick="restoreParkedSale(${idx}); closeDialog('parkedModal');">Geri Çağır</button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteParkedSale(${idx})" title="Askıdan Sil"><i class="bi bi-trash"></i></button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function restoreParkedSale(index) {
+        const idx = typeof index === 'number' ? index : (parkedSales.length - 1);
+        if (idx < 0 || idx >= parkedSales.length) return;
+        const target = parkedSales.splice(idx, 1)[0];
+        saveParkedToStorage();
+        cart = target.items || [];
+        cartGlobalDiscount = target.globalDiscount || 0;
+        selectedCustomer = target.customer || null;
+        selectedRowIndex = cart.length > 0 ? cart.length - 1 : -1;
+        renderActiveCustomerUI();
+        renderCart();
+        scannerStatusEl.textContent = 'Askıdaki fiş geri çağrıldı.';
+        showPosToast('Bekleyen fiş kasaya alındı.', 'success');
+        focusBarcodeInput();
+    }
+
+    function deleteParkedSale(idx) {
+        parkedSales.splice(idx, 1);
+        saveParkedToStorage();
+        renderParkedModalList();
+    }
+
+    /* ============================================================
+       İADE MODU & NAKİT / KART / PARÇALI ÖDEME İŞLEMLERİ
+       ============================================================ */
+    function toggleReturnMode() {
+        isReturnMode = !isReturnMode;
+        const box = document.getElementById('payableTotalBox');
+        const mainTitle = document.getElementById('totalCardMainTitle');
+        const returnBadge = document.getElementById('returnModeBanner');
+        const dockBtn = document.getElementById('btnToggleReturn');
+
+        box.classList.toggle('pos-payable-box--return', isReturnMode);
+        returnBadge.classList.toggle('d-none', !isReturnMode);
+        dockBtn.classList.toggle('pos-dock-btn--return-active', isReturnMode);
+        mainTitle.textContent = isReturnMode ? 'MÜŞTERİYE İADE EDİLECEK TUTAR' : 'ÖDENECEK TUTAR';
+        scannerStatusEl.textContent = isReturnMode
+            ? 'İADE MODU AKTİF — Müşteriye iade işlemi yapılıyor.'
+            : 'Normal Satış Moduna dönüldü.';
+        focusBarcodeInput();
+    }
+
+    function openCashModal() {
+        if (cart.length === 0) {
+            showPosToast('Ödeme alabilmek için önce sepete ürün eklemelisiniz!', 'error');
+            return;
+        }
+        const total = getGrandTotal();
+        const modalHead = document.getElementById('cashModalHead');
+        const modalTitle = document.getElementById('cashModalTitle');
+        const modalTotalLabel = document.getElementById('modalTotalLabel');
+        const modalCashLabel = document.getElementById('modalCashLabel');
+        const confirmBtn = document.getElementById('btnConfirmCashSale');
+        const changeBox = document.getElementById('changeContainer');
+
+        modalHead.classList.toggle('pos-dialog-head--return', isReturnMode);
+        if (isReturnMode) {
+            modalTitle.innerHTML = '<i class="bi bi-arrow-repeat"></i> MÜŞTERİYE NAKİT İADE ÖDEMESİ';
+            modalTotalLabel.textContent = 'MÜŞTERİYE ÖDENECEK İADE TUTARI';
+            modalCashLabel.textContent = 'KASADAN ÇIKACAK İADE TUTARI';
+            confirmBtn.innerHTML = '<i class="bi bi-printer-fill me-1"></i> İADEYİ ONAYLA & GİDER FİŞİ BAS (ENTER)';
+            confirmBtn.className = 'btn btn-danger btn-lg fw-extrabold px-4';
+            changeBox.style.visibility = 'hidden';
+        } else {
+            modalTitle.innerHTML = '<i class="bi bi-cash-coin"></i> NAKİT ÖDEME ALMA';
+            modalTotalLabel.textContent = 'ÖDENECEK NET TUTAR';
+            modalCashLabel.textContent = 'ALINAN NAKİT';
+            confirmBtn.innerHTML = '<i class="bi bi-printer-fill me-1"></i> SATIŞI BİTİR & FİŞ BAS (ENTER)';
+            confirmBtn.className = 'btn btn-success btn-lg fw-extrabold px-4';
+            changeBox.style.visibility = 'visible';
+        }
+
+        document.getElementById('modalTotalDisplay').textContent = `${total.toFixed(2)} TL`;
+        document.getElementById('cashPaidInput').value = total.toFixed(2);
+        updateCashChange();
+        openDialog('cashModal');
+    }
+
+    function setCashExact(amount) {
+        document.getElementById('cashPaidInput').value = Number(amount).toFixed(2);
+        updateCashChange();
+    }
+
+    function addCashPreset(amount) {
+        const cur = parseFloat(document.getElementById('cashPaidInput').value) || 0;
+        document.getElementById('cashPaidInput').value = (cur + amount).toFixed(2);
+        updateCashChange();
+    }
+
+    function cashExactTotal() {
+        document.getElementById('cashPaidInput').value = getGrandTotal().toFixed(2);
+        updateCashChange();
+    }
+
+    function cashClear() {
+        document.getElementById('cashPaidInput').value = '';
+        updateCashChange();
+    }
+
+    function updateCashChange() {
+        const total = getGrandTotal();
+        const paid = parseFloat(document.getElementById('cashPaidInput').value) || 0;
+        const change = Math.max(0, paid - total);
+        const disp = document.getElementById('modalChangeDisplay');
+        disp.textContent = `${change.toFixed(2)} TL`;
+        disp.className = `fs-2 fw-extrabold mono ${(paid >= total || paid === 0) ? 'text-success' : 'text-danger'}`;
+    }
+
+    function submitCashSale() {
+        const total = getGrandTotal();
+        const paidInput = parseFloat(document.getElementById('cashPaidInput').value);
+        const cashPaid = isNaN(paidInput) ? total : paidInput;
+        if (!isReturnMode && cashPaid > 0 && cashPaid < total - 0.005) {
+            showPosToast(`Alınan nakit (${cashPaid.toFixed(2)} TL), toplam tutardan (${total.toFixed(2)} TL) az olamaz!`, 'error');
+            return;
+        }
+        closeDialog('cashModal');
+        processSaleApi('NAKIT', cashPaid, 0);
+    }
+
+    function completeCardSale() {
+        if (cart.length === 0) {
+            showPosToast('Ödeme alabilmek için önce sepete ürün eklemelisiniz!', 'error');
+            return;
+        }
+        processSaleApi('KART', 0, getGrandTotal());
+    }
+
+    /* Kısmi / Parçalı Ödeme Modalı */
+    function openSplitModal() {
+        if (cart.length === 0) {
+            showPosToast('Parçalı ödeme için önce sepete ürün ekleyiniz.', 'error');
+            return;
+        }
+        const total = getGrandTotal();
+        const halfCash = Number((total / 2).toFixed(2));
+        const remCard = Number((total - halfCash).toFixed(2));
+        document.getElementById('splitTotalDisplay').textContent = `${total.toFixed(2)} TL`;
+        document.getElementById('splitCashInput').value = halfCash.toFixed(2);
+        document.getElementById('splitCardInput').value = remCard.toFixed(2);
+        updateSplitSummary();
+        openDialog('splitPayModal');
+    }
+
+    function onSplitCashChange() {
+        const total = getGrandTotal();
+        const cash = Math.max(0, parseFloat(document.getElementById('splitCashInput').value) || 0);
+        const rem = Math.max(0, total - cash);
+        document.getElementById('splitCardInput').value = rem.toFixed(2);
+        updateSplitSummary();
+    }
+
+    function setSplitPreset(ratio) {
+        const total = getGrandTotal();
+        const cash = Number((total * ratio).toFixed(2));
+        document.getElementById('splitCashInput').value = cash.toFixed(2);
+        document.getElementById('splitCardInput').value = (total - cash).toFixed(2);
+        updateSplitSummary();
+    }
+
+    function setSplitCashFixed(cashAmt) {
+        const total = getGrandTotal();
+        const cash = Math.min(total, Number(cashAmt));
+        document.getElementById('splitCashInput').value = cash.toFixed(2);
+        document.getElementById('splitCardInput').value = Math.max(0, total - cash).toFixed(2);
+        updateSplitSummary();
+    }
+
+    function updateSplitSummary() {
+        const total = getGrandTotal();
+        const cash = parseFloat(document.getElementById('splitCashInput').value) || 0;
+        const card = parseFloat(document.getElementById('splitCardInput').value) || 0;
+        const diff = (cash + card) - total;
+        const el = document.getElementById('splitBalanceDisplay');
+        if (diff >= -0.005) {
+            el.textContent = diff > 0.005 ? `Para Üstü: ${diff.toFixed(2)} TL` : 'Tamamlandı (0.00 TL)';
+            el.className = 'fs-5 fw-extrabold mono text-success';
+        } else {
+            el.textContent = `Eksik: ${Math.abs(diff).toFixed(2)} TL`;
+            el.className = 'fs-5 fw-extrabold mono text-danger';
+        }
+    }
+
+    function submitSplitSale() {
+        const total = getGrandTotal();
+        const cash = parseFloat(document.getElementById('splitCashInput').value) || 0;
+        const card = parseFloat(document.getElementById('splitCardInput').value) || 0;
+        if (!isReturnMode && (cash + card) < total - 0.005) {
+            showPosToast(`Nakit ve kart toplamı (${(cash + card).toFixed(2)} TL) fiş tutarından az olamaz.`, 'error');
+            return;
+        }
+        closeDialog('splitPayModal');
+        processSaleApi('PARCALI', cash, card);
+    }
+
+    /* ============================================================
+       API İLETİŞİMİ (SATIŞ KAYDI, ÇEKMECE, YETKİLİ PIN, HIZLI ÜRÜN)
+       ============================================================ */
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            for (const c of document.cookie.split(';')) {
+                const trimmed = c.trim();
+                if (trimmed.startsWith(name + '=')) {
+                    cookieValue = decodeURIComponent(trimmed.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue || '{{ csrf_token }}';
+    }
+
+    async function processSaleApi(paymentType, cashPaid, cardPaid) {
+        scannerStatusEl.textContent = 'Satış mali onaya gönderiliyor...';
+
+        const payload = {
+            items: cart.map(item => ({
+                product_id: item.product_id,
+                quantity: item.quantity,
+            })),
+            payment_type: paymentType,
+            cash_paid: Number(cashPaid) || 0,
+            card_paid: Number(cardPaid) || 0,
+            customer_id: selectedCustomer ? selectedCustomer.id : null,
+            discount_amount: getTotalDiscountAmount(),
+            is_return: isReturnMode,
+        };
+
+        try {
+            const resp = await fetch(URL_PROCESS_SALE, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+                body: JSON.stringify(payload),
+            });
+            const data = await resp.json();
+
+            if (resp.ok && data.success) {
+                playBeep(1120, 0.14);
+                lastReceiptNumber = data.receipt_number;
+
+                const badgeEl = document.getElementById('receiptNumberBadge');
+                if (badgeEl) {
+                    badgeEl.innerHTML = `<i class="bi bi-printer-fill"></i> ${escapeHtml(data.receipt_number)}`;
+                    badgeEl.onclick = () => previewReceipt(data.receipt_number);
+                }
+
+                const changeNote = data.change_given > 0 ? ` · Para Üstü: ${Number(data.change_given).toFixed(2)} TL` : '';
+                const drawerNote = (data.silent_print && data.silent_print.drawer_kicked) ? ' · Çekmece Açıldı' : '';
+                scannerStatusEl.textContent = `Fiş #${data.receipt_number} kaydedildi${changeNote}${drawerNote}`;
+                showPosToast(`Fiş #${data.receipt_number} başarıyla kesildi${changeNote}`, 'success');
+
+                cart = [];
+                selectedRowIndex = -1;
+                cartGlobalDiscount = 0;
+                clearSelectedCustomer();
+                if (isReturnMode) toggleReturnMode();
+                renderCart();
+            } else {
+                playBeep(240, 0.22);
+                scannerStatusEl.textContent = data.message || 'Satış işlemi tamamlanamadı!';
+                showPosToast(data.message || 'Satış işlenemedi!', 'error');
+            }
+        } catch {
+            showPosToast('Satış sunucusu ile bağlantı kurulamadı.', 'error');
+        }
+        focusBarcodeInput();
+    }
+
+    function previewReceipt(receiptNumber) {
+        const targetNo = receiptNumber || lastReceiptNumber;
+        if (!targetNo) {
+            showPosToast('Henüz yazdırılacak bir dekont / son fiş bulunmuyor.', 'info');
+            return;
+        }
+        const printUrl = `/receipt/${encodeURIComponent(targetNo)}/`;
+        document.getElementById('receiptModalFrame').src = printUrl;
+        openDialog('receiptModal');
+    }
+
+    function printReceiptIframe() {
+        const frame = document.getElementById('receiptModalFrame');
+        if (frame && frame.contentWindow) {
+            frame.contentWindow.focus();
+            frame.contentWindow.print();
+        }
+    }
+
+    /* Araçlar & Donanım Modalı İşlemleri */
+    function openPosToolsModal() {
+        openDialog('posToolsModal');
+    }
+
+    async function triggerOpenCashDrawer() {
+        try {
+            const resp = await fetch(URL_OPEN_DRAWER, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCookie('csrftoken') },
+            });
+            const data = await resp.json();
+            showPosToast(data.message || 'Para çekmecesi sinyali gönderildi.', resp.ok ? 'success' : 'error');
+        } catch {
+            showPosToast('Para çekmecesi komutu gönderilemedi.', 'error');
+        }
+    }
+
+    function openQuickCreateModal() {
+        document.getElementById('qcBarcode').value = barcodeInput.value.trim();
+        document.getElementById('qcName').value = '';
+        document.getElementById('qcPrice').value = '';
+        document.getElementById('qcStock').value = '50';
+        openDialog('quickCreateModal');
+    }
+
+    async function submitQuickCreateProduct() {
+        const payload = {
+            barcode: document.getElementById('qcBarcode').value.trim(),
+            name: document.getElementById('qcName').value.trim(),
+            sell_price: document.getElementById('qcPrice').value || '0',
+            stock_quantity: document.getElementById('qcStock').value || '1',
+        };
+        if (!payload.barcode || !payload.name) {
+            showPosToast('Barkod ve ürün adı zorunludur.', 'error');
+            return;
+        }
+        try {
+            const resp = await fetch(URL_QUICK_CREATE, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+                body: JSON.stringify(payload),
+            });
+            const data = await resp.json();
+            if (resp.ok && data.success) {
+                closeDialog('quickCreateModal');
+                addToCart(data.product, 1.0);
+                showPosToast(`'${data.product.name}' tanımlandı ve sepete eklendi.`, 'success');
+            } else {
+                showPosToast(data.message || 'Ürün tanımlanamadı.', 'error');
+            }
+        } catch {
+            showPosToast('Ürün tanımlama bağlantısı başarısız.', 'error');
+        }
+    }
+
+    function openSupervisorModal(actionLabel, details, onVerifiedCallback) {
+        supervisorCallback = onVerifiedCallback;
+        document.getElementById('supervisorActionNotice').textContent = `${actionLabel}: ${details}`;
+        document.getElementById('supervisorPinInput').value = '';
+        const errBox = document.getElementById('supervisorErrorBox');
+        errBox.classList.add('d-none');
+        errBox.textContent = '';
+        openDialog('supervisorPinModal');
+    }
+
+    async function confirmSupervisorPin() {
+        const pin = document.getElementById('supervisorPinInput').value.trim();
+        const errBox = document.getElementById('supervisorErrorBox');
+        if (!pin) {
+            errBox.textContent = 'Lütfen yönetici PIN kodunu giriniz.';
+            errBox.classList.remove('d-none');
+            return;
+        }
+        try {
+            const resp = await fetch(URL_VERIFY_SUPERVISOR, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+                body: JSON.stringify({
+                    pin,
+                    action: 'Satış İptali',
+                    details: `Sepet (${cart.length} kalem)`,
+                    register_code: REGISTER_CODE,
+                }),
+            });
+            const data = await resp.json();
+            if (resp.ok && data.success) {
+                closeDialog('supervisorPinModal');
+                if (typeof supervisorCallback === 'function') {
+                    const cb = supervisorCallback;
+                    supervisorCallback = null;
+                    cb();
+                }
+            } else {
+                errBox.textContent = data.message || 'Geçersiz yönetici PIN kodu!';
+                errBox.classList.remove('d-none');
+            }
+        } catch {
+            errBox.textContent = 'Yetkili doğrulama sunucusuna ulaşılamadı.';
+            errBox.classList.remove('d-none');
+        }
+    }
+
+    function toggleSoundEffects() {
+        soundEnabled = !soundEnabled;
+        const btn = document.getElementById('btnSoundToggle');
+        if (btn) {
+            btn.innerHTML = soundEnabled
+                ? '<i class="bi bi-volume-up-fill"></i> Barkod Sesi: Açık'
+                : '<i class="bi bi-volume-mute-fill"></i> Barkod Sesi: Kapalı';
+        }
+    }
+
+    /* ============================================================
+       KAMERA İLE CANLI BARKOD / QR OKUTMA
+       ============================================================ */
+    let html5QrScanner = null;
+    let isCameraRunning = false;
+    let lastCameraDecoded = '';
+    let lastCameraScanAt = 0;
+
+    function setCameraStatus(message, variant = 'info') {
+        const box = document.getElementById('cameraScanStatus');
+        if (!box) return;
+        box.className = 'pos-camera-status';
+        if (variant === 'success') box.classList.add('pos-camera-status--success');
+        else if (variant === 'warn') box.classList.add('pos-camera-status--warn');
+        box.textContent = message;
+    }
+
+    function getSupportedBarcodeFormats() {
+        if (typeof Html5QrcodeSupportedFormats === 'undefined') return undefined;
+        const wanted = [
+            'EAN_13',
+            'EAN_8',
+            'UPC_A',
+            'UPC_E',
+            'CODE_128',
+            'CODE_39',
+            'ITF',
+            'QR_CODE',
+        ];
+        const formats = wanted
+            .map(name => Html5QrcodeSupportedFormats[name])
+            .filter(v => v !== undefined);
+        return formats.length > 0 ? formats : undefined;
+    }
+
+    async function stopCameraScanner() {
+        const instance = html5QrScanner;
+        const wasRunning = isCameraRunning;
+        html5QrScanner = null;
+        isCameraRunning = false;
+        if (!instance) return;
+        try {
+            if (wasRunning && typeof instance.stop === 'function') {
+                await instance.stop();
+            }
+        } catch {}
+        try {
+            if (typeof instance.clear === 'function') {
+                instance.clear();
+            }
+        } catch {}
+    }
+
+    async function startCameraScanner(deviceOrConstraint) {
+        const dlg = document.getElementById('cameraModal');
+        const readerEl = document.getElementById('cameraReaderRegion');
+        if (!dlg || !dlg.open || !readerEl) return;
+
+        await stopCameraScanner();
+        if (!dlg.open) return;
+
+        readerEl.innerHTML = '';
+        const formatsToSupport = getSupportedBarcodeFormats();
+        const config = { verbose: false };
+        if (formatsToSupport) config.formatsToSupport = formatsToSupport;
+
+        try {
+            html5QrScanner = new Html5Qrcode('cameraReaderRegion', config);
+            await html5QrScanner.start(
+                deviceOrConstraint || { facingMode: 'environment' },
+                {
+                    fps: 12,
+                    qrbox: { width: 250, height: 130 },
+                    useBarCodeDetectorIfSupported: true,
+                },
+                onCameraScanSuccess,
+                () => {}
+            );
+            isCameraRunning = true;
+            setCameraStatus('Canlı tarama aktif — barkodu çerçeveye yaklaştırın.', 'info');
+        } catch {
+            html5QrScanner = null;
+            isCameraRunning = false;
+            readerEl.innerHTML = '<span class="small text-center px-3">Kamera başlatılamadı veya erişim izni verilmedi.<br>USB okuyucu ya da aşağıdaki manuel barkod alanını kullanabilirsiniz.</span>';
+            setCameraStatus('Kamera başlatılamadı veya izin verilmedi. Aşağıdan manuel barkod girebilirsiniz.', 'warn');
+        }
+    }
+
+    async function openCameraModal() {
+        const readerEl = document.getElementById('cameraReaderRegion');
+        const deviceSel = document.getElementById('cameraDeviceSelect');
+        const manualInput = document.getElementById('camManualBarcodeInput');
+
+        lastCameraDecoded = '';
+        lastCameraScanAt = 0;
+        if (manualInput) manualInput.value = '';
+        if (readerEl) readerEl.innerHTML = '<span class="small fw-semibold">Kamera hazırlanıyor...</span>';
+        setCameraStatus('Kamera erişimi kontrol ediliyor...', 'info');
+        openDialog('cameraModal');
+
+        if (typeof Html5Qrcode !== 'function') {
+            if (readerEl) readerEl.innerHTML = '<span class="small text-center px-3">Tarayıcı kütüphanesi yüklenemedi. Aşağıdan manuel barkod girebilirsiniz.</span>';
+            setCameraStatus('Kamera modülü yüklenemedi. Manuel giriş kullanabilirsiniz.', 'warn');
+            return;
+        }
+
+        try {
+            const devices = await Html5Qrcode.getCameras();
+            const dlg = document.getElementById('cameraModal');
+            if (!dlg || !dlg.open) return;
+
+            if (!Array.isArray(devices) || devices.length === 0) {
+                if (deviceSel) deviceSel.innerHTML = '<option value="">Kamera bulunamadı</option>';
+                if (readerEl) readerEl.innerHTML = '<span class="small text-center px-3">Cihazda aktif kamera algılanamadı.<br>USB okuyucu veya manuel barkod girişi kullanabilirsiniz.</span>';
+                setCameraStatus('Kamera bulunamadı. Aşağıdan manuel barkod girebilirsiniz.', 'warn');
+                return;
+            }
+
+            if (deviceSel) {
+                deviceSel.innerHTML = devices.map((d, i) => (
+                    `<option value="${escapeHtml(d.id)}">${escapeHtml(d.label || ('Kamera ' + (i + 1)))}</option>`
+                )).join('');
+                const preferred = devices.find(d => /back|rear|environment|arka/i.test(d.label || '')) || devices[0];
+                deviceSel.value = preferred.id;
+                await startCameraScanner(preferred.id);
+            } else {
+                await startCameraScanner(devices[0].id);
+            }
+        } catch {
+            if (deviceSel) deviceSel.innerHTML = '<option value="">Kamera erişimi yok</option>';
+            if (readerEl) readerEl.innerHTML = '<span class="small text-center px-3">Kamera algılanamadı veya izin verilmedi.<br>USB okuyucu ya da aşağıdaki manuel barkod alanını kullanabilirsiniz.</span>';
+            setCameraStatus('Kamera bulunamadı veya tarayıcı izni reddedildi. Manuel giriş kullanabilirsiniz.', 'warn');
+        }
+    }
+
+    async function switchCameraDevice() {
+        const dlg = document.getElementById('cameraModal');
+        const deviceSel = document.getElementById('cameraDeviceSelect');
+        if (!dlg || !dlg.open || !deviceSel || !deviceSel.value) return;
+        await startCameraScanner(deviceSel.value);
+    }
+
+    async function handleDecodedCameraCode(code) {
+        const trimmed = String(code || '').trim();
+        if (!trimmed) return;
+
+        const result = await processScannedCode(trimmed, { openLookupOnMiss: false, fromCamera: true });
+        if (result.ok) {
+            setCameraStatus(`Eklendi: ${result.product.name} (${formatQty(result.quantity, result.product.unit)})`, 'success');
+            const continuous = document.getElementById('cameraContinuousToggle');
+            if (continuous && !continuous.checked) {
+                closeDialog('cameraModal');
+            }
+        } else {
+            setCameraStatus(result.message || `Barkod bulunamadı: ${trimmed}`, 'warn');
+        }
+    }
+
+    async function onCameraScanSuccess(decodedText) {
+        const code = String(decodedText || '').trim();
+        if (!code) return;
+        const now = Date.now();
+        if (code === lastCameraDecoded && (now - lastCameraScanAt) < 1500) {
+            return;
+        }
+        lastCameraDecoded = code;
+        lastCameraScanAt = now;
+        await handleDecodedCameraCode(code);
+    }
+
+    async function submitManualCameraBarcode() {
+        const input = document.getElementById('camManualBarcodeInput');
+        if (!input) return;
+        const code = input.value.trim();
+        if (!code) return;
+        input.value = '';
+        await handleDecodedCameraCode(code);
+    }
+
+    function escapeHtml(str) {
+        return String(str ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    let __audioCtx = null;
+    function playBeep(freq, duration) {
+        if (!soundEnabled) return;
+        try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+            if (!__audioCtx) __audioCtx = new AudioCtx();
+            if (__audioCtx.state === 'suspended') __audioCtx.resume();
+            const osc = __audioCtx.createOscillator();
+            const gain = __audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, __audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.08, __audioCtx.currentTime);
+            osc.connect(gain);
+            gain.connect(__audioCtx.destination);
+            osc.start();
+            osc.stop(__audioCtx.currentTime + duration);
+        } catch {}
+    }
+</script>
+{% endblock %}

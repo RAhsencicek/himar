@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Tahsilat Makbuzu #{{ tx.document_no|default:tx.id }}</title>
+    <style>
+        @page {
+            size: 80mm auto;
+            margin: 0;
+        }
+        body {
+            width: 78mm;
+            margin: 0 auto;
+            padding: 4mm 3mm;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11.5px;
+            line-height: 1.25;
+            color: #000000;
+            background-color: #ffffff;
+        }
+        .text-center { text-align: center; }
+        .text-end { text-align: right; }
+        .text-start { text-align: left; }
+        .fw-bold { font-weight: bold; }
+        .dashed-line {
+            border-top: 1px dashed #000;
+            margin: 5px 0;
+        }
+        .double-line {
+            border-top: 2px solid #000;
+            margin: 5px 0;
+        }
+        .item-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .item-table td {
+            padding: 2.5px 0;
+            vertical-align: top;
+        }
+        .receipt-title {
+            font-size: 14px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+        }
+        .doc-badge {
+            display: inline-block;
+            font-size: 12px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border: 1px solid #000;
+            margin: 4px 0;
+        }
+        @media print {
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- YAZDIRMA BUTONU (NO-PRINT) -->
+    <div class="no-print" style="margin-bottom: 12px; text-align: center; background: #f1f5f9; padding: 6px; border-radius: 4px;">
+        <button onclick="window.print()" style="padding: 6px 14px; font-weight: bold; cursor: pointer; background: #0284c7; color: white; border: none; border-radius: 3px;">
+            🖨️ Makbuzu Yazdır (Ctrl+P)
+        </button>
+        <button onclick="window.close()" style="padding: 6px 10px; cursor: pointer; margin-left: 6px;">
+            Kapat
+        </button>
+    </div>
+
+    <!-- 1. İŞLETME BİLGİLERİ -->
+    <div class="text-center">
+        <div class="receipt-title">{{ company.brand_name }}</div>
+        <div style="font-size: 10.5px; font-weight: bold; margin: 2px 0;">{{ company.company_title }}</div>
+        <div style="font-size: 10px;">{{ company.address }}</div>
+        <div style="font-size: 10px;">VKN: <strong>{{ company.tax_number }}</strong> | {{ company.tax_office }}</div>
+        {% if company.phone %}<div style="font-size: 9.5px;">Tel: {{ company.phone }}</div>{% endif %}
+        
+        <div class="doc-badge">CARİ BORÇ TAHSİLAT MAKBUZU</div>
+    </div>
+
+    <div class="dashed-line"></div>
+
+    <!-- 2. MAKBUZ DETAYLARI -->
+    <table class="item-table">
+        <tr>
+            <td style="width: 35%;">Makbuz No:</td>
+            <td class="text-end fw-bold font-monospace">{{ tx.document_no|default:tx.id }}</td>
+        </tr>
+        <tr>
+            <td>Tarih/Saat:</td>
+            <td class="text-end">{{ tx.created_at|date:"d.m.Y H:i" }}</td>
+        </tr>
+        <tr>
+            <td>Kasa / Terminal:</td>
+            <td class="text-end">{{ tx.shift.cash_register.name|default:"KASA-01" }}</td>
+        </tr>
+        <tr>
+            <td>Tahsil Eden:</td>
+            <td class="text-end">{{ tx.user.get_full_name|default:tx.user.username|default:"Kasa Personeli" }}</td>
+        </tr>
+    </table>
+
+    <div class="dashed-line"></div>
+
+    <!-- 3. MÜŞTERİ BİLGİLERİ -->
+    <table class="item-table">
+        <tr>
+            <td style="width: 35%;">Müşteri:</td>
+            <td class="text-end fw-bold">{{ customer.full_name }}</td>
+        </tr>
+        {% if customer.phone %}
+        <tr>
+            <td>Telefon:</td>
+            <td class="text-end">{{ customer.phone }}</td>
+        </tr>
+        {% endif %}
+        {% if customer.tax_number %}
+        <tr>
+            <td>TCKN / VKN:</td>
+            <td class="text-end font-monospace">{{ customer.tax_number }}</td>
+        </tr>
+        {% endif %}
+    </table>
+
+    <div class="double-line"></div>
+
+    <!-- 4. TAHSİLAT TUTARLARI -->
+    <table class="item-table">
+        <tr>
+            <td>Tahsilat Şekli:</td>
+            <td class="text-end fw-bold">
+                {% if tx.transaction_type == 'TAHSILAT_NAKIT' %}NAKİT TAHSİLAT{% else %}KREDİ KARTI TAHSİLAT{% endif %}
+            </td>
+        </tr>
+        <tr>
+            <td>Önceki Borç:</td>
+            <td class="text-end font-monospace">{{ prev_balance }} TL</td>
+        </tr>
+        <tr class="fw-bold" style="font-size: 13px;">
+            <td>TAHSİL EDİLEN:</td>
+            <td class="text-end font-monospace" style="color: #059669;">-{{ tx.amount }} TL</td>
+        </tr>
+        <tr class="fw-bold" style="font-size: 13px;">
+            <td>GÜNCEL KALAN BORÇ:</td>
+            <td class="text-end font-monospace" style="color: #dc2626;">{{ tx.balance_after }} TL</td>
+        </tr>
+    </table>
+
+    {% if tx.description %}
+    <div class="dashed-line"></div>
+    <div style="font-size: 10px;">
+        <strong>Açıklama:</strong> {{ tx.description }}
+    </div>
+    {% endif %}
+
+    <div class="dashed-line"></div>
+
+    <!-- 5. İMZA ALANLARI -->
+    <div style="margin-top: 15px; margin-bottom: 25px;">
+        <table class="item-table" style="font-size: 10px;">
+            <tr>
+                <td style="width: 50%; text-align: center;">
+                    <strong>Teslim Eden (Müşteri)</strong><br><br><br>
+                    ...................
+                </td>
+                <td style="width: 50%; text-align: center;">
+                    <strong>Tahsil Eden (Kasiyer)</strong><br><br><br>
+                    ...................
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="double-line"></div>
+    <div class="text-center" style="font-size: 9.5px; margin-top: 4px;">
+        Ödemeniz cari hesabınıza işlenmiştir.<br>
+        Bizi tercih ettiğiniz için teşekkür ederiz.
+    </div>
+
+</body>
+</html>
+

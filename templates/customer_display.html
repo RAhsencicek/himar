@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ company.brand_name }} - Müşteri Fiyat Ekranı</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231e3a5f'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-weight='900' font-size='18' fill='%23ffffff'%3EH%3C/text%3E%3C/svg%3E">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        :root {
+            --primary-blue: #0284c7;
+            --primary-dark: #0f172a;
+            --accent-emerald: #10b981;
+            --accent-amber: #f59e0b;
+        }
+        body {
+            background-color: #0b1329;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            height: 100dvh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        .header-bar {
+            background: #0f172a;
+            border-bottom: 2px solid #1e293b;
+            padding: 12px 24px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+        .brand-title {
+            font-size: clamp(1.15rem, 0.9rem + 1vw, 1.625rem);
+            font-weight: 900;
+            letter-spacing: 1px;
+            color: #38bdf8;
+        }
+        .clock-display {
+            font-family: monospace;
+            font-size: clamp(1rem, 0.85rem + 0.5vw, 1.25rem);
+            font-weight: 700;
+            color: #cbd5e1;
+        }
+        .display-container {
+            flex: 1;
+            display: flex;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .promo-side,
+        .cart-side {
+            min-inline-size: 0;
+        }
+        /* Sol Taraf: Kampanya ve Karşılama */
+        .promo-side {
+            flex: 1;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+            border-right: 2px solid #334155;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 16px;
+        }
+        .promo-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+        /* Sağ Taraf: Canlı Fiş ve Toplam */
+        .cart-side {
+            flex: 1.2;
+            background: #020617;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 24px;
+        }
+        .cart-table-wrap {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: auto;
+            margin-bottom: 16px;
+        }
+        .cart-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 6px;
+        }
+        .cart-table th {
+            color: #94a3b8;
+            font-size: 13px;
+            text-transform: uppercase;
+            font-weight: 700;
+            padding: 8px 12px;
+            border-bottom: 2px solid #1e293b;
+        }
+        .cart-row {
+            background: #0f172a;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+        .cart-row td {
+            padding: 12px 14px;
+            font-size: 16px;
+        }
+        .cart-row.new-item {
+            animation: highlightRow 0.6s ease-out;
+            background: #1e293b;
+        }
+        @keyframes highlightRow {
+            0% { background: #0369a1; }
+            100% { background: #0f172a; }
+        }
+        /* Büyük Toplam Kutusu */
+        .total-box {
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            border: 2px solid #38bdf8;
+            border-radius: 16px;
+            padding: 20px 24px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+        }
+        .total-number {
+            font-family: monospace;
+            font-size: clamp(1.9rem, 1.15rem + 3vw, 3.25rem);
+            font-weight: 900;
+            color: #38bdf8;
+            line-height: 1;
+        }
+        /* Ödeme Tamamlandı Paneli */
+        .success-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.95);
+            z-index: 1000;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 24px;
+        }
+        .success-summary-card {
+            width: min(100%, 420px);
+        }
+        @media (max-width: 991.98px) {
+            body {
+                height: auto;
+                min-height: 100dvh;
+                overflow-x: clip;
+                overflow-y: auto;
+            }
+            .header-bar {
+                padding: 10px 16px;
+            }
+            .display-container {
+                flex-direction: column;
+                height: auto;
+                overflow: visible;
+            }
+            .promo-side {
+                border-right: 0;
+                border-bottom: 2px solid #334155;
+                padding: 16px;
+            }
+            .promo-card {
+                padding: 14px 16px;
+                min-height: auto !important;
+            }
+            .cart-side {
+                padding: 16px;
+            }
+            .cart-table th,
+            .cart-row td {
+                padding: 8px 6px;
+                font-size: 13px;
+                width: auto !important;
+            }
+            .total-box {
+                padding: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ÜST BAR -->
+    <div class="header-bar">
+        <div class="d-flex align-items-center gap-3">
+            <span class="brand-title"><i class="bi bi-cart4 text-primary me-2"></i>{{ company.brand_name }}</span>
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2.5 py-1 fw-bold fs-7">{{ register.name }}</span>
+        </div>
+        <div class="d-flex align-items-center gap-3">
+            <span class="badge bg-emerald-500 bg-opacity-25 text-emerald-400 border border-emerald-500 border-opacity-50 px-3 py-1.5 fw-bold" id="liveBadge">
+                <i class="bi bi-broadcast me-1"></i> CANLI BAĞLANTI AKTİF
+            </span>
+            <div class="clock-display" id="clockDisplay">12:00:00</div>
+        </div>
+    </div>
+
+    <!-- ANA GÖVDE -->
+    <div class="display-container">
+        <!-- SOL: KAMPANYA VE VİTRİN -->
+        <div class="promo-side">
+            <div class="promo-card">
+                <h3 class="fw-bold mb-2 text-white">{{ company.brand_name }}</h3>
+                <p class="text-slate-400 mb-0 fs-6">{{ company.company_title }}</p>
+                <small class="text-slate-500 d-block mt-1">VKN: {{ company.tax_number }} | {{ company.tax_office }}</small>
+            </div>
+
+            <!-- DÖNEN KAMPANYA SLAYTI -->
+            <div class="promo-card my-auto" style="min-height: 200px;">
+                <i class="bi bi-stars text-warning fs-1 d-block mb-3"></i>
+                <h4 class="fw-extrabold text-amber-400 mb-2" id="slideTitle">GÜNLÜK TAZE REYONLAR</h4>
+                <p class="text-slate-300 fs-5 mb-0" id="slideText">Meyve, sebze ve unlu mamullerimiz her sabah taze olarak reyonlarımıza gelmektedir.</p>
+            </div>
+
+            <div class="text-center text-slate-500 fs-7">
+                {{ company.receipt_footer_note|linebreaksbr }}
+            </div>
+        </div>
+
+        <!-- SAĞ: CANLI FİŞ VE TOPLAM -->
+        <div class="cart-side">
+            <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom border-slate-800">
+                <h5 class="fw-bold mb-0 text-white"><i class="bi bi-receipt me-2 text-primary"></i>ALIŞVERİŞ SEPETİNİZ</h5>
+                <span class="badge bg-slate-800 text-slate-300 fs-7" id="itemCountDisplay">0 Kalem</span>
+            </div>
+
+            <!-- FİŞ TABLOSU -->
+            <div class="cart-table-wrap">
+                <table class="cart-table">
+                    <thead>
+                        <tr>
+                            <th>Ürün Adı</th>
+                            <th class="text-center" style="width: 120px;">Miktar</th>
+                            <th class="text-end" style="width: 120px;">Fiyat</th>
+                            <th class="text-end" style="width: 140px;">Tutar</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cartTableBody">
+                        <tr id="emptyRow">
+                            <td colspan="4" class="text-center py-5 text-slate-500">
+                                <i class="bi bi-upc-scan fs-1 d-block mb-2 text-slate-600"></i>
+                                <span class="fs-5 fw-bold">Henüz ürün okutulmadı</span><br>
+                                <small>Kasiyer ürün okuttukça burada anlık görüntülenecektir.</small>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- BÜYÜK TOPLAM KUTUSU -->
+            <div class="total-box">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="text-slate-400 fw-bold fs-7">ARA TOPLAM:</span>
+                    <span class="text-slate-300 font-monospace fs-6" id="subtotalDisplay">0.00 TL</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span class="text-slate-400 fw-bold fs-7">KDV TOPLAMI:</span>
+                    <span class="text-slate-300 font-monospace fs-6" id="vatDisplay">0.00 TL</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-end pt-2 border-top border-slate-700">
+                    <div>
+                        <small class="text-slate-400 fw-bold text-uppercase d-block">Ödenecek Tutar</small>
+                        <span class="fs-6 text-emerald-400 fw-bold" id="paymentStatusText">Satış Devam Ediyor</span>
+                    </div>
+                    <div class="total-number" id="grandTotalDisplay">₺0.00</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ÖDEME TAMAMLANDI EKRANI (TAM EKRAN TEŞEKKÜR) -->
+    <div class="success-overlay" id="successOverlay">
+        <i class="bi bi-check-circle-fill text-emerald-400" style="font-size: 80px;"></i>
+        <h1 class="display-4 fw-extrabold text-white mt-3 mb-2">ÖDEMENİZ ALINDI</h1>
+        <p class="fs-4 text-emerald-400 mb-4" id="successPaymentLabel">Teşekkür eder, iyi günler dileriz!</p>
+        
+        <div class="card bg-slate-900 border-2 border-slate-700 p-4 rounded-4 shadow-lg success-summary-card">
+            <div class="d-flex justify-content-between fs-5 mb-2">
+                <span class="text-slate-400">Fiş Numarası:</span>
+                <strong class="text-white font-monospace" id="successReceiptNo">-</strong>
+            </div>
+            <div class="d-flex justify-content-between fs-5 mb-2">
+                <span class="text-slate-400">Toplam Tutar:</span>
+                <strong class="text-primary font-monospace" id="successTotalAmount">0.00 TL</strong>
+            </div>
+            <div class="d-flex justify-content-between fs-4 border-top border-slate-700 pt-2 text-emerald-400">
+                <span class="fw-bold">Para Üstü:</span>
+                <strong class="font-monospace fw-extrabold" id="successChangeAmount">0.00 TL</strong>
+            </div>
+        </div>
+        <small class="text-slate-500 mt-4">Ekran birkaç saniye içinde ana vitrine dönecektir...</small>
+    </div>
+
+    <script>
+        // Saat Göstergesi
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('clockDisplay').innerText = now.toLocaleTimeString();
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Kampanya Slaytları
+        const slides = [
+            { title: "GÜNLÜK TAZE REYONLAR", text: "Meyve, sebze ve unlu mamullerimiz her sabah taze olarak reyonlarımıza gelmektedir." },
+            { title: "KART VE NAKİT AVANTAJI", text: "Tüm kredi kartları, banka kartları ve temassız ödemeler geçerlidir." },
+            { title: "MÜŞTERİ MEMNUNİYETİ", text: "Güler yüzlü hizmet ve uygun fiyat garantisiyle hizmetinizdeyiz." }
+        ];
+        let currentSlide = 0;
+        setInterval(() => {
+            currentSlide = (currentSlide + 1) % slides.length;
+            document.getElementById('slideTitle').innerText = slides[currentSlide].title;
+            document.getElementById('slideText').innerText = slides[currentSlide].text;
+        }, 8000);
+
+        // Canlı Kasa Senkronizasyonu (BroadcastChannel + LocalStorage Event Fallback)
+        let posChannel = null;
+        try {
+            posChannel = new BroadcastChannel('himarket_pos_channel');
+            posChannel.onmessage = function(e) {
+                handlePosMessage(e.data);
+            };
+        } catch(err) {}
+
+        // LocalStorage Depolama Olayı Dinleyicisi
+        window.addEventListener('storage', function(e) {
+            if (e.key === 'himarket_pos_live_event' && e.newValue) {
+                try {
+                    const data = JSON.parse(e.newValue);
+                    handlePosMessage(data);
+                } catch(err) {}
+            }
+        });
+
+        function handlePosMessage(data) {
+            if (!data || !data.type) return;
+
+            if (data.type === 'CART_UPDATE') {
+                document.getElementById('successOverlay').style.display = 'none';
+                renderDisplayCart(data.cart || [], data.subtotal || 0, data.vat || 0, data.total || 0);
+            } else if (data.type === 'SALE_COMPLETE') {
+                showSuccessScreen(data);
+            } else if (data.type === 'CART_CLEAR') {
+                clearDisplayCart();
+            }
+        }
+
+        function renderDisplayCart(cart, subtotal, vat, total) {
+            const tbody = document.getElementById('cartTableBody');
+            tbody.innerHTML = '';
+
+            if (cart.length === 0) {
+                clearDisplayCart();
+                return;
+            }
+
+            cart.forEach((item, idx) => {
+                const tr = document.createElement('tr');
+                tr.className = 'cart-row ' + (idx === cart.length - 1 ? 'new-item' : '');
+                const lineTotal = item.quantity * item.unit_price;
+                tr.innerHTML = `
+                    <td class="fw-bold text-white">${item.name}</td>
+                    <td class="text-center font-monospace text-slate-300">${item.quantity} ${item.unit || 'Adet'}</td>
+                    <td class="text-end font-monospace text-slate-400">₺${parseFloat(item.unit_price).toFixed(2)}</td>
+                    <td class="text-end font-monospace fw-extrabold text-emerald-400">₺${lineTotal.toFixed(2)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('itemCountDisplay').innerText = cart.length + ' Kalem';
+            document.getElementById('subtotalDisplay').innerText = subtotal.toFixed(2) + ' TL';
+            document.getElementById('vatDisplay').innerText = vat.toFixed(2) + ' TL';
+            document.getElementById('grandTotalDisplay').innerText = '₺' + total.toFixed(2);
+            document.getElementById('paymentStatusText').innerText = 'Satış Devam Ediyor';
+        }
+
+        function clearDisplayCart() {
+            document.getElementById('cartTableBody').innerHTML = `
+                <tr id="emptyRow">
+                    <td colspan="4" class="text-center py-5 text-slate-500">
+                        <i class="bi bi-upc-scan fs-1 d-block mb-2 text-slate-600"></i>
+                        <span class="fs-5 fw-bold">Henüz ürün okutulmadı</span><br>
+                        <small>Kasiyer ürün okuttukça burada anlık görüntülenecektir.</small>
+                    </td>
+                </tr>
+            `;
+            document.getElementById('itemCountDisplay').innerText = '0 Kalem';
+            document.getElementById('subtotalDisplay').innerText = '0.00 TL';
+            document.getElementById('vatDisplay').innerText = '0.00 TL';
+            document.getElementById('grandTotalDisplay').innerText = '₺0.00';
+            document.getElementById('paymentStatusText').innerText = 'Kasa Boşta';
+        }
+
+        let successTimer = null;
+        function showSuccessScreen(data) {
+            const overlay = document.getElementById('successOverlay');
+            document.getElementById('successReceiptNo').innerText = data.receipt_number || '-';
+            document.getElementById('successTotalAmount').innerText = (parseFloat(data.total) || 0).toFixed(2) + ' TL';
+            document.getElementById('successChangeAmount').innerText = (parseFloat(data.change_given) || 0).toFixed(2) + ' TL';
+            overlay.style.display = 'flex';
+
+            clearTimeout(successTimer);
+            successTimer = setTimeout(() => {
+                overlay.style.display = 'none';
+                clearDisplayCart();
+            }, 7000);
+        }
+    </script>
+</body>
+</html>
+

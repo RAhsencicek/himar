@@ -1,0 +1,555 @@
+{% extends "admin/base_site.html" %}
+{% load static l10n %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <!-- SAYFA BAŞLIĞI VE HİYERARŞİK AKSİYONLAR -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-2 border-bottom">
+        <div>
+            <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="badge bg-primary text-white fs-8 px-2 py-0.5 rounded-1">SİSTEM YAPILANDIRMASI</span>
+                <span class="text-secondary fs-8 fw-semibold">/ Ticari Dağıtım & Kurulum</span>
+            </div>
+            <h1 class="h3 fw-bold text-slate-900 mb-0 d-flex align-items-center gap-2">
+                <i class="bi bi-gear-wide-connected text-primary"></i> İŞLETME, MALİ e-ARŞİV VE DONANIM AYARLARI
+            </h1>
+            <span class="text-secondary small fw-medium">
+                Yazılımı farklı market müşterilerine kurarken kod değiştirmeden resmi mükellef bilgilerini, e-Arşiv entegratörünü ve yazıcı ayarlarını tek tıkla yapılandırın.
+            </span>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-sm btn-outline-dark fw-bold px-3 py-1.5 d-flex align-items-center gap-1.5 shadow-2xs" onclick="runPrinterTest()">
+                <i class="bi bi-printer-fill text-primary"></i> Deneme Fişi Bas & Çekmeceyi Aç
+            </button>
+            <button type="submit" form="companySettingsForm" class="btn btn-sm btn-success text-white fw-bold px-3.5 py-1.5 shadow-xs d-flex align-items-center gap-1.5">
+                <i class="bi bi-check2-circle fs-6"></i> Ayarları Kaydet
+            </button>
+        </div>
+    </div>
+
+    <!-- BİLGİ & UYARI MESAJLARI -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show mb-3 rounded-3 shadow-xs py-2.5 px-3 fs-7" role="alert">
+                <i class="bi bi-check-circle-fill me-1"></i> {{ message }}
+                <button type="button" class="btn-close py-2" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- ÇOKLU MÜŞTERİ / BAYİ DAĞITIM REHBERİ -->
+    <div class="alert alert-info border-info-subtle py-2.5 px-3 rounded-3 mb-4 d-flex align-items-start gap-2 shadow-2xs">
+        <i class="bi bi-info-circle-fill text-info fs-5 flex-shrink-0 mt-0.5"></i>
+        <div class="small">
+            <strong>Ticari Paketleme Güvencesi:</strong> Bu ekranda kaydedilen bilgiler doğrudan veritabanında saklanır. Kasa satış ekranı, e-Arşiv faturalar, GİB karekodları ve gün sonu Z raporları anında burada tanımladığınız mükellef ve entegratör bilgileriyle çalışır.
+        </div>
+    </div>
+
+    <form method="post" action="{% url 'company_settings_view' %}" id="companySettingsForm">
+        {% csrf_token %}
+        <div class="row g-3">
+            <!-- 1. KART: İŞLETME RESMİ VE İLETİŞİM BİLGİLERİ -->
+            <div class="col-12 col-xl-6">
+                <div class="card border border-slate-200 rounded-3 shadow-2xs h-100">
+                    <div class="card-header bg-white py-2.5 px-3 border-bottom d-flex align-items-center justify-content-between">
+                        <span class="fw-bold fs-6 text-slate-900 d-flex align-items-center gap-2">
+                            <i class="bi bi-building text-primary"></i> 1. İşletme & Mükellef Resmi Bilgileri
+                        </span>
+                        <span class="badge bg-light border text-slate-600 fs-9">Fiş Başlığı</span>
+                    </div>
+                    <div class="card-body p-3 bg-slate-50">
+                        <div class="row g-2.5">
+                            <div class="col-12">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Resmi Şirket / Mükellef Ünvanı *</label>
+                                <input type="text" name="title" class="form-control form-control-sm fw-semibold bg-white" 
+                                       value="{{ setting.title }}" required placeholder="Örn: GORAL SÜPERMARKET GIDA TİC. LTD. ŞTİ.">
+                                <small class="text-slate-500 fs-9">Fatura ve fişlerin en üstünde yer alan resmi ticari ünvan.</small>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Tabela / Mağaza Adı *</label>
+                                <input type="text" name="brand_name" class="form-control form-control-sm fw-bold bg-white" 
+                                       value="{{ setting.brand_name }}" required placeholder="Örn: Hİ MARKET">
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Vergi Kimlik No (VKN / TCKN) *</label>
+                                <input type="text" name="tax_number" class="form-control form-control-sm font-monospace fw-bold bg-white" 
+                                       value="{{ setting.tax_number }}" maxlength="11" required placeholder="10 haneli VKN veya 11 haneli TCKN">
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Vergi Dairesi *</label>
+                                <input type="text" name="tax_office" class="form-control form-control-sm bg-white" 
+                                       value="{{ setting.tax_office }}" required placeholder="Örn: KADIKÖY VERGİ DAİRESİ">
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Telefon Numarası</label>
+                                <input type="text" name="phone" class="form-control form-control-sm bg-white" 
+                                       value="{{ setting.phone }}" placeholder="Örn: 0216 555 00 00">
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Resmi İşletme Adresi *</label>
+                                <textarea name="address" rows="2" class="form-control form-control-sm bg-white" required>{{ setting.address }}</textarea>
+                            </div>
+
+                            <div class="col-12 col-md-4">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Mersis No</label>
+                                <input type="text" name="mersis_no" class="form-control form-control-sm font-monospace bg-white" 
+                                       value="{{ setting.mersis_no }}" placeholder="0123456789000001">
+                            </div>
+
+                            <div class="col-12 col-md-4">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Ticaret Sicil No</label>
+                                <input type="text" name="ticaret_sicil_no" class="form-control form-control-sm font-monospace bg-white" 
+                                       value="{{ setting.ticaret_sicil_no }}" placeholder="345678-5">
+                            </div>
+
+                            <div class="col-12 col-md-4">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">E-Posta</label>
+                                <input type="email" name="email" class="form-control form-control-sm bg-white" 
+                                       value="{{ setting.email }}" placeholder="info@market.com">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. KART: MALİ VE E-ARŞİV FATURA ENTEGRATÖR AYARLARI -->
+            <div class="col-12 col-xl-6">
+                <div class="card border border-slate-200 rounded-3 shadow-2xs h-100">
+                    <div class="card-header bg-white py-2.5 px-3 border-bottom d-flex align-items-center justify-content-between">
+                        <span class="fw-bold fs-6 text-slate-900 d-flex align-items-center gap-2">
+                            <i class="bi bi-receipt-cutoff text-warning"></i> 2. Mali e-Arşiv & Entegratör Ayarları
+                        </span>
+                        <span class="badge bg-warning-subtle text-dark border border-warning-subtle fs-9">VUK 507 Uyumlu</span>
+                    </div>
+                    <div class="card-body p-3 bg-slate-50">
+                        <div class="row g-2.5">
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Mali Çalışma Modu</label>
+                                <select name="fiscal_mode" class="form-select form-select-sm fw-bold bg-white">
+                                    {% for val, label in fiscal_modes %}
+                                        <option value="{{ val }}" {% if setting.fiscal_mode == val %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">e-Arşiv Entegratör Servisi</label>
+                                <select name="fiscal_provider" class="form-select form-select-sm fw-bold bg-white">
+                                    {% for val, label in integrators %}
+                                        <option value="{{ val }}" {% if setting.fiscal_provider == val %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Entegrasyon Ortamı</label>
+                                <select name="fiscal_environment" class="form-select form-select-sm bg-white">
+                                    {% for val, label in environments %}
+                                        <option value="{{ val }}" {% if setting.fiscal_environment == val %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Entegratör Kullanıcı Adı</label>
+                                <input type="text" name="api_username" class="form-control form-control-sm bg-white" 
+                                       value="{{ setting.api_username }}" placeholder="Örn: nilvera_market_user">
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Entegratör Şifresi</label>
+                                <input type="password" name="api_password" class="form-control form-control-sm bg-white" 
+                                       value="{{ setting.api_password }}" placeholder="••••••••">
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">API Key / Token</label>
+                                <input type="password" name="api_key" class="form-control form-control-sm font-monospace bg-white" 
+                                       value="{{ setting.api_key }}" placeholder="Örn: 9a8b7c6d5e4f3a2b1c...">
+                            </div>
+
+                            <div class="col-12">
+                                <div class="p-2.5 rounded-2 bg-white border small text-secondary">
+                                    <strong class="text-dark d-block mb-1"><i class="bi bi-shield-lock-fill text-success"></i> Güvenlik Notu:</strong>
+                                    Canlıya geçmeden önce entegratörünüzün sağladığı test anahtarlarıyla deneme yapabilir, dilediğiniz an canlı moda geçebilirsiniz. Anahtarlar girilmediğinde sistem güvenli yerel VUK 507 simülasyonuyla kasanın durmasını önler.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. KART: TERMAL YAZICI, ÇEKMECE VE FİŞ NOTU AYARLARI -->
+            <div class="col-12">
+                <div class="card border border-slate-200 rounded-3 shadow-2xs">
+                    <div class="card-header bg-white py-2.5 px-3 border-bottom d-flex align-items-center justify-content-between">
+                        <span class="fw-bold fs-6 text-slate-900 d-flex align-items-center gap-2">
+                            <i class="bi bi-printer-fill text-primary"></i> 3. Termal Yazıcı, RJ11 Para Çekmecesi & Fiş Tasarımı
+                        </span>
+                        <span class="badge bg-light border text-slate-600 fs-9">ESC/POS Donanım</span>
+                    </div>
+                    <div class="card-body p-3 bg-slate-50">
+                        <div class="row g-2.5">
+                            <div class="col-12 col-md-4">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Yazıcı İletişim Tipi</label>
+                                <select name="printer_type" class="form-select form-select-sm fw-bold bg-white">
+                                    {% for val, label in printer_types %}
+                                        <option value="{{ val }}" {% if setting.printer_type == val %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="col-12 col-md-3">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Yazıcı IP Adresi</label>
+                                <input type="text" name="printer_ip" class="form-control form-control-sm font-monospace bg-white" 
+                                       value="{{ setting.printer_ip }}" placeholder="127.0.0.1 veya 192.168.1.200">
+                            </div>
+
+                            <div class="col-12 col-md-2">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Yazıcı Portu</label>
+                                <input type="number" name="printer_port" class="form-control form-control-sm font-monospace bg-white" 
+                                       value="{{ setting.printer_port|unlocalize }}" placeholder="9100">
+                            </div>
+
+                            <div class="col-12 col-md-3">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Kağıt Genişliği</label>
+                                <select name="paper_width" class="form-select form-select-sm bg-white">
+                                    <option value="80" {% if setting.paper_width == 80 %}selected{% endif %}>80 mm Standart Termal</option>
+                                    <option value="58" {% if setting.paper_width == 58 %}selected{% endif %}>58 mm Küçük Termal</option>
+                                </select>
+                            </div>
+
+                            <div class="col-12">
+                                <div class="form-check form-switch p-2 bg-white rounded-2 border">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" name="drawer_kick_on_cash" id="drawerKickCheck" value="1" 
+                                           {% if setting.drawer_kick_on_cash %}checked{% endif %}>
+                                    <label class="form-check-label fw-bold text-slate-800 small" for="drawerKickCheck">
+                                        Nakit satış tamamlandığında RJ11 para çekmecesini otomatik olarak fırlat / aç
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Fiş Altı Özel Teşekkür / Kampanya Mesajı</label>
+                                <textarea name="receipt_footer_note" rows="2" class="form-control form-control-sm bg-white" 
+                                          placeholder="Bizi tercih ettiğiniz için teşekkür ederiz. İyi günler dileriz!">{{ setting.receipt_footer_note }}</textarea>
+                                <small class="text-slate-500 fs-9">Termal fişin en altına GİB karekodunun hemen üzerinde basılacak metin.</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. KART: ELEKTRONİK KASA TERAZİSİ (RS232 / USB SERİ PORT) -->
+            <div class="col-12 col-xl-6">
+                <div class="card border border-slate-200 rounded-3 shadow-2xs h-100">
+                    <div class="card-header bg-white py-2.5 px-3 border-bottom d-flex align-items-center justify-content-between">
+                        <span class="fw-bold fs-6 text-slate-900 d-flex align-items-center gap-2">
+                            <i class="bi bi-speedometer text-info"></i> 4. Elektronik Kasa Terazisi (RS232 / USB)
+                        </span>
+                        <span class="badge bg-info-subtle text-dark border border-info-subtle fs-9">Donanım Sürücüsü</span>
+                    </div>
+                    <div class="card-body p-3 bg-slate-50">
+                        <div class="row g-2.5">
+                            <div class="col-12">
+                                <div class="form-check form-switch p-2 bg-white rounded-2 border">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" name="scale_enabled" id="scaleEnabledCheck" value="1" 
+                                           {% if setting.scale_enabled %}checked{% endif %}>
+                                    <label class="form-check-label fw-bold text-slate-800 small" for="scaleEnabledCheck">
+                                        Elektronik Teraziyi Aktifleştir (Kasa tartımlı ürünlerde otomatik okur)
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Seri Port (COM / tty)</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" name="scale_port" id="scalePortInput" class="form-control font-monospace bg-white" 
+                                           value="{{ setting.scale_port }}" placeholder="AUTO, COM1 veya /dev/ttyUSB0">
+                                    <button class="btn btn-outline-secondary" type="button" title="Portları Tara" onclick="scanScalePorts()">
+                                        <i class="bi bi-arrow-repeat"></i> Tara
+                                    </button>
+                                </div>
+                                <small class="text-slate-500 fs-9">Otomatik bulma için <code>AUTO</code> veya test için <code>LOCAL_MOCK</code> yazabilirsiniz.</small>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Haberleşme Protokolü</label>
+                                <select name="scale_protocol" class="form-select form-select-sm fw-bold bg-white">
+                                    {% for val, label in scale_protocols %}
+                                        <option value="{{ val }}" {% if setting.scale_protocol == val %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Baud Hızı (Baudrate)</label>
+                                <input type="number" name="scale_baudrate" class="form-control form-control-sm font-monospace bg-white" 
+                                       value="{{ setting.scale_baudrate|unlocalize }}" placeholder="9600">
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Test / Simülasyon Ağırlığı (kg)</label>
+                                <input type="number" step="0.001" name="scale_mock_weight" class="form-control form-control-sm font-monospace bg-white" 
+                                       value="{{ setting.scale_mock_weight|unlocalize }}" placeholder="1.250">
+                            </div>
+
+                            <div class="col-12">
+                                <div class="d-flex align-items-center justify-content-between p-2 rounded-2 bg-white border">
+                                    <div>
+                                        <span class="text-slate-600 small d-block">Terazi Bağlantı & Okuma Testi:</span>
+                                        <span id="scaleTestResult" class="font-monospace fw-bold fs-6 text-primary">-- kg</span>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-primary fw-bold" onclick="testScaleRead()">
+                                        <i class="bi bi-play-circle me-1"></i> Ağırlık Oku
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 5. KART: MÜŞTERİ FİYAT GÖSTERGESİ (DUAL SCREEN & VFD) -->
+            <div class="col-12 col-xl-6">
+                <div class="card border border-slate-200 rounded-3 shadow-2xs h-100">
+                    <div class="card-header bg-white py-2.5 px-3 border-bottom d-flex align-items-center justify-content-between">
+                        <span class="fw-bold fs-6 text-slate-900 d-flex align-items-center gap-2">
+                            <i class="bi bi-display text-primary"></i> 5. Müşteri Fiyat Göstergesi (2. Ekran / VFD)
+                        </span>
+                        <a href="{% url 'customer_display_view' %}" target="_blank" class="btn btn-xs btn-outline-primary py-0 px-2 fw-bold">
+                            <i class="bi bi-box-arrow-up-right me-1"></i> Ekranı Aç
+                        </a>
+                    </div>
+                    <div class="card-body p-3 bg-slate-50">
+                        <div class="row g-2.5">
+                            <div class="col-12">
+                                <div class="form-check form-switch p-2 bg-white rounded-2 border">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" name="customer_display_enabled" id="custDispCheck" value="1" 
+                                           {% if setting.customer_display_enabled %}checked{% endif %}>
+                                    <label class="form-check-label fw-bold text-slate-800 small" for="custDispCheck">
+                                        Müşteri Gösterge Ekranını Aktifleştir
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Gösterge Türü / Modu</label>
+                                <select name="customer_display_mode" class="form-select form-select-sm fw-bold bg-white">
+                                    {% for val, label in customer_display_modes %}
+                                        <option value="{{ val }}" {% if setting.customer_display_mode == val %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">VFD Seri Portu (VFD Modu için)</label>
+                                <input type="text" name="customer_display_port" class="form-control form-control-sm font-monospace bg-white" 
+                                       value="{{ setting.customer_display_port }}" placeholder="COM2 veya /dev/ttyS1">
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Bekleme Modu Karşılama Başlığı</label>
+                                <input type="text" name="customer_display_welcome_msg" class="form-control form-control-sm bg-white" 
+                                       value="{{ setting.customer_display_welcome_msg }}" placeholder="Hİ MARKET - HOŞ GELDİNİZ">
+                                <small class="text-slate-500 fs-9">Kasa boşta beklerken 2. ekranda gösterilecek karşılama ve kampanya başlığı.</small>
+                            </div>
+
+                            <div class="col-12">
+                                <div class="p-2.5 rounded-2 bg-white border small text-secondary">
+                                    <i class="bi bi-info-circle-fill text-info me-1"></i>
+                                    <strong>İpucu:</strong> Kasa bilgisayarınıza 2. bir monitör (HDMI / VGA) bağlayıp tarayıcıda <code>/pos/customer-display/</code> sayfasını tam ekran (F11) yaparak müşteriye anlık sepet, ürün fotoğrafları ve toplam tutar gösterebilirsiniz.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 6. KART: RAF VE BARKOD ETİKETİ BASIM FORMATI -->
+            <div class="col-12 col-xl-6">
+                <div class="card border border-slate-200 rounded-3 shadow-2xs h-100">
+                    <div class="card-header bg-white py-2.5 px-3 border-bottom d-flex align-items-center justify-content-between">
+                        <span class="fw-bold fs-6 text-slate-900 d-flex align-items-center gap-2">
+                            <i class="bi bi-upc-scan text-dark"></i> 6. Raf & Barkod Etiketi
+                        </span>
+                        <a href="{% url 'product_labels_view' %}" class="btn btn-xs btn-outline-dark py-0 px-2 fw-bold">
+                            <i class="bi bi-printer me-1"></i> Modül
+                        </a>
+                    </div>
+                    <div class="card-body p-3 bg-slate-50">
+                        <div class="row g-2.5">
+                            <div class="col-12">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Etiket Yazıcı Tipi & Çıktı Formatı</label>
+                                <select name="label_printer_type" class="form-select form-select-sm fw-bold bg-white">
+                                    {% for val, label in label_printer_types %}
+                                        <option value="{{ val }}" {% if setting.label_printer_type == val %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Genişlik (mm)</label>
+                                <input type="number" name="label_width_mm" class="form-control form-control-sm font-monospace bg-white" 
+                                       value="{{ setting.label_width_mm|unlocalize }}" placeholder="60">
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Yükseklik (mm)</label>
+                                <input type="number" name="label_height_mm" class="form-control form-control-sm font-monospace bg-white" 
+                                       value="{{ setting.label_height_mm|unlocalize }}" placeholder="40">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 7. KART: KASA GÜVENLİĞİ, KÖR SAYIM & KASİYER YETKİLERİ (FAZ 4) -->
+            <div class="col-12 col-xl-6">
+                <div class="card border border-slate-200 rounded-3 shadow-2xs h-100">
+                    <div class="card-header bg-white py-2.5 px-3 border-bottom d-flex align-items-center justify-content-between">
+                        <span class="fw-bold fs-6 text-slate-900 d-flex align-items-center gap-2">
+                            <i class="bi bi-shield-lock-fill text-danger"></i> 7. Kasa Güvenliği & Kör Sayım
+                        </span>
+                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle fs-9">Suistimal Önleme</span>
+                    </div>
+                    <div class="card-body p-3 bg-slate-50">
+                        <div class="row g-2.5">
+                            <div class="col-12">
+                                <div class="form-check form-switch p-2 bg-white rounded-2 border">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" name="blind_close_enabled" id="blindCloseCheck" value="1" 
+                                           {% if setting.blind_close_enabled %}checked{% endif %}>
+                                    <label class="form-check-label fw-bold text-slate-800 small" for="blindCloseCheck">
+                                        Kör Kasa Kapanışı (Blind Close) Aktif
+                                    </label>
+                                    <small class="text-secondary d-block mt-0.5 fs-9">
+                                        Kasiyere beklenen nakit gösterilmez, sayarak girmesi istenir.
+                                    </small>
+                                </div>
+                            </div>
+
+                            <div class="col-12">
+                                <div class="form-check form-switch p-2 bg-white rounded-2 border">
+                                    <input class="form-check-input ms-0 me-2" type="checkbox" name="supervisor_cancel_required" id="supervisorCancelCheck" value="1" 
+                                           {% if setting.supervisor_cancel_required %}checked{% endif %}>
+                                    <label class="form-check-label fw-bold text-slate-800 small" for="supervisorCancelCheck">
+                                        Ürün Silme ve Fiş İptalinde Yetkili PIN Zorunlu
+                                    </label>
+                                    <small class="text-secondary d-block mt-0.5 fs-9">
+                                        Kasiyer satır silerken veya sepeti sıfırlarken yönetici şifresi ister.
+                                    </small>
+                                </div>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">Kasiyer Maksimum İskonto Oranı (%)</label>
+                                <div class="input-group input-group-sm">
+                                    <input type="number" step="0.5" name="supervisor_discount_limit_percent" class="form-control font-monospace bg-white" 
+                                           value="{{ setting.supervisor_discount_limit_percent|unlocalize }}" placeholder="10.0">
+                                    <span class="input-group-text bg-white">%</span>
+                                </div>
+                                <small class="text-slate-500 fs-9">Kasiyerin onay istemeden yapabileceği maksimum iskonto yüzdesi.</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SABİT ALT KAYDET BUTONU ÇUBUĞU -->
+            <div class="col-12">
+                <div class="card border border-slate-200 rounded-3 shadow-2xs">
+                    <div class="card-footer bg-white py-3 px-4 d-flex justify-content-between align-items-center">
+                        <button type="button" class="btn btn-outline-dark fw-bold px-3 py-2 d-flex align-items-center gap-1.5 shadow-2xs" onclick="runPrinterTest()">
+                            <i class="bi bi-printer-fill text-primary fs-6"></i> Deneme Fişi Bas & Çekmeceyi Aç
+                        </button>
+                        <button type="submit" class="btn btn-success text-white fw-bold px-4 py-2 shadow-xs d-flex align-items-center gap-1.5">
+                            <i class="bi bi-check2-circle fs-6"></i> Değişiklikleri Kaydet
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- DENEME YAZDIRMA & TERAZİ TEST SCRIPTLERİ -->
+<script>
+    function runPrinterTest() {
+        const btn = event.currentTarget;
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Yazıcıya Gönderiliyor...`;
+
+        fetch("{% url 'test_print_settings_api' %}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+            if (data.success) {
+                alert("✅ Başarılı!\n" + data.message);
+            } else {
+                alert("⚠️ Hata Oluştu:\n" + (data.message || 'Yazıcıya ulaşılamadı.'));
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+            alert("Sunucu iletişim hatası: " + err.message);
+        });
+    }
+
+    function scanScalePorts() {
+        fetch("{% url 'scale_ports_api' %}")
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.ports && data.ports.length > 0) {
+                const portList = data.ports.map(p => `${p.device} (${p.description})`).join('\n');
+                const selected = prompt("Bulunan Seri Portlar:\n" + portList + "\n\nKullanmak istediğiniz portu girin:", data.ports[0].device);
+                if (selected) {
+                    document.getElementById('scalePortInput').value = selected.trim();
+                }
+            } else {
+                alert("⚠️ Bilgisayara bağlı aktif fiziksel seri port bulunamadı.\n(Varsayılan olarak 'AUTO' veya 'LOCAL_MOCK' kullanabilirsiniz.)");
+            }
+        })
+        .catch(err => {
+            alert("Port tarama hatası: " + err.message);
+        });
+    }
+
+    function testScaleRead() {
+        const resultSpan = document.getElementById('scaleTestResult');
+        resultSpan.innerHTML = `<span class="spinner-border spinner-border-sm text-info"></span> Okunuyor...`;
+
+        fetch("{% url 'scale_read_api' %}")
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                resultSpan.innerHTML = `<span class="text-success">⚖️ ${data.weight.toFixed(3)} ${data.unit}</span> (Kararlı: ${data.is_stable ? 'Evet' : 'Hayır'})`;
+            } else {
+                resultSpan.innerHTML = `<span class="text-danger">⚠️ Hata: ${data.message}</span>`;
+            }
+        })
+        .catch(err => {
+            resultSpan.innerHTML = `<span class="text-danger">Bağlantı hatası: ${err.message}</span>`;
+        });
+    }
+</script>
+            btn.innerHTML = originalText;
+            alert("Sunucu iletişim hatası: " + err.message);
+        });
+    }
+</script>
+{% endblock %}
+

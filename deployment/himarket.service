@@ -1,0 +1,27 @@
+[Unit]
+Description=HiMarket Kurumsal POS & Perakende Otomasyonu
+After=network.target postgresql.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=himarket
+Group=himarket
+WorkingDirectory=/opt/HiMarket
+EnvironmentFile=/opt/HiMarket/.env
+ExecStart=/opt/HiMarket/.venv/bin/gunicorn HiMarket.wsgi:application --bind 127.0.0.1:8000 --workers 3 --timeout 60
+Restart=always
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=himarket-pos
+
+# Güvenlik ve İzolasyon Sertleştirmesi
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+

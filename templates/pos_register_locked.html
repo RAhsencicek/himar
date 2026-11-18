@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Kasa Kilitli | HiMarket POS{% endblock %}
+
+{% block content %}
+<div class="container py-5" style="max-width: 680px;">
+    <div class="card border-0 shadow-lg rounded-4 overflow-hidden">
+        <!-- KIRMIZI GÜVENLİK BAŞLIĞI -->
+        <div class="card-header bg-danger text-white py-3.5 px-4 d-flex align-items-center gap-3">
+            <div class="bg-white text-danger rounded-circle d-flex align-items-center justify-content-center shadow-xs" style="width: 48px; height: 48px; flex-shrink: 0;">
+                <i class="bi bi-shield-lock-fill fs-3"></i>
+            </div>
+            <div>
+                <h4 class="mb-0 fw-extrabold tracking-tight">KASA TERMİNALİ KİLİTLİ</h4>
+                <span class="fs-8 text-white-50">Münhasır Kasa Güvenliği & Çift Giriş Koruması (Faz 9)</span>
+            </div>
+        </div>
+
+        <div class="card-body p-4 p-md-4.5 bg-white">
+            <div class="alert alert-danger-subtle border border-danger-subtle rounded-3 p-3 mb-4">
+                <div class="d-flex align-items-start gap-2.5">
+                    <i class="bi bi-exclamation-octagon-fill text-danger fs-4 mt-0.5"></i>
+                    <div>
+                        <div class="fw-bold text-danger fs-6 mb-1">
+                            {{ register.name }} ({{ register.register_code }}) Şu Anda Başka Bir Kasiyere Aittir
+                        </div>
+                        <p class="text-slate-700 fs-8 mb-0">
+                            Bu kasa şu anda <strong>{{ locked_cashier.get_full_name|default:locked_cashier.username }}</strong> adına açık bir vardiyaya sahiptir.
+                            Kasa mutabakatı, kör sayım ve nakit güvenliği gereği <u>aynı kasada aynı anda iki farklı kişi işlem yapamaz</u>.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VARDİYA BİLGİ DETAYLARI -->
+            <div class="bg-light border rounded-3 p-3.5 mb-4">
+                <div class="row g-2 fs-8">
+                    <div class="col-5 text-secondary fw-semibold">Aktif Kasa:</div>
+                    <div class="col-7 fw-bold text-slate-900 font-monospace">{{ register.name }} [{{ register.register_code }}]</div>
+
+                    <div class="col-5 text-secondary fw-semibold">Vardiya Sahibi Kasiyer:</div>
+                    <div class="col-7 fw-bold text-primary">{{ locked_cashier.get_full_name|default:locked_cashier.username }}</div>
+
+                    <div class="col-5 text-secondary fw-semibold">Giriş Yapmaya Çalışan:</div>
+                    <div class="col-7 fw-bold text-danger">{{ current_user.get_full_name|default:current_user.username }}</div>
+
+                    <div class="col-5 text-secondary fw-semibold">Vardiya Açılış Zamanı:</div>
+                    <div class="col-7 text-slate-700 font-monospace">{{ locked_shift.opened_at|date:"d.m.Y H:i:s" }}</div>
+
+                    <div class="col-5 text-secondary fw-semibold">Toplam Yapılan Satış:</div>
+                    <div class="col-7 text-slate-700">{{ locked_shift.total_sales_count }} Adet Fiş</div>
+                </div>
+            </div>
+
+            <!-- EYLEMLER -->
+            <div class="d-flex flex-column gap-2.5">
+                <button type="button" class="btn btn-warning fw-bold py-2.5 shadow-xs d-flex align-items-center justify-content-center gap-2"
+                        data-bs-toggle="modal" data-bs-target="#supervisorForceCloseModal">
+                    <i class="bi bi-key-fill"></i> Süpervizör PIN ile Vardiyayı Kapat / Devral
+                </button>
+                <div class="row g-2">
+                    <div class="col-6">
+                        <form method="post" action="{% url 'unpair_terminal_action' %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-secondary w-100 fw-semibold py-2 fs-8" onclick="return confirm('Bu cihazın kasa eşleştirmesini çözmek istediğinize emin misiniz?');">
+                                <i class="bi bi-arrow-repeat me-1"></i> Başka Kasa Seç
+                            </button>
+                        </form>
+                    </div>
+                    <div class="col-6">
+                        <a href="{% url 'logout_view' %}" class="btn btn-outline-danger w-100 fw-semibold py-2 fs-8">
+                            <i class="bi bi-box-arrow-right me-1"></i> Oturumu Kapat
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SÜPERVİZÖR DEVİR TESLİM MODALI -->
+<div class="modal fade" id="supervisorForceCloseModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 440px;">
+        <div class="modal-content rounded-4 shadow-lg border-0">
+            <div class="modal-header bg-warning text-dark py-3 px-4">
+                <h5 class="modal-title fw-bold fs-7 d-flex align-items-center gap-2">
+                    <i class="bi bi-shield-lock-fill"></i> SÜPERVİZÖR DEVİR ONAYI
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="text-secondary fs-8 mb-3">
+                    Kasiyer <strong>{{ locked_cashier.get_full_name|default:locked_cashier.username }}</strong> adına açık olan vardiya kapatılacak ve kasa <strong>{{ current_user.get_full_name|default:current_user.username }}</strong> için serbest bırakılacaktır.
+                </p>
+                <div class="mb-3">
+                    <label class="form-label fw-bold text-slate-800 fs-8">Süpervizör Şifresi / PIN Kodu</label>
+                    <input type="password" id="supervisorPin" class="form-control text-center font-monospace fs-4 fw-bold" placeholder="••••" autofocus autocomplete="off">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold text-slate-800 fs-8">Kasadaki Sayılan Nakit (TL)</label>
+                    <input type="number" id="countedCashInput" class="form-control text-center font-monospace fs-5 fw-bold" value="0.00" step="0.01">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold text-slate-700 fs-8">Devir Nedeni / Notu</label>
+                    <input type="text" id="forceNotesInput" class="form-control fs-8" value="Kasiyer değişimi / Süpervizör devri">
+                </div>
+                <div id="forceCloseError" class="alert alert-danger py-2 px-3 fs-8 d-none" role="alert"></div>
+                <button type="button" class="btn btn-primary w-100 fw-bold py-2.5 shadow-xs" onclick="submitSupervisorForceClose()">
+                    <i class="bi bi-check2-circle me-1"></i> Vardiyayı Kapat ve Kasayı Aç
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function submitSupervisorForceClose() {
+    const pin = document.getElementById('supervisorPin').value.trim();
+    const actualCash = document.getElementById('countedCashInput').value.trim();
+    const notes = document.getElementById('forceNotesInput').value.trim();
+    const errorBox = document.getElementById('forceCloseError');
+
+    if (!pin) {
+        errorBox.textContent = 'Lütfen süpervizör PIN kodunu giriniz.';
+        errorBox.classList.remove('d-none');
+        return;
+    }
+    errorBox.classList.add('d-none');
+
+    fetch("{% url 'supervisor_force_close_shift_api' %}", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": "{{ csrf_token }}"
+        },
+        body: JSON.stringify({
+            shift_id: "{{ locked_shift.id }}",
+            pin: pin,
+            actual_cash: actualCash,
+            notes: notes
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            errorBox.textContent = data.message || 'Yetki doğrulanamadı.';
+            errorBox.classList.remove('d-none');
+        }
+    })
+    .catch(err => {
+        errorBox.textContent = 'Bağlantı hatası: ' + err.message;
+        errorBox.classList.remove('d-none');
+    });
+}
+</script>
+{% endblock %}
+

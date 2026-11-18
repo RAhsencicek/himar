@@ -1,0 +1,324 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <!-- ÜST BAŞLIK VE YENİ PERSONEL EKLE BUTONU -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-2 border-bottom">
+        <div>
+            <h1 class="h3 fw-bold text-slate-900 mb-0 d-flex align-items-center gap-2">
+                <i class="bi bi-people-fill text-primary"></i> PERSONEL & YETKİLENDİRME YÖNETİMİ
+            </h1>
+            <span class="text-secondary small fw-medium">Market kasiyerlerini ve yöneticilerini kolayca yönetin, şifre ve yetkilerini belirleyin.</span>
+        </div>
+        <button type="button" class="btn btn-primary fw-bold px-3 py-2 shadow-xs d-flex align-items-center gap-2 text-white" data-bs-toggle="modal" data-bs-target="#addUserModal">
+            <i class="bi bi-person-plus-fill fs-6 text-white"></i> YENİ PERSONEL EKLE
+        </button>
+    </div>
+
+    <!-- REHBER BİLGİLENDİRME (Bunu Yaparsan Bu Olur) -->
+    <div class="alert alert-info border-info-subtle py-2.5 px-3 rounded-3 mb-4 fs-8">
+        <div class="d-flex align-items-start gap-2">
+            <i class="bi bi-shield-check text-info fs-5 mt-0.5"></i>
+            <div>
+                <strong class="d-block text-slate-900 mb-1">Roller Nasıl Çalışır? Hangi Yetki Ne İşe Yarar?</strong>
+                <ul class="mb-0 ps-3 text-slate-700">
+                    <li><strong>🔵 Kasiyer:</strong> Sadece POS Kasa Ekranına erişebilir. Satış yapar, fiş keser ve müşteri iadesi alır. Yönetici paneline, Z raporlarına ve mali verilere <u>kesinlikle erişemez</u>.</li>
+                    <li><strong>🟢 Yönetici:</strong> Sistemin tüm alanlarına erişebilir. Z raporlarını kapatabilir, fiyatları düzenleyebilir, stok girişi yapabilir ve personel ekleyip silebilir.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- METRİK ÖZET KARTLARI -->
+    <div class="row g-3 mb-4">
+        <div class="col-12 col-md-4">
+            <div class="tabler-card border-start border-4 border-primary">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="text-uppercase fw-bold text-secondary fs-8 d-block mb-1">TOPLAM PERSONEL</span>
+                        <div class="fs-4 fw-extrabold text-slate-900">{{ total_users }} Kişi</div>
+                    </div>
+                    <span class="badge bg-primary text-white p-2 rounded-2"><i class="bi bi-people fs-4"></i></span>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="tabler-card border-start border-4 border-info">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="text-uppercase fw-bold text-secondary fs-8 d-block mb-1">KASİYERLER</span>
+                        <div class="fs-4 fw-extrabold text-info">{{ cashier_count }} Kasiyer</div>
+                    </div>
+                    <span class="badge bg-info text-white p-2 rounded-2"><i class="bi bi-cart4 fs-4"></i></span>
+                </div>
+                <small class="text-muted fs-8 d-block mt-1">Sadece kasa satış yetkisi olanlar</small>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="tabler-card border-start border-4 border-success">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="text-uppercase fw-bold text-secondary fs-8 d-block mb-1">YÖNETİCİLER</span>
+                        <div class="fs-4 fw-extrabold text-success">{{ admin_count }} Yönetici</div>
+                    </div>
+                    <span class="badge bg-success text-white p-2 rounded-2"><i class="bi bi-shield-lock-fill fs-4"></i></span>
+                </div>
+                <small class="text-muted fs-8 d-block mt-1">Tam sistem yetkisi olanlar</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- PERSONEL LİSTESİ TABLOSU -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="fw-bold text-slate-900"><i class="bi bi-list-ul me-1"></i> KAYITLI PERSONELLER VE GİRİŞ HESAPLARI</span>
+            <span class="badge bg-light border text-slate-700 fs-8">{{ staff_users.count }} Kullanıcı</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table mb-0 fs-8 align-middle">
+                <thead>
+                    <tr>
+                        <th class="ps-3" style="width: 180px;">Kullanıcı Adı</th>
+                        <th>Ad Soyad</th>
+                        <th style="width: 180px;">Rol & Yetki</th>
+                        <th style="width: 120px;">Durum</th>
+                        <th style="width: 180px;">Son Giriş</th>
+                        <th class="text-end pe-3" style="width: 260px;">İşlemler</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for su in staff_users %}
+                    <tr>
+                        <td class="ps-3 font-monospace fw-bold text-primary">
+                            <i class="bi bi-person-badge me-1"></i> {{ su.username }}
+                        </td>
+                        <td class="fw-semibold text-slate-900">
+                            {{ su.get_full_name|default:"-" }}
+                        </td>
+                        <td>
+                            {% if su.is_superuser %}
+                                <span class="badge bg-dark text-white px-2 py-1"><i class="bi bi-star-fill text-warning me-1"></i> Süper Yönetici</span>
+                            {% elif su.is_staff %}
+                                <span class="badge bg-success text-white px-2 py-1"><i class="bi bi-shield-check me-1"></i> Yönetici</span>
+                            {% else %}
+                                <span class="badge bg-primary text-white px-2 py-1"><i class="bi bi-cart4 me-1"></i> Kasiyer</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if su.is_active %}
+                                <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 fw-bold">🟢 Aktif</span>
+                            {% else %}
+                                <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1 fw-bold">🔴 Pasif (Dondurulmuş)</span>
+                            {% endif %}
+                        </td>
+                        <td class="font-monospace text-slate-600">
+                            {% if su.last_login %}
+                                {{ su.last_login|date:"d.m.Y H:i" }}
+                            {% else %}
+                                <span class="text-secondary">Henüz Giriş Yok</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-end pe-3">
+                            <div class="d-inline-flex gap-1">
+                                <!-- Şifre Değiştir -->
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2 fs-8 fw-bold" 
+                                        onclick="openPasswordModal('{{ su.id }}', '{{ su.username }}')" title="Kullanıcının şifresini veya kasa PIN kodunu günceller">
+                                    <i class="bi bi-key-fill text-warning"></i> Şifre
+                                </button>
+                                
+                                <!-- Yetki Değiştir -->
+                                {% if su != request.user %}
+                                <button type="button" class="btn btn-sm btn-outline-info py-1 px-2 fs-8 fw-bold" 
+                                        onclick="openRoleModal('{{ su.id }}', '{{ su.username }}', '{% if su.is_staff %}YONETICI{% else %}KASIYER{% endif %}')" title="Kasiyer ile Yönetici arasında geçiş yapar">
+                                    <i class="bi bi-person-gear"></i> Yetki
+                                </button>
+
+                                <!-- Aktif / Pasif Toggle -->
+                                <a href="{% url 'user_toggle_status_action' su.id %}" 
+                                   class="btn btn-sm {% if su.is_active %}btn-outline-danger{% else %}btn-outline-success{% endif %} py-1 px-2 fs-8 fw-bold" 
+                                   onclick="return confirm('{{ su.username }} kullanıcısını {% if su.is_active %}pasife almak (dondurmak){% else %}aktif hale getirmek{% endif %} istediğinize emin misiniz?')"
+                                   title="{% if su.is_active %}Hesabı dondurur, sisteme giremez{% else %}Hesabı açar, sisteme girebilir{% endif %}">
+                                    {% if su.is_active %}<i class="bi bi-pause-circle"></i> Durdur{% else %}<i class="bi bi-play-circle"></i> Aktif Et{% endif %}
+                                </a>
+                                {% else %}
+                                <span class="badge bg-light text-muted border py-1 px-2 fs-8">Mevcut Oturum</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center py-4 text-secondary">Kayıtlı personel bulunamadı.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 1. YENİ PERSONEL EKLEME MODALI -->
+<div class="modal fade" id="addUserModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-header bg-primary text-white py-3 px-4">
+                <h5 class="modal-title fw-bold fs-6 d-flex align-items-center gap-2">
+                    <i class="bi bi-person-plus-fill"></i> YENİ PERSONEL / KULLANICI EKLE
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Kapat"></button>
+            </div>
+            <form method="post" action="{% url 'user_create_action' %}">
+                {% csrf_token %}
+                <div class="modal-body p-4">
+                    <div class="alert alert-light border py-2 px-3 small rounded-3 mb-3 text-secondary">
+                        💡 <strong>Bunu yaparsanız ne olur?</strong> Oluşturduğunuz kullanıcı market kasasında veya yönetim panelinde bu bilgilerle oturum açıp işlem yapabilir.
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-slate-800">Personel Adı Soyadı</label>
+                        <input type="text" name="full_name" class="form-control" placeholder="Örn: Ahmet Yılmaz" required autocomplete="off">
+                        <small class="text-muted fs-8">Fişlerde ve vardiya raporlarında bu isim görünecektir.</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-slate-800">Kullanıcı Adı (Giriş Adı) *</label>
+                        <input type="text" name="username" class="form-control font-monospace" placeholder="Örn: kasiyer1" required autocomplete="off">
+                        <small class="text-muted fs-8">Giriş yaparken kullanılacak benzersiz isim (Türkçe karakter ve boşluk içermemeli).</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-slate-800">Giriş Şifresi veya PIN Kodu *</label>
+                        <input type="password" name="password" class="form-control font-monospace" placeholder="Örn: 1234 veya Güçlü Şifre" required autocomplete="new-password">
+                        <small class="text-muted fs-8">Kasiyerin kasaya girerken veya Z raporu onaylarken yazacağı şifre.</small>
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="form-label fw-bold text-slate-800 d-block mb-2">Personel Rolü ve Yetkisi *</label>
+                        <div class="p-3 border rounded-3 bg-light">
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="radio" name="role" id="roleCashier" value="KASIYER" checked>
+                                <label class="form-check-label fw-bold text-slate-900" for="roleCashier">
+                                    <i class="bi bi-cart4 text-primary me-1"></i> Kasiyer (Kasa Satış Görevlisi)
+                                </label>
+                                <small class="text-muted d-block ps-4 fs-8">Yalnızca POS kasasında satış ve iade yapabilir. Yönetim panelini göremez.</small>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="role" id="roleAdmin" value="YONETICI">
+                                <label class="form-check-label fw-bold text-slate-900" for="roleAdmin">
+                                    <i class="bi bi-shield-check text-success me-1"></i> Yönetici (Tam Yetkili)
+                                </label>
+                                <small class="text-muted d-block ps-4 fs-8">Tüm sisteme erişir. Dashboard, Z raporları, ürün fiyatları ve personel yönetimi yapabilir.</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2.5 px-4 border-top">
+                    <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">İptal</button>
+                    <button type="submit" class="btn btn-primary fw-bold px-4 text-white">
+                        <i class="bi bi-check2-circle me-1"></i> Personeli Kaydet
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 2. ŞİFRE DEĞİŞTİRME MODALI -->
+<div class="modal fade" id="passwordModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 420px;">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-header bg-dark text-white py-3 px-4">
+                <h5 class="modal-title fw-bold fs-6 d-flex align-items-center gap-2">
+                    <i class="bi bi-key-fill text-warning"></i> ŞİFRE / PIN KODU GÜNCELLE
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Kapat"></button>
+            </div>
+            <form id="passwordForm" method="post" action="">
+                {% csrf_token %}
+                <div class="modal-body p-4">
+                    <p class="text-secondary small mb-3">
+                        <strong id="passwordTargetUser" class="text-primary font-monospace"></strong> kullanıcısı için yeni bir şifre veya kasa PIN kodu belirleyiniz.
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-slate-800">Yeni Şifre / PIN *</label>
+                        <input type="password" name="new_password" class="form-control font-monospace fs-5 text-center" placeholder="Yeni şifre giriniz..." required autocomplete="new-password">
+                        <small class="text-muted fs-8 d-block mt-1">Kullanıcı bundan sonraki girişlerinde bu yeni şifreyi kullanacaktır.</small>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2.5 px-4 border-top">
+                    <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">İptal</button>
+                    <button type="submit" class="btn btn-success fw-bold px-3 text-white">
+                        <i class="bi bi-check2 me-1"></i> Şifreyi Kaydet
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- 3. YETKİ (ROL) DEĞİŞTİRME MODALI -->
+<div class="modal fade" id="roleModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 440px;">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-header bg-info text-white py-3 px-4">
+                <h5 class="modal-title fw-bold fs-6 d-flex align-items-center gap-2">
+                    <i class="bi bi-person-gear"></i> PERSONEL YETKİSİNİ DEĞİŞTİR
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Kapat"></button>
+            </div>
+            <form id="roleForm" method="post" action="">
+                {% csrf_token %}
+                <div class="modal-body p-4">
+                    <p class="text-secondary small mb-3">
+                        <strong id="roleTargetUser" class="text-primary font-monospace"></strong> kullanıcısının sisteme erişim seviyesini güncelleyin:
+                    </p>
+                    <div class="p-3 border rounded-3 bg-light">
+                        <div class="form-check mb-2.5">
+                            <input class="form-check-input" type="radio" name="role" id="changeRoleCashier" value="KASIYER">
+                            <label class="form-check-label fw-bold text-slate-900" for="changeRoleCashier">
+                                <i class="bi bi-cart4 text-primary me-1"></i> Kasiyer Rolü
+                            </label>
+                            <small class="text-muted d-block ps-4 fs-8">Sadece POS ekranına girer, yönetim panelini göremez.</small>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="role" id="changeRoleAdmin" value="YONETICI">
+                            <label class="form-check-label fw-bold text-slate-900" for="changeRoleAdmin">
+                                <i class="bi bi-shield-check text-success me-1"></i> Yönetici Rolü
+                            </label>
+                            <small class="text-muted d-block ps-4 fs-8">Tüm yönetim paneline, raporlara ve fiyat ayarlarına erişir.</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2.5 px-4 border-top">
+                    <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">İptal</button>
+                    <button type="submit" class="btn btn-primary fw-bold px-3 text-white">
+                        <i class="bi bi-check2 me-1"></i> Rolü Güncelle
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function openPasswordModal(userId, username) {
+        document.getElementById('passwordTargetUser').innerText = username;
+        document.getElementById('passwordForm').action = '/management/users/' + userId + '/reset-password/';
+        const modal = new bootstrap.Modal(document.getElementById('passwordModal'));
+        modal.show();
+    }
+
+    function openRoleModal(userId, username, currentRole) {
+        document.getElementById('roleTargetUser').innerText = username;
+        document.getElementById('roleForm').action = '/management/users/' + userId + '/change-role/';
+        if (currentRole === 'YONETICI') {
+            document.getElementById('changeRoleAdmin').checked = true;
+        } else {
+            document.getElementById('changeRoleCashier').checked = true;
+        }
+        const modal = new bootstrap.Modal(document.getElementById('roleModal'));
+        modal.show();
+    }
+</script>
+{% endblock %}
