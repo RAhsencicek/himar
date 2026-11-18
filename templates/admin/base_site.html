@@ -134,16 +134,16 @@
         left: 0 !important;
         right: 0 !important;
         width: 100% !important;
+        height: var(--header-h) !important;
         min-height: var(--header-h) !important;
-        height: auto !important;
         z-index: 1040 !important;
         display: flex !important;
         flex-direction: row !important;
-        flex-wrap: wrap !important;
+        flex-wrap: nowrap !important;
         align-items: center !important;
         justify-content: space-between !important;
         gap: 8px 14px !important;
-        padding: 8px clamp(12px, 2vw, 24px) !important;
+        padding: 0 clamp(12px, 2vw, 24px) !important;
         background-color: #ffffff !important;
         border-bottom: 1px solid var(--border-color) !important;
         box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05) !important;
@@ -955,11 +955,13 @@
 
     @media (max-width: 767.98px) {
         #user-tools {
-            width: 100% !important;
+            width: auto !important;
+            justify-content: flex-end !important;
+            gap: 4px !important;
         }
         #user-tools > a.btn {
-            font-size: 0.78rem !important;
-            padding: 5px 10px !important;
+            font-size: 0.76rem !important;
+            padding: 4px 8px !important;
         }
         .tabler-card {
             padding: 12px 14px !important;
@@ -1293,10 +1295,11 @@
     }
     #header {
         flex-direction: row !important;
-        flex-wrap: wrap !important;
+        flex-wrap: nowrap !important;
         justify-content: space-between !important;
         align-items: center !important;
-        padding: 8px clamp(12px, 2vw, 24px) !important;
+        padding: 0 clamp(12px, 2vw, 24px) !important;
+        height: var(--header-h) !important;
     }
     #site-name {
         margin: 0 !important;
@@ -1358,18 +1361,20 @@
         </a>
     </div>
 
-    <div id="user-tools" class="d-flex flex-wrap align-items-center gap-2">
-        <a href="{% url 'download_backup_view' %}" class="btn btn-sm btn-outline-primary fw-bold px-3 py-1.5 shadow-xs d-flex align-items-center gap-1.5" title="Veritabanı Yedeğini Bilgisayara İndir">
-            <i class="bi bi-cloud-arrow-down-fill"></i> Yedek İndir
+    <div id="user-tools" class="d-flex align-items-center gap-1.5 ms-auto flex-nowrap">
+        <a href="{% url 'download_backup_view' %}" class="btn btn-sm btn-outline-primary fw-bold px-2.5 py-1.5 shadow-xs d-flex align-items-center gap-1.5 text-nowrap" title="Veritabanı Yedeğini Bilgisayara İndir">
+            <i class="bi bi-cloud-arrow-down-fill"></i>
+            <span class="d-none d-md-inline">Yedek İndir</span>
         </a>
-        <a href="{% url 'pos_screen' %}" target="_blank" class="btn btn-sm btn-success fw-bold px-3 py-1.5 shadow-xs d-flex align-items-center gap-2 text-white">
-            <i class="bi bi-cart4"></i> CANLI POS KASASINA GİT
+        <a href="{% url 'pos_screen' %}" target="_blank" class="btn btn-sm btn-success fw-bold px-2.5 py-1.5 shadow-xs d-flex align-items-center gap-1.5 text-white text-nowrap" title="Canlı POS Kasasına Git">
+            <i class="bi bi-cart4"></i>
+            <span class="d-none d-lg-inline">CANLI </span><span>POS Kasa</span>
         </a>
-        <span class="text-slate-700 fw-semibold d-none d-xl-inline text-truncate" style="max-width: 170px;">
+        <span class="text-slate-700 fw-semibold d-none d-xl-inline text-truncate" style="max-width: 140px;">
             <i class="bi bi-person-circle text-primary me-1"></i> {{ user.get_full_name|default:user.username|default:"Yönetici" }}
         </span>
-        <a href="{% url 'logout_view' %}" class="btn btn-sm btn-outline-danger fw-bold px-2.5 py-1 text-decoration-none">
-            <i class="bi bi-box-arrow-right"></i> Çıkış
+        <a href="{% url 'logout_view' %}" class="btn btn-sm btn-outline-danger fw-bold px-2.5 py-1 text-decoration-none text-nowrap" title="Çıkış Yap">
+            <i class="bi bi-box-arrow-right"></i> <span class="d-none d-sm-inline">Çıkış</span>
         </a>
     </div>
 </header>

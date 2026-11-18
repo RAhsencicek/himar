@@ -168,7 +168,7 @@
                 <div class="table-responsive">
                     <table class="table saas-table table-hover align-middle mb-0" id="companiesTable">
                         <thead>
-                            <tr>
+                            <tr class="text-nowrap">
                                 <th style="width: 50px;">#</th>
                                 <th>Mağaza / Şirket Bilgisi</th>
                                 <th>İletişim & Vergi</th>
@@ -285,7 +285,7 @@
                                         </span>
                                     {% endif %}
                                 </td>
-                                <td class="text-end pe-3">
+                                <td class="text-end pe-3 text-nowrap">
                                     <div class="d-inline-flex gap-1.5">
                                         <!-- DÜZENLEME MODAL BUTONU -->
                                         <button type="button"
@@ -350,7 +350,7 @@
                 <div class="table-responsive">
                     <table class="table saas-table table-hover align-middle mb-0">
                         <thead>
-                            <tr>
+                            <tr class="text-nowrap">
                                 <th style="width: 50px;">#</th>
                                 <th>Mağaza / Firma</th>
                                 <th>Kasa Adı & Kodu</th>
@@ -387,7 +387,7 @@
                                 <td class="text-secondary fs-8">
                                     {{ reg.created_at|date:"d.m.Y H:i" }}
                                 </td>
-                                <td class="text-end pe-3">
+                                <td class="text-end pe-3 text-nowrap">
                                     <form method="post" action="{% url 'super_admin_reset_register_hardware' reg.id %}" class="d-inline">
                                         {% csrf_token %}
                                         <button type="submit"
