@@ -140,6 +140,8 @@ urlpatterns = [
     # Platform Süper Admin Konsolu (Faz 12)
     path('super-admin/', views.super_admin_dashboard_view, name='super_admin_dashboard'),
     path('superadmin/', views.super_admin_dashboard_view, name='superadmin_dashboard_alias'),
+    path('super-admin/companies/create/', views.super_admin_create_company_action, name='super_admin_create_company'),
     path('super-admin/companies/<int:company_id>/update-subscription/', views.super_admin_update_subscription_action, name='super_admin_update_subscription'),
     path('super-admin/companies/<int:company_id>/toggle-status/', views.super_admin_toggle_company_status_action, name='super_admin_toggle_company_status'),
+    path('super-admin/registers/<int:register_id>/reset-hardware/', views.super_admin_reset_register_hardware_action, name='super_admin_reset_register_hardware'),
 ]

@@ -3203,6 +3203,61 @@ class SuperAdminConsoleTestSuite(TestCase):
         self.assertTrue(kasa2.is_active)
         self.assertEqual(self.company_kadikoy.cash_registers.filter(is_active=True).count(), 2)
 
+    def test_super_admin_create_company_action_success(self):
+        """Süper admin onboarding sihirbazı ile yeni mağaza, lisans ve yönetici hesabı açabilmelidir."""
+        self.client.force_login(self.superuser)
+        create_url = reverse('super_admin_create_company')
+        res = self.client.post(create_url, {
+            'name': 'HiMarket İzmir Şubesi',
+            'code': 'himarket-izmir',
+            'tax_number': '9876543210',
+            'tax_office': 'Konak VD',
+            'phone': '0232 444 00 00',
+            'email': 'izmir@himarket.com',
+            'address': 'Alsancak İzmir',
+            'plan_type': 'GROWTH',
+            'max_cash_registers': '5',
+            'duration_days': '365',
+            'manager_username': 'izmir_mudur',
+            'manager_password': 'mudurpass123'
+        })
+        self.assertEqual(res.status_code, 302)
+        self.assertRedirects(res, reverse('super_admin_dashboard'))
+
+        # Firma kontrolü
+        izmir = Company.objects.filter(code='himarket-izmir').first()
+        self.assertIsNotNone(izmir)
+        self.assertEqual(izmir.name, 'HiMarket İzmir Şubesi')
+        self.assertTrue(izmir.is_active)
+
+        # Abonelik kontrolü
+        sub = Subscription.objects.filter(company=izmir).first()
+        self.assertIsNotNone(sub)
+        self.assertEqual(sub.plan_type, 'GROWTH')
+        self.assertEqual(sub.max_cash_registers, 5)
+        self.assertEqual(sub.status, 'ACTIVE')
+        self.assertIsNotNone(sub.expires_at)
+
+        # Otomatik Kasa 1 kontrolü
+        kasa1 = CashRegister.objects.filter(company=izmir, register_code='KASA-01').first()
+        self.assertIsNotNone(kasa1)
+        self.assertTrue(kasa1.is_active)
+
+        # Yönetici kullanıcısı kontrolü
+        mgr_user = User.objects.filter(username='izmir_mudur').first()
+        self.assertIsNotNone(mgr_user)
+        self.assertTrue(mgr_user.is_staff)
+        self.assertEqual(mgr_user.profile.company, izmir)
+
+    def test_super_admin_reset_register_hardware_action(self):
+        """Süper admin bir kasanın terminal donanım mühürünü sıfırlayabilmelidir."""
+        self.client.force_login(self.superuser)
+        reg = self.reg_k1
+        reset_url = reverse('super_admin_reset_register_hardware', args=[reg.id])
+        res = self.client.post(reset_url)
+        self.assertEqual(res.status_code, 302)
+        self.assertRedirects(res, reverse('super_admin_dashboard'))
+
 
 
 

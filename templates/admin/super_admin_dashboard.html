@@ -1,253 +1,586 @@
-{% extends "admin/base_site.html" %}
+{% extends "super_admin/base.html" %}
 {% load static %}
+
+{% block title %}HiMarket Platform Master Console | SaaS Yönetimi{% endblock %}
 
 {% block content %}
 <div class="container-fluid p-0">
-    <!-- SAYFA BAŞLIĞI VE BİLGİLENDİRME -->
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-2 border-bottom">
+
+    <!-- ÜST BAŞLIK & ANA HIZLI EYLEM ÇUBUĞU -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 pb-3 border-bottom">
         <div>
             <div class="d-flex align-items-center gap-2 mb-1">
-                <span class="badge bg-primary text-white fs-8 px-2 py-0.5 rounded-1">PLATFORM YÖNETİMİ</span>
-                <span class="text-secondary fs-8 fw-semibold">/ Süper Admin Konsolu</span>
+                <span class="badge bg-primary text-white fs-8 px-2 py-0.5 rounded-1 fw-bold">SaaS PLATFORM YÖNETİMİ</span>
+                <span class="text-secondary fs-8 fw-semibold">/ Master Control Console</span>
             </div>
             <h1 class="h3 fw-bold text-slate-900 mb-0 d-flex align-items-center gap-2">
-                <i class="bi bi-shield-lock-fill text-primary"></i> SÜPER ADMİN KONSOLU & MERKEZİ LİSANS YÖNETİMİ
+                <i class="bi bi-shield-check text-primary"></i> Platform Süper Admin & Lisans Konsolu
             </h1>
-            <span class="text-secondary small fw-medium">Sistemdeki tüm şirketlerin (Company), mağaza lisanslarının (Subscription), kasa kotalarının ve aktiflik durumlarının merkezi yönetim paneli.</span>
+            <p class="text-secondary small fw-medium mb-0 mt-1">
+                HiMarket ekosistemindeki tüm kayıtlı kiracıların (Tenants), mağaza aboneliklerinin, kasa kotalarının ve donanım kilitlerinin merkezi yönetim merkezi.
+            </p>
         </div>
-        <div class="d-flex flex-wrap gap-2">
-            <a href="{% url 'admin_dashboard' %}" class="btn btn-sm btn-outline-secondary fw-semibold px-3 py-1.5 shadow-xs d-flex align-items-center gap-1.5">
-                <i class="bi bi-speedometer2"></i> Mağaza Paneline Dön
-            </a>
-            <a href="{% url 'admin:index' %}" class="btn btn-sm btn-outline-primary fw-semibold px-3 py-1.5 shadow-xs d-flex align-items-center gap-1.5">
-                <i class="bi bi-database-check"></i> Django ModelAdmin
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <!-- Yeni Mağaza Ekle Butonu -->
+            <button type="button" class="btn btn-primary fw-bold px-3 py-2 shadow-sm d-flex align-items-center gap-2 rounded-3" data-bs-toggle="modal" data-bs-target="#createCompanyModal">
+                <i class="bi bi-plus-circle-fill"></i>
+                <span>Yeni Mağaza Ekle</span>
+            </button>
+            <!-- Mağaza Paneline Geç -->
+            <a href="{% url 'admin_dashboard' %}" class="btn btn-outline-secondary fw-semibold px-3 py-2 shadow-xs d-flex align-items-center gap-1.5 rounded-3">
+                <i class="bi bi-speedometer2"></i> Mağaza Paneline Geç
             </a>
         </div>
     </div>
 
-    <!-- FLASH BİLGİ & UYARI MESAJLARI -->
-    {% if messages %}
-        {% for message in messages %}
-            <div class="alert alert-{{ message.tags }} alert-dismissible fade show rounded-2 shadow-xs py-2 px-3 mb-3 fs-7" role="alert">
-                <i class="bi bi-info-circle-fill me-1"></i> {{ message }}
-                <button type="button" class="btn-close py-2" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        {% endfor %}
-    {% endif %}
-
-    <!-- GLOBAL KPI ÖZET KARTLARI -->
-    <div class="row g-2.5 mb-3">
-        <!-- TOPLAM MAĞAZA -->
-        <div class="col-6 col-lg-3">
-            <div class="tabler-card border-start border-4 border-primary h-100 p-2.5">
-                <div class="text-secondary fs-8 fw-bold text-uppercase">TOPLAM MAĞAZA (COMPANY)</div>
-                <div class="fs-4 fw-extrabold text-slate-900">{{ total_companies }}</div>
-                <div class="text-slate-500 fs-8 mt-0.5">
-                    <span class="text-success fw-semibold">{{ active_companies }} Aktif</span> /
-                    <span class="text-secondary fw-semibold">{{ inactive_companies }} Pasif</span>
+    <!-- GLOBAL SAAS KPI KARTLARI -->
+    <div class="row g-3 mb-4" id="overview">
+        <!-- 1. TOPLAM MAĞAZA (TENANTS) -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="saas-kpi-card kpi-blue h-100 shadow-xs">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="text-secondary fs-8 fw-bold text-uppercase tracking-wider">TOPLAM MAĞAZA (TENANTS)</div>
+                        <div class="fs-2 fw-extrabold text-slate-900 mt-1">{{ total_companies }}</div>
+                    </div>
+                    <div class="rounded-3 p-2 bg-primary-subtle text-primary">
+                        <i class="bi bi-buildings fs-4"></i>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2 mt-2 pt-2 border-top fs-8">
+                    <span class="text-success fw-bold"><i class="bi bi-check-circle-fill"></i> {{ active_companies }} Aktif</span>
+                    <span class="text-muted">/</span>
+                    <span class="text-secondary fw-semibold"><i class="bi bi-pause-circle"></i> {{ inactive_companies }} Pasif</span>
                 </div>
             </div>
         </div>
 
-        <!-- AKTİF KASA VE TAHSİS EDİLEN KOTA -->
-        <div class="col-6 col-lg-3">
-            <div class="tabler-card border-start border-4 border-info h-100 p-2.5">
-                <div class="text-secondary fs-8 fw-bold text-uppercase">AKTİF KASA / LİSANS KOTASI</div>
-                <div class="fs-4 fw-extrabold text-slate-900">{{ total_active_registers }} / {{ total_max_quota }}</div>
-                <div class="text-slate-500 fs-8 mt-0.5">Platform geneli aktif terminal kapasitesi</div>
+        <!-- 2. AKTİF KASA VE TAHSİS EDİLEN KOTA -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="saas-kpi-card kpi-cyan h-100 shadow-xs">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="text-secondary fs-8 fw-bold text-uppercase tracking-wider">AKTİF KASA / LİSANS KOTASI</div>
+                        <div class="fs-2 fw-extrabold text-slate-900 mt-1">{{ total_active_registers }} <span class="fs-5 text-muted fw-normal">/ {{ total_max_quota }}</span></div>
+                    </div>
+                    <div class="rounded-3 p-2 bg-info-subtle text-info">
+                        <i class="bi bi-display fs-4"></i>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2 mt-2 pt-2 border-top fs-8 text-secondary">
+                    <span>Platform genelinde çalışan kasa terminal kapasitesi</span>
+                </div>
             </div>
         </div>
 
-        <!-- ABONELİK DAĞILIMI -->
-        <div class="col-6 col-lg-3">
-            <div class="tabler-card border-start border-4 border-success h-100 p-2.5">
-                <div class="text-secondary fs-8 fw-bold text-uppercase">LİSANS DURUM DAĞILIMI</div>
-                <div class="d-flex flex-wrap gap-1 mt-1">
-                    <span class="badge bg-success-subtle text-success fs-8 px-1.5 py-0.5" title="Aktif Lisans">{{ status_counts.ACTIVE }} Aktif</span>
-                    <span class="badge bg-info-subtle text-info fs-8 px-1.5 py-0.5" title="Deneme Süresi">{{ status_counts.TRIAL }} Deneme</span>
-                    <span class="badge bg-warning-subtle text-warning fs-8 px-1.5 py-0.5" title="Askıya Alındı">{{ status_counts.SUSPENDED }} Askıda</span>
-                    <span class="badge bg-danger-subtle text-danger fs-8 px-1.5 py-0.5" title="Süresi Doldu">{{ status_counts.EXPIRED }} Bitti</span>
+        <!-- 3. ABONELİK DURUM DAĞILIMI -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="saas-kpi-card kpi-green h-100 shadow-xs">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="text-secondary fs-8 fw-bold text-uppercase tracking-wider">LİSANS DURUM DAĞILIMI</div>
+                        <div class="fs-2 fw-extrabold text-success mt-1">{{ status_counts.ACTIVE }} <span class="fs-6 text-muted fw-semibold">Aktif</span></div>
+                    </div>
+                    <div class="rounded-3 p-2 bg-success-subtle text-success">
+                        <i class="bi bi-key-fill fs-4"></i>
+                    </div>
                 </div>
-                <div class="text-slate-500 fs-8 mt-1">Tüm mağaza abonelikleri</div>
+                <div class="d-flex flex-wrap gap-1 mt-2 pt-2 border-top fs-8">
+                    <span class="badge bg-info-subtle text-info">{{ status_counts.TRIAL }} Deneme</span>
+                    <span class="badge bg-warning-subtle text-warning">{{ status_counts.SUSPENDED }} Askıda</span>
+                    <span class="badge bg-danger-subtle text-danger">{{ status_counts.EXPIRED }} Bitti</span>
+                </div>
             </div>
         </div>
 
-        <!-- KRİTİK / YAKLAŞAN LİSANSLAR -->
-        <div class="col-6 col-lg-3">
-            <div class="tabler-card border-start border-4 {% if expiring_soon_count > 0 %}border-warning{% else %}border-secondary{% endif %} h-100 p-2.5">
-                <div class="text-secondary fs-8 fw-bold text-uppercase">KRİTİK / YAKLAŞAN LİSANSLAR</div>
-                <div class="fs-4 fw-extrabold {% if expiring_soon_count > 0 %}text-warning{% else %}text-slate-900{% endif %}">
-                    {{ expiring_soon_count }}
+        <!-- 4. KRİTİK / YENİLEME YAKLAŞAN LİSANSLAR -->
+        <div class="col-12 col-sm-6 col-xl-3">
+            <div class="saas-kpi-card {% if expiring_soon_count > 0 %}kpi-amber{% else %}kpi-blue{% endif %} h-100 shadow-xs">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="text-secondary fs-8 fw-bold text-uppercase tracking-wider">30 GÜN İÇİNDE BİTECEKLER</div>
+                        <div class="fs-2 fw-extrabold {% if expiring_soon_count > 0 %}text-warning{% else %}text-slate-900{% endif %} mt-1">
+                            {{ expiring_soon_count }}
+                        </div>
+                    </div>
+                    <div class="rounded-3 p-2 {% if expiring_soon_count > 0 %}bg-warning-subtle text-warning{% else %}bg-secondary-subtle text-secondary{% endif %}">
+                        <i class="bi bi-hourglass-bottom fs-4"></i>
+                    </div>
                 </div>
-                <div class="text-slate-500 fs-8 mt-0.5">30 gün içinde süresi dolacak mağaza</div>
+                <div class="d-flex align-items-center gap-2 mt-2 pt-2 border-top fs-8 text-secondary">
+                    <span>Yenileme uyarısı bekleyen mağazalar</span>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- MAĞAZALAR VE ABONELİK LİSTESİ TABLOSU -->
-    <div class="card shadow-xs">
-        <div class="card-header bg-white d-flex justify-content-between align-items-center py-2.5 px-3">
-            <span class="fw-bold text-slate-900 fs-7">
-                <i class="bi bi-buildings me-1 text-primary"></i> MAĞAZALAR VE LİSANS KOTASI LİSTESİ ({{ total_companies }})
-            </span>
-            <span class="text-muted fs-8">Platform geneli tüm kiracılar (Tenants)</span>
+    <!-- SEKMELİ KONSOL ALANI (TABS) -->
+    <div class="saas-card shadow-sm mb-4">
+        <!-- Sekme Başlıkları -->
+        <div class="card-header bg-white border-bottom px-3 pt-3 pb-0">
+            <ul class="nav nav-tabs border-0" id="saasDashboardTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active fw-bold py-2.5 px-3.5 d-flex align-items-center gap-2 border-0 border-bottom border-3 border-primary" id="companies-tab" data-bs-toggle="tab" data-bs-target="#companies-pane" type="button" role="tab">
+                        <i class="bi bi-buildings-fill text-primary"></i>
+                        <span>Kayıtlı Mağazalar & Lisanslar</span>
+                        <span class="badge bg-primary-subtle text-primary rounded-pill px-2 py-0.5 fs-8">{{ total_companies }}</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link text-secondary fw-semibold py-2.5 px-3.5 d-flex align-items-center gap-2 border-0" id="registers-tab" data-bs-toggle="tab" data-bs-target="#registers-pane" type="button" role="tab">
+                        <i class="bi bi-display text-info"></i>
+                        <span>Kasa & Terminal Denetimi</span>
+                        <span class="badge bg-secondary-subtle text-secondary rounded-pill px-2 py-0.5 fs-8">{{ all_registers|length }}</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link text-secondary fw-semibold py-2.5 px-3.5 d-flex align-items-center gap-2 border-0" id="logs-tab" data-bs-toggle="tab" data-bs-target="#logs-pane" type="button" role="tab">
+                        <i class="bi bi-journal-text text-secondary"></i>
+                        <span>Sistem Denetim Günlüğü</span>
+                        <span class="badge bg-secondary-subtle text-secondary rounded-pill px-2 py-0.5 fs-8">{{ recent_logs|length }}</span>
+                    </button>
+                </li>
+            </ul>
         </div>
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0 fs-7">
-                <thead class="table-light">
-                    <tr>
-                        <th class="ps-3" style="width: 50px;">#</th>
-                        <th>Mağaza / Şirket Bilgisi</th>
-                        <th>İletişim & Vergi</th>
-                        <th>Abonelik Paketi</th>
-                        <th>Kasa / Lisans Kotası</th>
-                        <th>Lisans Durumu</th>
-                        <th>Bitiş & Kalan Gün</th>
-                        <th>Şirket Durumu</th>
-                        <th class="text-end pe-3" style="min-width: 170px;">İşlemler</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in company_rows %}
-                    <tr>
-                        <td class="ps-3 text-secondary fw-semibold">{{ row.company.id }}</td>
-                        <td>
-                            <div class="fw-bold text-slate-900">{{ row.company.name }}</div>
-                            <div class="text-secondary fs-8">Kod: <span class="badge bg-light text-dark border">{{ row.company.code }}</span></div>
-                        </td>
-                        <td>
-                            {% if row.company.tax_number %}
-                                <div class="text-slate-800 fs-8"><i class="bi bi-card-text me-1"></i>VKN: {{ row.company.tax_number }}</div>
-                            {% endif %}
-                            {% if row.company.phone %}
-                                <div class="text-secondary fs-8"><i class="bi bi-telephone me-1"></i>{{ row.company.phone }}</div>
-                            {% endif %}
-                            {% if row.company.email %}
-                                <div class="text-secondary fs-8"><i class="bi bi-envelope me-1"></i>{{ row.company.email }}</div>
-                            {% endif %}
-                            {% if not row.company.tax_number and not row.company.phone and not row.company.email %}
-                                <span class="text-muted fs-8">—</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if row.subscription %}
-                                <span class="badge bg-navy text-white fs-8 px-2 py-1" style="background-color: #1e3a5f;">
-                                    {{ row.subscription.get_plan_type_display }}
-                                </span>
-                            {% else %}
-                                <span class="badge bg-secondary fs-8">Tanımsız</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <div class="d-flex align-items-center gap-1.5">
-                                <span class="fw-bold {% if row.active_registers >= row.quota %}text-warning{% else %}text-slate-900{% endif %}">
-                                    {{ row.active_registers }} / {{ row.quota }}
-                                </span>
-                                <span class="text-secondary fs-8">kasa</span>
-                            </div>
-                            <div class="text-muted fs-8">Toplam: {{ row.total_registers }} terminal</div>
-                        </td>
-                        <td>
-                            {% if row.subscription %}
-                                {% if row.subscription.status == 'ACTIVE' %}
-                                    <span class="badge bg-success-subtle text-success fs-8 px-2 py-0.5">
-                                        <i class="bi bi-check-circle-fill me-1"></i> Aktif
-                                    </span>
-                                {% elif row.subscription.status == 'TRIAL' %}
-                                    <span class="badge bg-info-subtle text-info fs-8 px-2 py-0.5">
-                                        <i class="bi bi-hourglass-split me-1"></i> Deneme
-                                    </span>
-                                {% elif row.subscription.status == 'SUSPENDED' %}
-                                    <span class="badge bg-warning-subtle text-warning fs-8 px-2 py-0.5">
-                                        <i class="bi bi-pause-circle-fill me-1"></i> Askıda
-                                    </span>
-                                {% elif row.subscription.status == 'EXPIRED' %}
-                                    <span class="badge bg-danger-subtle text-danger fs-8 px-2 py-0.5">
-                                        <i class="bi bi-x-circle-fill me-1"></i> Süresi Doldu
-                                    </span>
-                                {% endif %}
-                            {% else %}
-                                <span class="badge bg-secondary fs-8">Abonelik Yok</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if row.subscription and row.subscription.expires_at %}
-                                <div class="text-slate-900 fs-8 fw-semibold">{{ row.subscription.expires_at|date:"d.m.Y" }}</div>
-                                <div class="fs-8 {% if row.days_remaining <= 30 %}text-warning fw-bold{% else %}text-secondary{% endif %}">
-                                    {{ row.days_remaining }} gün kaldı
-                                </div>
-                            {% elif row.subscription %}
-                                <span class="text-secondary fs-8">Süresiz / Sınırsız</span>
-                            {% else %}
-                                <span class="text-muted fs-8">—</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if row.company.is_active %}
-                                <span class="badge bg-success text-white fs-8 px-2 py-0.5">
-                                    <i class="bi bi-check2 me-0.5"></i> Aktif Firma
-                                </span>
-                            {% else %}
-                                <span class="badge bg-danger text-white fs-8 px-2 py-0.5">
-                                    <i class="bi bi-slash-circle me-0.5"></i> Pasif Firma
-                                </span>
-                            {% endif %}
-                        </td>
-                        <td class="text-end pe-3">
-                            <div class="d-inline-flex gap-1.5">
-                                <!-- DÜZENLEME MODAL BUTONU -->
-                                <button type="button"
-                                        class="btn btn-xs btn-outline-primary fw-semibold px-2 py-1"
-                                        data-bs-toggle="modal"
-                                        data-bs-target="#editSubscriptionModal"
-                                        data-company-id="{{ row.company.id }}"
-                                        data-company-name="{{ row.company.name }}"
-                                        data-plan-type="{{ row.subscription.plan_type|default:'PRO' }}"
-                                        data-quota="{{ row.quota|default:'2' }}"
-                                        data-status="{{ row.subscription.status|default:'ACTIVE' }}"
-                                        data-expires-at="{{ row.expires_at_formatted }}"
-                                        data-notes="{{ row.subscription.notes|default:'' }}"
-                                        title="Lisans ve Kasa Kotasını Düzenle">
-                                    <i class="bi bi-pencil-square me-1"></i> Lisans
-                                </button>
 
-                                <!-- DURUM DEĞİŞTİRME FORMU -->
-                                <form method="post" action="{% url 'super_admin_toggle_company_status' row.company.id %}" class="d-inline">
-                                    {% csrf_token %}
-                                    {% if row.company.is_active %}
-                                    <button type="submit"
-                                            class="btn btn-xs btn-outline-danger fw-semibold px-2 py-1"
-                                            onclick="return confirm('{{ row.company.name }} firmasını pasife almak istediğinize emin misiniz? Firmanın satış ve kasa işlemleri durdurulacaktır.');"
-                                            title="Şirketi Pasife Al">
-                                        <i class="bi bi-power me-1"></i> Pasif Yap
-                                    </button>
-                                    {% else %}
-                                    <button type="submit"
-                                            class="btn btn-xs btn-outline-success fw-semibold px-2 py-1"
-                                            onclick="return confirm('{{ row.company.name }} firmasını aktif hale getirmek istediğinize emin misiniz?');"
-                                            title="Şirketi Aktife Al">
-                                        <i class="bi bi-power me-1"></i> Aktif Yap
-                                    </button>
+        <!-- Sekme İçerikleri -->
+        <div class="tab-content" id="saasDashboardTabContent">
+
+            <!-- 1. SEKME: MAĞAZALAR VE LİSANSLAR TABLOSU -->
+            <div class="tab-pane fade show active p-0" id="companies-pane" role="tabpanel">
+                <!-- Canlı Arama ve Hızlı Filtre Barı -->
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 p-3 bg-light border-bottom">
+                    <div class="d-flex align-items-center gap-2 flex-grow-1" style="max-width: 420px;">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
+                            <input type="text" id="companySearchInput" class="form-control bg-white border-start-0" placeholder="Mağaza adı, kodu veya vergi no ile filtrele..." onkeyup="filterCompanyTable()">
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="fs-8 text-muted">Filtre:</span>
+                        <button type="button" class="btn btn-xs btn-outline-secondary active fw-semibold" onclick="filterStatus('ALL', this)">Tümü</button>
+                        <button type="button" class="btn btn-xs btn-outline-success fw-semibold" onclick="filterStatus('ACTIVE', this)">Aktifler</button>
+                        <button type="button" class="btn btn-xs btn-outline-warning fw-semibold" onclick="filterStatus('SUSPENDED', this)">Askıdakiler</button>
+                        <button type="button" class="btn btn-xs btn-outline-danger fw-semibold" onclick="filterStatus('EXPIRED', this)">Bitenler</button>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table saas-table table-hover align-middle mb-0" id="companiesTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;">#</th>
+                                <th>Mağaza / Şirket Bilgisi</th>
+                                <th>İletişim & Vergi</th>
+                                <th>Abonelik Paketi</th>
+                                <th>Kasa / Lisans Kotası</th>
+                                <th>Lisans Durumu</th>
+                                <th>Geçerlilik & Kalan Gün</th>
+                                <th>Şirket Durumu</th>
+                                <th class="text-end pe-3" style="min-width: 170px;">İşlemler</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in company_rows %}
+                            <tr class="company-row" data-name="{{ row.company.name|lower }}" data-code="{{ row.company.code|lower }}" data-tax="{{ row.company.tax_number|default:'' }}" data-status="{{ row.subscription.status|default:'NONE' }}">
+                                <td class="text-secondary fw-semibold">{{ row.company.id }}</td>
+                                <td>
+                                    <div class="fw-bold text-slate-900 fs-7 d-flex align-items-center gap-1.5">
+                                        <i class="bi bi-shop text-primary"></i>
+                                        <span>{{ row.company.name }}</span>
+                                    </div>
+                                    <div class="text-secondary fs-8 mt-0.5">
+                                        Kod: <span class="badge bg-light text-dark border px-1.5 py-0.5">{{ row.company.code }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if row.company.tax_number %}
+                                        <div class="text-slate-800 fs-8"><i class="bi bi-card-text me-1 text-muted"></i>VKN: <span class="fw-semibold">{{ row.company.tax_number }}</span></div>
                                     {% endif %}
-                                </form>
-                            </div>
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="9" class="text-center py-4 text-secondary">
-                            <i class="bi bi-buildings fs-1 d-block mb-2 text-muted"></i>
-                            Henüz kayıtlı şirket bulunmamaktadır.
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                                    {% if row.company.phone %}
+                                        <div class="text-secondary fs-8"><i class="bi bi-telephone me-1 text-muted"></i>{{ row.company.phone }}</div>
+                                    {% endif %}
+                                    {% if row.company.email %}
+                                        <div class="text-secondary fs-8"><i class="bi bi-envelope me-1 text-muted"></i>{{ row.company.email }}</div>
+                                    {% endif %}
+                                    {% if not row.company.tax_number and not row.company.phone and not row.company.email %}
+                                        <span class="text-muted fs-8">—</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if row.subscription %}
+                                        {% if row.subscription.plan_type == 'BASIC' %}
+                                            <span class="badge badge-plan-basic px-2 py-1 rounded-2">Tek Kasa (Basic)</span>
+                                        {% elif row.subscription.plan_type == 'PRO' %}
+                                            <span class="badge badge-plan-pro px-2 py-1 rounded-2">Çift Kasa (Pro)</span>
+                                        {% elif row.subscription.plan_type == 'GROWTH' %}
+                                            <span class="badge badge-plan-growth px-2 py-1 rounded-2">Büyüme (Growth)</span>
+                                        {% elif row.subscription.plan_type == 'ENTERPRISE' %}
+                                            <span class="badge badge-plan-enterprise px-2 py-1 rounded-2">Kurumsal (Enterprise)</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary px-2 py-1 rounded-2">{{ row.subscription.get_plan_type_display }}</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="badge bg-secondary fs-8">Tanımsız</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center gap-1.5">
+                                        <span class="fw-bold {% if row.active_registers >= row.quota %}text-warning{% else %}text-slate-900{% endif %}">
+                                            {{ row.active_registers }} / {{ row.quota }}
+                                        </span>
+                                        <span class="text-secondary fs-8">kasa aktif</span>
+                                    </div>
+                                    <!-- Küçük Doluluk Çubuğu -->
+                                    <div class="progress mt-1" style="height: 4px; width: 80px;">
+                                        <div class="progress-bar {% if row.active_registers >= row.quota %}bg-warning{% else %}bg-primary{% endif %}"
+                                             role="progressbar"
+                                             style="width: {% if row.quota > 0 %}{% widthratio row.active_registers row.quota 100 %}{% else %}0{% endif %}%;">
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if row.subscription %}
+                                        {% if row.subscription.status == 'ACTIVE' %}
+                                            <span class="badge bg-success-subtle text-success fs-8 px-2 py-1 rounded-2">
+                                                <i class="bi bi-check-circle-fill me-1"></i> Aktif
+                                            </span>
+                                        {% elif row.subscription.status == 'TRIAL' %}
+                                            <span class="badge bg-info-subtle text-info fs-8 px-2 py-1 rounded-2">
+                                                <i class="bi bi-hourglass-split me-1"></i> Deneme
+                                            </span>
+                                        {% elif row.subscription.status == 'SUSPENDED' %}
+                                            <span class="badge bg-warning-subtle text-warning fs-8 px-2 py-1 rounded-2">
+                                                <i class="bi bi-pause-circle-fill me-1"></i> Askıda
+                                            </span>
+                                        {% elif row.subscription.status == 'EXPIRED' %}
+                                            <span class="badge bg-danger-subtle text-danger fs-8 px-2 py-1 rounded-2">
+                                                <i class="bi bi-x-circle-fill me-1"></i> Süresi Bitti
+                                            </span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="badge bg-secondary fs-8">Lisans Yok</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if row.subscription and row.subscription.expires_at %}
+                                        <div class="text-slate-900 fs-8 fw-bold">{{ row.subscription.expires_at|date:"d.m.Y" }}</div>
+                                        <div class="fs-8 {% if row.days_remaining <= 30 %}text-warning fw-bold{% else %}text-secondary{% endif %}">
+                                            {{ row.days_remaining }} gün kaldı
+                                        </div>
+                                    {% elif row.subscription %}
+                                        <span class="text-success fs-8 fw-semibold"><i class="bi bi-infinity me-0.5"></i> Süresiz / Sınırsız</span>
+                                    {% else %}
+                                        <span class="text-muted fs-8">—</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if row.company.is_active %}
+                                        <span class="badge bg-success text-white fs-8 px-2 py-0.5 rounded-1">
+                                            <i class="bi bi-check2 me-0.5"></i> Aktif
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-danger text-white fs-8 px-2 py-0.5 rounded-1">
+                                            <i class="bi bi-slash-circle me-0.5"></i> Pasif
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end pe-3">
+                                    <div class="d-inline-flex gap-1.5">
+                                        <!-- DÜZENLEME MODAL BUTONU -->
+                                        <button type="button"
+                                                class="btn btn-xs btn-outline-primary fw-semibold px-2 py-1 rounded-2"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#editSubscriptionModal"
+                                                data-company-id="{{ row.company.id }}"
+                                                data-company-name="{{ row.company.name }}"
+                                                data-plan-type="{{ row.subscription.plan_type|default:'PRO' }}"
+                                                data-quota="{{ row.quota|default:'2' }}"
+                                                data-status="{{ row.subscription.status|default:'ACTIVE' }}"
+                                                data-expires-at="{{ row.expires_at_formatted }}"
+                                                data-notes="{{ row.subscription.notes|default:'' }}"
+                                                title="Lisans ve Kasa Kotasını Düzenle">
+                                            <i class="bi bi-pencil-square me-1"></i> Lisans
+                                        </button>
+
+                                        <!-- DURUM DEĞİŞTİRME FORMU -->
+                                        <form method="post" action="{% url 'super_admin_toggle_company_status' row.company.id %}" class="d-inline">
+                                            {% csrf_token %}
+                                            {% if row.company.is_active %}
+                                            <button type="submit"
+                                                    class="btn btn-xs btn-outline-danger fw-semibold px-2 py-1 rounded-2"
+                                                    onclick="return confirm('{{ row.company.name }} mağazasını pasife almak istediğinize emin misiniz? Mağazanın tüm satış terminalleri kilitlenecektir.');"
+                                                    title="Şirketi Pasife Al (Kasaları Kilitle)">
+                                                <i class="bi bi-power me-1"></i> Pasif Yap
+                                            </button>
+                                            {% else %}
+                                            <button type="submit"
+                                                    class="btn btn-xs btn-outline-success fw-semibold px-2 py-1 rounded-2"
+                                                    onclick="return confirm('{{ row.company.name }} mağazasını tekrar aktif duruma getirmek istediğinize emin misiniz?');"
+                                                    title="Şirketi Aktife Al">
+                                                <i class="bi bi-power me-1"></i> Aktif Yap
+                                            </button>
+                                            {% endif %}
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="9" class="text-center py-5 text-secondary">
+                                    <i class="bi bi-buildings fs-1 d-block mb-2 text-muted"></i>
+                                    Henüz kayıtlı mağaza bulunmamaktadır. Sağ üstteki <strong>"Yeni Mağaza Ekle"</strong> butonunu kullanarak başlayabilirsiniz.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 2. SEKME: KASA VE TERMİNAL DENETİMİ -->
+            <div class="tab-pane fade p-3" id="registers-pane" role="tabpanel">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <h6 class="fw-bold text-slate-900 mb-0">Platform Geneli Kasa Terminalleri</h6>
+                        <small class="text-muted">Tüm mağazaların aktif/pasif kasaları ve donanım kilit durumları.</small>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table saas-table table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;">#</th>
+                                <th>Mağaza / Firma</th>
+                                <th>Kasa Adı & Kodu</th>
+                                <th>Kasa Durumu</th>
+                                <th>Oluşturulma Tarihi</th>
+                                <th class="text-end pe-3">Donanım İşlemi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for reg in all_registers %}
+                            <tr>
+                                <td class="text-secondary fw-semibold">{{ reg.id }}</td>
+                                <td>
+                                    <div class="fw-bold text-slate-900">{{ reg.company.name|default:"Merkez Mağaza" }}</div>
+                                    <small class="text-muted">Kod: {{ reg.company.code|default:"default" }}</small>
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="badge bg-light text-dark border fw-bold">{{ reg.register_code }}</span>
+                                        <span class="fw-semibold text-slate-800">{{ reg.name }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if reg.is_active %}
+                                        <span class="badge bg-success-subtle text-success px-2 py-0.5 rounded-2">
+                                            <i class="bi bi-check-circle-fill me-1"></i> Aktif Terminal
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-secondary-subtle text-secondary px-2 py-0.5 rounded-2">
+                                            <i class="bi bi-pause-circle me-1"></i> Pasif Terminal
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-secondary fs-8">
+                                    {{ reg.created_at|date:"d.m.Y H:i" }}
+                                </td>
+                                <td class="text-end pe-3">
+                                    <form method="post" action="{% url 'super_admin_reset_register_hardware' reg.id %}" class="d-inline">
+                                        {% csrf_token %}
+                                        <button type="submit"
+                                                class="btn btn-xs btn-outline-warning fw-semibold px-2 py-1 rounded-2"
+                                                onclick="return confirm('{{ reg.name }} ({{ reg.register_code }}) kasasının cihaz mühürünü sıfırlamak istediğinize emin misiniz? Tarayıcı eşleşmesi temizlenecektir.');"
+                                                title="Cihaz Mühürünü Sıfırla">
+                                            <i class="bi bi-arrow-repeat me-1"></i> Eşleşmeyi Sıfırla
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center py-4 text-secondary">
+                                    Kayıtlı kasa terminali bulunamadı.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 3. SEKME: SİSTEM DENETİM GÜNLÜĞÜ (AUDIT LOGS) -->
+            <div class="tab-pane fade p-3" id="logs-pane" role="tabpanel">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <h6 class="fw-bold text-slate-900 mb-0">Platform Genel Denetim Günlüğü (Audit Logs)</h6>
+                        <small class="text-muted">Son 30 kritik sistem, lisans ve kullanıcı işlemi.</small>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table saas-table table-hover align-middle mb-0 fs-8">
+                        <thead>
+                            <tr>
+                                <th>Zaman</th>
+                                <th>Mağaza</th>
+                                <th>Kullanıcı</th>
+                                <th>Modül</th>
+                                <th>Eylem / İşlem</th>
+                                <th>Detay / Mesaj</th>
+                                <th>IP</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in recent_logs %}
+                            <tr>
+                                <td class="text-secondary fw-semibold">{{ log.created_at|date:"d.m.Y H:i:s" }}</td>
+                                <td>
+                                    <span class="fw-bold text-slate-800">{{ log.company.name|default:"Sistem / Genel" }}</span>
+                                </td>
+                                <td>
+                                    {% if log.user %}
+                                        <span class="badge bg-light text-dark border">{{ log.user.username }}</span>
+                                    {% else %}
+                                        <span class="text-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge bg-primary-subtle text-primary">{{ log.get_module_display|default:log.module }}</span>
+                                </td>
+                                <td class="fw-semibold text-slate-900">{{ log.action }}</td>
+                                <td class="text-secondary text-truncate" style="max-width: 320px;" title="{{ log.message }}">{{ log.message }}</td>
+                                <td class="text-muted font-monospace">{{ log.ip_address|default:"127.0.0.1" }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="7" class="text-center py-4 text-secondary">
+                                    Henüz sistem günlüğü kaydı bulunmamaktadır.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
         </div>
     </div>
 </div>
 
-<!-- LİSANS VE KOTA DÜZENLEME MODALI -->
+<!-- ======================================================= -->
+<!-- MODAL 1: YENİ MAĞAZA VE LİSANS ONBOARDING SİHİRBAZI      -->
+<!-- ======================================================= -->
+<div class="modal fade" id="createCompanyModal" tabindex="-1" aria-labelledby="createCompanyModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white py-2.5 px-3">
+                <h5 class="modal-title fs-6 fw-bold d-flex align-items-center gap-2" id="createCompanyModalLabel">
+                    <i class="bi bi-plus-circle-fill"></i> Yeni Mağaza & Lisans Kurulum Sihirbazı (Onboarding)
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Kapat"></button>
+            </div>
+            <form method="post" action="{% url 'super_admin_create_company' %}">
+                {% csrf_token %}
+                <div class="modal-body p-3.5 fs-7">
+                    <!-- ADIM 1: ŞİRKET KİMLİK BİLGİLERİ -->
+                    <div class="fw-bold text-slate-900 border-bottom pb-1 mb-2.5 d-flex align-items-center gap-1.5">
+                        <i class="bi bi-buildings text-primary"></i> 1. Mağaza / Şirket Bilgileri
+                    </div>
+                    <div class="row g-2.5 mb-3">
+                        <div class="col-md-7">
+                            <label class="form-label fw-bold text-slate-800 mb-1">Mağaza / Şirket Adı <span class="text-danger">*</span></label>
+                            <input type="text" name="name" class="form-control form-control-sm" placeholder="Örn: HiMarket Beşiktaş Şubesi" required>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label fw-semibold text-secondary mb-1">Mağaza Kodu (Opsiyonel)</label>
+                            <input type="text" name="code" class="form-control form-control-sm" placeholder="Örn: himarket-besiktas (boşsa oto)">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold text-secondary mb-1">Vergi No / TCKN</label>
+                            <input type="text" name="tax_number" class="form-control form-control-sm" placeholder="10 veya 11 haneli">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold text-secondary mb-1">Vergi Dairesi</label>
+                            <input type="text" name="tax_office" class="form-control form-control-sm" placeholder="Örn: Beşiktaş VD">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold text-secondary mb-1">Telefon</label>
+                            <input type="text" name="phone" class="form-control form-control-sm" placeholder="0555 000 00 00">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold text-secondary mb-1">E-posta</label>
+                            <input type="email" name="email" class="form-control form-control-sm" placeholder="yonetici@market.com">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold text-secondary mb-1">Adres</label>
+                            <input type="text" name="address" class="form-control form-control-sm" placeholder="Şube açık adresi">
+                        </div>
+                    </div>
+
+                    <!-- ADIM 2: ABONELİK VE LİSANS PAKETİ -->
+                    <div class="fw-bold text-slate-900 border-bottom pb-1 mb-2.5 d-flex align-items-center gap-1.5">
+                        <i class="bi bi-key text-primary"></i> 2. Lisans Paketi ve Kasa Kotası
+                    </div>
+                    <div class="row g-2.5 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold text-slate-800 mb-1">Abonelik Paketi</label>
+                            <select name="plan_type" class="form-select form-select-sm" id="onboardingPlanSelect" onchange="autoFillQuota()">
+                                <option value="BASIC">Tek Kasa (Basic - 1 Kasa)</option>
+                                <option value="PRO" selected>Çift Kasa (Pro - 2 Kasa)</option>
+                                <option value="GROWTH">Büyüme (Growth - 5 Kasa)</option>
+                                <option value="ENTERPRISE">Kurumsal (Enterprise - Sınırsız/Özel)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold text-slate-800 mb-1">Azami Kasa Kotası</label>
+                            <input type="number" name="max_cash_registers" id="onboardingQuotaInput" class="form-control form-control-sm" value="2" min="1" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold text-slate-800 mb-1">Lisans Süresi</label>
+                            <select name="duration_days" class="form-select form-select-sm">
+                                <option value="365" selected>1 Yıl (365 Gün)</option>
+                                <option value="180">6 Ay (180 Gün)</option>
+                                <option value="30">1 Ay (30 Gün)</option>
+                                <option value="unlimited">Süresiz / Sınırsız Lisans</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- ADIM 3: İLK YÖNETİCİ KULLANICISI (OPSİYONEL) -->
+                    <div class="fw-bold text-slate-900 border-bottom pb-1 mb-2.5 d-flex align-items-center gap-1.5">
+                        <i class="bi bi-person-badge text-primary"></i> 3. İlk Mağaza Müdürü Hesabı (Opsiyonel)
+                    </div>
+                    <div class="row g-2.5">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold text-secondary mb-1">Yönetici Kullanıcı Adı</label>
+                            <input type="text" name="manager_username" class="form-control form-control-sm" placeholder="Örn: besiktas_mudur">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold text-secondary mb-1">Yönetici Şifresi</label>
+                            <input type="password" name="manager_password" class="form-control form-control-sm" placeholder="Örn: mudur123">
+                        </div>
+                        <div class="col-12">
+                            <small class="text-muted"><i class="bi bi-info-circle me-1"></i> Yeni mağaza kurulduğunda otomatik olarak "Kasa 1" terminali ve mali ayarlar hazır hale getirilecektir.</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2 px-3">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">İptal</button>
+                    <button type="submit" class="btn btn-sm btn-primary fw-bold px-3">
+                        <i class="bi bi-check-lg me-1"></i> Mağazayı ve Lisansı Oluştur
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================= -->
+<!-- MODAL 2: MEVCUT LİSANS VE KOTA DÜZENLEME MODALI          -->
+<!-- ======================================================= -->
 <div class="modal fade" id="editSubscriptionModal" tabindex="-1" aria-labelledby="editSubscriptionModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow">
@@ -259,50 +592,56 @@
             </div>
             <form id="editSubscriptionForm" method="post" action="">
                 {% csrf_token %}
-                <div class="modal-body p-3">
-                    <div class="alert alert-info py-2 px-3 fs-8 mb-3">
-                        <i class="bi bi-info-circle-fill me-1"></i> Düzenlenen Firma: <strong id="modalCompanyName">—</strong>
+                <div class="modal-body p-3.5 fs-7">
+                    <div class="alert alert-light border py-2 px-2.5 mb-3 rounded-2">
+                        <span class="text-secondary">Düzenlenen Firma:</span>
+                        <strong class="text-slate-900 d-block fs-6" id="modalCompanyName">—</strong>
                     </div>
 
+                    <!-- PAKET SEÇİMİ -->
                     <div class="mb-3">
-                        <label for="modalPlanType" class="form-label fs-8 fw-bold text-slate-800 mb-1">Abonelik Paketi</label>
-                        <select name="plan_type" id="modalPlanType" class="form-select form-select-sm" required>
+                        <label class="form-label fw-bold text-slate-800 mb-1">Abonelik / Lisans Paketi</label>
+                        <select name="plan_type" id="modalPlanType" class="form-select form-select-sm">
                             {% for code, label in plan_choices %}
-                            <option value="{{ code }}">{{ label }}</option>
+                                <option value="{{ code }}">{{ label }}</option>
                             {% endfor %}
                         </select>
                     </div>
 
+                    <!-- KASA KOTASI -->
                     <div class="mb-3">
-                        <label for="modalQuota" class="form-label fs-8 fw-bold text-slate-800 mb-1">Azami Aktif Kasa Sayısı (Lisans Kotası)</label>
-                        <input type="number" name="max_cash_registers" id="modalQuota" class="form-control form-control-sm" min="1" max="100" required>
-                        <div class="form-text fs-9 text-muted">Firmanın aynı anda açabileceği azami terminal adedi.</div>
+                        <label class="form-label fw-bold text-slate-800 mb-1">Azami Aktif Kasa Sayısı (Kota)</label>
+                        <input type="number" name="max_cash_registers" id="modalQuota" class="form-control form-control-sm" min="1" max="50" required>
+                        <small class="text-muted fs-8">Bu mağazanın açabileceği en fazla aktif terminal adedidir.</small>
                     </div>
 
+                    <!-- LİSANS DURUMU -->
                     <div class="mb-3">
-                        <label for="modalStatus" class="form-label fs-8 fw-bold text-slate-800 mb-1">Abonelik Durumu</label>
-                        <select name="status" id="modalStatus" class="form-select form-select-sm" required>
+                        <label class="form-label fw-bold text-slate-800 mb-1">Abonelik Durumu</label>
+                        <select name="status" id="modalStatus" class="form-select form-select-sm">
                             {% for code, label in status_choices %}
-                            <option value="{{ code }}">{{ label }}</option>
+                                <option value="{{ code }}">{{ label }}</option>
                             {% endfor %}
                         </select>
                     </div>
 
+                    <!-- LİSANS BİTİŞ TARİHİ -->
                     <div class="mb-3">
-                        <label for="modalExpiresAt" class="form-label fs-8 fw-bold text-slate-800 mb-1">Lisans Bitiş Tarihi</label>
+                        <label class="form-label fw-bold text-slate-800 mb-1">Lisans Bitiş Tarihi</label>
                         <input type="date" name="expires_at" id="modalExpiresAt" class="form-control form-control-sm">
-                        <div class="form-text fs-9 text-muted">Boş bırakılırsa süresiz lisans olarak kabul edilir.</div>
+                        <small class="text-muted fs-8">Boş bırakılırsa lisans süresiz/sınırsız kabul edilir.</small>
                     </div>
 
+                    <!-- NOTLAR -->
                     <div class="mb-2">
-                        <label for="modalNotes" class="form-label fs-8 fw-bold text-slate-800 mb-1">Lisans / Sözleşme Notları</label>
-                        <textarea name="notes" id="modalNotes" class="form-control form-control-sm" rows="2" placeholder="Örn: 2026 Kurumsal Sözleşme yenilemesi..."></textarea>
+                        <label class="form-label fw-semibold text-secondary mb-1">Lisans / Sözleşme Notları</label>
+                        <textarea name="notes" id="modalNotes" class="form-control form-control-sm" rows="2" placeholder="Örn: 1 yıllık peşin lisans yenilendi."></textarea>
                     </div>
                 </div>
-                <div class="modal-footer bg-light py-2 px-3 border-top">
-                    <button type="button" class="btn btn-sm btn-secondary fw-semibold px-3" data-bs-dismiss="modal">Vazgeç</button>
+                <div class="modal-footer bg-light py-2 px-3">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Vazgeç</button>
                     <button type="submit" class="btn btn-sm btn-primary fw-bold px-3">
-                        <i class="bi bi-check-lg me-1"></i> Lisansı Kaydet
+                        <i class="bi bi-save me-1"></i> Değişiklikleri Kaydet
                     </button>
                 </div>
             </form>
@@ -310,47 +649,84 @@
     </div>
 </div>
 
-<!-- MODAL VERİ AKTARIM BETİĞİ -->
+{% endblock %}
+
+{% block extrajs %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const editModal = document.getElementById('editSubscriptionModal');
-    if (editModal) {
-        editModal.addEventListener('show.bs.modal', function(event) {
-            const button = event.relatedTarget;
-            if (!button) return;
+    // 1. DÜZENLEME MODALI OTOMATİK VERİ YÜKLEME
+    document.addEventListener('DOMContentLoaded', function () {
+        var editModal = document.getElementById('editSubscriptionModal');
+        if (editModal) {
+            editModal.addEventListener('show.bs.modal', function (event) {
+                var button = event.relatedTarget;
+                var companyId = button.getAttribute('data-company-id');
+                var companyName = button.getAttribute('data-company-name');
+                var planType = button.getAttribute('data-plan-type');
+                var quota = button.getAttribute('data-quota');
+                var status = button.getAttribute('data-status');
+                var expiresAt = button.getAttribute('data-expires-at');
+                var notes = button.getAttribute('data-notes');
 
-            const companyId = button.getAttribute('data-company-id');
-            const companyName = button.getAttribute('data-company-name');
-            const planType = button.getAttribute('data-plan-type');
-            const quota = button.getAttribute('data-quota');
-            const status = button.getAttribute('data-status');
-            const expiresAt = button.getAttribute('data-expires-at');
-            const notes = button.getAttribute('data-notes');
+                document.getElementById('modalCompanyName').textContent = companyName;
+                document.getElementById('modalPlanType').value = planType;
+                document.getElementById('modalQuota').value = quota;
+                document.getElementById('modalStatus').value = status;
+                document.getElementById('modalExpiresAt').value = expiresAt;
+                document.getElementById('modalNotes').value = notes;
 
-            const nameEl = document.getElementById('modalCompanyName');
-            if (nameEl) nameEl.textContent = companyName || '';
-
-            const planEl = document.getElementById('modalPlanType');
-            if (planEl) planEl.value = planType || 'PRO';
-
-            const quotaEl = document.getElementById('modalQuota');
-            if (quotaEl) quotaEl.value = quota || '2';
-
-            const statusEl = document.getElementById('modalStatus');
-            if (statusEl) statusEl.value = status || 'ACTIVE';
-
-            const expEl = document.getElementById('modalExpiresAt');
-            if (expEl) expEl.value = expiresAt || '';
-
-            const notesEl = document.getElementById('modalNotes');
-            if (notesEl) notesEl.value = notes || '';
-
-            const form = document.getElementById('editSubscriptionForm');
-            if (form) {
+                var form = document.getElementById('editSubscriptionForm');
                 form.action = '/super-admin/companies/' + companyId + '/update-subscription/';
+            });
+        }
+    });
+
+    // 2. ONBOARDING MODALINDA PAKETE GÖRE KOTA OTOMATİK DOLDURMA
+    function autoFillQuota() {
+        var plan = document.getElementById('onboardingPlanSelect').value;
+        var quotaInput = document.getElementById('onboardingQuotaInput');
+        if (plan === 'BASIC') {
+            quotaInput.value = 1;
+        } else if (plan === 'PRO') {
+            quotaInput.value = 2;
+        } else if (plan === 'GROWTH') {
+            quotaInput.value = 5;
+        } else if (plan === 'ENTERPRISE') {
+            quotaInput.value = 20;
+        }
+    }
+
+    // 3. TABLO CANLI ARAMA FİLTRESİ
+    function filterCompanyTable() {
+        var input = document.getElementById('companySearchInput').value.toLowerCase().trim();
+        var rows = document.querySelectorAll('.company-row');
+        rows.forEach(function (row) {
+            var name = row.getAttribute('data-name');
+            var code = row.getAttribute('data-code');
+            var tax = row.getAttribute('data-tax');
+            if (name.includes(input) || code.includes(input) || tax.includes(input)) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
             }
         });
     }
-});
+
+    // 4. DURUM BUTONU FİLTRESİ
+    function filterStatus(status, btn) {
+        document.querySelectorAll('#companies-pane .btn-xs').forEach(function(b) {
+            b.classList.remove('active');
+        });
+        btn.classList.add('active');
+
+        var rows = document.querySelectorAll('.company-row');
+        rows.forEach(function (row) {
+            var rowStatus = row.getAttribute('data-status');
+            if (status === 'ALL' || rowStatus === status) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    }
 </script>
 {% endblock %}

@@ -5292,6 +5292,12 @@ def super_admin_dashboard_view(request):
 
     inactive_companies = total_companies - active_companies
 
+    # Tüm terminaller / kasalar (Donanım ve Terminal Denetimi Sekmesi İçin)
+    all_registers = CashRegister.objects.select_related('company').order_by('company__name', 'register_code')
+
+    # Son Sistem Denetim Logları (Audit Log Sekmesi İçin)
+    recent_logs = SystemLog.objects.select_related('company', 'user').order_by('-created_at')[:30]
+
     context = {
         'company_rows': company_rows,
         'total_companies': total_companies,
@@ -5303,6 +5309,8 @@ def super_admin_dashboard_view(request):
         'expiring_soon_count': expiring_soon_count,
         'plan_choices': Subscription.PLAN_CHOICES,
         'status_choices': Subscription.STATUS_CHOICES,
+        'all_registers': all_registers,
+        'recent_logs': recent_logs,
     }
     return render(request, 'admin/super_admin_dashboard.html', context)
 
@@ -5373,6 +5381,159 @@ def super_admin_toggle_company_status_action(request, company_id):
     log_action('SYSTEM', 'Firma Durumu Değiştirildi', f"{company.name} -> {status_str.upper()}", user=request.user)
     messages.success(request, f"'{company.name}' firması {status_str} duruma getirildi.")
     return redirect('super_admin_dashboard')
+
+
+@superuser_required
+@require_POST
+def super_admin_create_company_action(request):
+    """
+    Platform Süper Admin: Yeni Mağaza & Lisans Onboarding Sihirbazı
+    Tek form ile:
+    - Yeni Company (Firma) oluşturur.
+    - Subscription (Lisans Paketi & Kasa Kotası) tanımlar.
+    - Varsayılan Kasa 1 terminali açar.
+    - Firma için varsayılan CompanySetting oluşturur.
+    - İsteğe bağlı olarak ilk Mağaza Müdürü (User + UserProfile) hesabını açar.
+    """
+    from django.utils.text import slugify
+
+    name = request.POST.get('name', '').strip()
+    if not name:
+        messages.error(request, "Lütfen mağaza / şirket adını giriniz.")
+        return redirect('super_admin_dashboard')
+
+    code = request.POST.get('code', '').strip()
+    if not code:
+        tr_map = str.maketrans("ıİğĞüÜşŞöÖçÇ", "iIgGuUsSoOcC")
+        base_slug = slugify(name.translate(tr_map))
+        if not base_slug:
+            base_slug = "magaza"
+        code = base_slug
+        suffix = 1
+        while Company.objects.filter(code=code).exists():
+            code = f"{base_slug}-{suffix}"
+            suffix += 1
+    else:
+        tr_map = str.maketrans("ıİğĞüÜşŞöÖçÇ", "iIgGuUsSoOcC")
+        code = slugify(code.translate(tr_map))
+        if Company.objects.filter(code=code).exists():
+            messages.error(request, f"'{code}' mağaza kodu sistemde zaten kayıtlı. Lütfen farklı bir kod seçiniz.")
+            return redirect('super_admin_dashboard')
+
+    phone = request.POST.get('phone', '').strip()
+    email = request.POST.get('email', '').strip()
+    tax_number = request.POST.get('tax_number', '').strip()
+    tax_office = request.POST.get('tax_office', '').strip()
+    address = request.POST.get('address', '').strip()
+
+    company = Company.objects.create(
+        name=name,
+        code=code,
+        phone=phone,
+        email=email,
+        tax_number=tax_number,
+        tax_office=tax_office,
+        address=address,
+        is_active=True
+    )
+
+    # 2. Lisans & Kasa Kotası
+    plan_type = request.POST.get('plan_type', 'PRO').strip()
+    if plan_type not in dict(Subscription.PLAN_CHOICES):
+        plan_type = 'PRO'
+
+    try:
+        max_regs = int(request.POST.get('max_cash_registers', 2))
+        if max_regs < 1:
+            max_regs = 1
+    except (ValueError, TypeError):
+        max_regs = 2
+
+    # Lisans Bitiş Süresi
+    duration_days_str = request.POST.get('duration_days', '365').strip()
+    expires_at = None
+    if duration_days_str == '30':
+        expires_at = timezone.now() + timedelta(days=30)
+    elif duration_days_str == '180':
+        expires_at = timezone.now() + timedelta(days=180)
+    elif duration_days_str == '365':
+        expires_at = timezone.now() + timedelta(days=365)
+    elif duration_days_str == 'unlimited':
+        expires_at = None
+    else:
+        raw_expiry = request.POST.get('expires_at', '').strip()
+        if raw_expiry:
+            parsed_date = _parse_iso_date(raw_expiry)
+            if parsed_date:
+                expires_at = timezone.make_aware(datetime.datetime.combine(parsed_date, datetime.time(23, 59, 59)))
+        else:
+            expires_at = timezone.now() + timedelta(days=365)
+
+    sub = Subscription.get_or_create_for_company(company)
+    sub.plan_type = plan_type
+    sub.max_cash_registers = max_regs
+    sub.status = 'ACTIVE'
+    sub.expires_at = expires_at
+    sub.notes = request.POST.get('notes', 'Süper Admin Onboarding ile açıldı.').strip()
+    sub.save()
+
+    # 3. İlk Kasa (Kasa 1)
+    CashRegister.objects.get_or_create(
+        company=company,
+        register_code="KASA-01",
+        defaults={'name': 'Kasa 1', 'is_active': True}
+    )
+
+    # 4. Firma Ayarları
+    CompanySetting.get_settings(company=company)
+
+    # 5. İsteğe Bağlı Yönetici Kullanıcı Hesabı
+    manager_username = request.POST.get('manager_username', '').strip()
+    manager_password = request.POST.get('manager_password', '').strip()
+    created_manager_msg = ""
+    if manager_username and manager_password:
+        if User.objects.filter(username=manager_username).exists():
+            created_manager_msg = f" (Not: '{manager_username}' kullanıcısı zaten mevcut olduğu için yeni kullanıcı açılamadı.)"
+        else:
+            user = User.objects.create_user(
+                username=manager_username,
+                password=manager_password,
+                is_staff=True,
+                is_active=True
+            )
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            profile.company = company
+            profile.save(update_fields=['company'])
+            created_manager_msg = f" Yönetici hesabı ('{manager_username}') hazırlandı."
+
+    log_action(
+        'SYSTEM',
+        'Yeni Mağaza Oluşturuldu (Onboarding)',
+        f"Firma: {company.name} ({company.code}), Paket: {sub.plan_type}, Kasa Kotası: {sub.max_cash_registers}",
+        user=request.user
+    )
+
+    messages.success(request, f"'{company.name}' mağazası ve {sub.get_plan_type_display()} lisansı başarıyla kuruldu.{created_manager_msg}")
+    return redirect('super_admin_dashboard')
+
+
+@superuser_required
+@require_POST
+def super_admin_reset_register_hardware_action(request, register_id):
+    """
+    Süper Admin: Bir kasanın eşleşmiş terminal kaydını ve donanım durumunu sıfırlar.
+    """
+    register = get_object_or_404(CashRegister, id=register_id)
+    comp_name = register.company.name if register.company else 'Genel'
+    log_action(
+        'POS',
+        'Terminal Eşleşmesi Sıfırlandı',
+        f"Kasa: '{register.name}' ({register.register_code}), Firma: {comp_name}",
+        user=request.user
+    )
+    messages.success(request, f"'{comp_name}' mağazasının '{register.name}' ({register.register_code}) kasası için cihaz eşleşmesi sıfırlandı.")
+    return redirect('super_admin_dashboard')
+
 
 
 
