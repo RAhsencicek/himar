@@ -34,6 +34,7 @@ urlpatterns = [
     # Yönetim Kontrol Paneli & Dashboard
     path('management/dashboard/', views.admin_dashboard_view, name='admin_dashboard_view'),
     path('management/dashboard/home/', views.admin_dashboard_view, name='admin_dashboard'),
+    path('yonetim/', views.admin_dashboard_view, name='yonetim_alias'),
 
     # Veritabanı Yedek İndirme (Admin Tek Tıkla Yedek İndir)
     path('management/backup/download/', views.download_backup_view, name='download_backup_view'),
@@ -138,6 +139,7 @@ urlpatterns = [
 
     # Platform Süper Admin Konsolu (Faz 12)
     path('super-admin/', views.super_admin_dashboard_view, name='super_admin_dashboard'),
+    path('superadmin/', views.super_admin_dashboard_view, name='superadmin_dashboard_alias'),
     path('super-admin/companies/<int:company_id>/update-subscription/', views.super_admin_update_subscription_action, name='super_admin_update_subscription'),
     path('super-admin/companies/<int:company_id>/toggle-status/', views.super_admin_toggle_company_status_action, name='super_admin_toggle_company_status'),
 ]
