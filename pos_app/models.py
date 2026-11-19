@@ -503,6 +503,11 @@ class Sale(models.Model):
     is_return = models.BooleanField(default=False, verbose_name="İade Fişi mi?")
     return_reason = models.TextField(blank=True, null=True, verbose_name="İade Gerekçesi")
 
+    # Çevrimdışı (Offline) Kasa & Senkronizasyon (Faz 14)
+    is_offline_sync = models.BooleanField(default=False, db_index=True, verbose_name="Çevrimdışı Satış mı?")
+    offline_sync_id = models.CharField(max_length=100, blank=True, null=True, db_index=True, verbose_name="Çevrimdışı Fiş ID")
+    offline_created_at = models.DateTimeField(blank=True, null=True, verbose_name="Çevrimdışı Kesilme Zamanı")
+
     class Meta:
         verbose_name = "Satış Fişi"
         verbose_name_plural = "Satış Fişleri"

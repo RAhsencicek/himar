@@ -1,9 +1,15 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="tr" data-bs-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Hİ MARKET - Kasa Satış Terminali{% endblock %}</title>
+    <link rel="manifest" href="{% url 'pwa_manifest' %}">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="HiMarket POS">
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231e3a5f'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-weight='900' font-size='18' fill='%23ffffff'%3EH%3C/text%3E%3C/svg%3E">
     <!-- Bootstrap 5.3 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -362,7 +368,10 @@
                         {% endfor %}
                     </ul>
                 </div>
-                <!-- Çevrimdışı Kasa Kuyruğu Göstergesi (Faz 6) -->
+                <!-- Çevrimiçi / Çevrimdışı Durumu & Kuyruk Göstergesi (Faz 14 PWA) -->
+                <span id="networkStatusBadge" class="badge bg-success-subtle text-success border border-success-subtle fw-bold d-inline-flex align-items-center gap-1" title="İnternet Bağlantı Durumu">
+                    <i class="bi bi-wifi"></i> Çevrimiçi
+                </span>
                 <button type="button" id="offlineQueueBtn" class="btn btn-sm btn-outline-warning fw-bold d-none align-items-center gap-1" onclick="openOfflineQueueModal()" title="Bekleyen çevrimdışı satışları incele">
                     <i class="bi bi-cloud-slash-fill"></i>
                     <span id="offlineQueueBadgeText">0 Çevrimdışı Satış</span>
@@ -399,8 +408,128 @@
         {% block content %}{% endblock %}
     </main>
 
+    <!-- Çevrimdışı Kasa Satış Kuyruğu Modalı (Faz 14) -->
+    <div class="modal fade" id="offlineQueueModal" tabindex="-1" aria-labelledby="offlineQueueModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-slate-900 text-white py-2 px-3">
+                    <h6 class="modal-title fw-bold d-flex align-items-center gap-2" id="offlineQueueModalLabel">
+                        <i class="bi bi-cloud-arrow-up-fill text-warning"></i> Bekleyen Çevrimdışı Satış Fişleri Kuyruğu
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Kapat"></button>
+                </div>
+                <div class="modal-body p-3">
+                    <div id="offlineQueueEmptyMsg" class="alert alert-success d-none py-2 mb-0 d-flex align-items-center gap-2">
+                        <i class="bi bi-check-circle-fill fs-5 text-success"></i>
+                        <div>
+                            <strong>Tüm Satışlar Senkronize!</strong>
+                            <div class="small">Kuyrukta bekleyen çevrimdışı fiş bulunmuyor.</div>
+                        </div>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle mb-0">
+                            <thead class="table-light small">
+                                <tr>
+                                    <th>Saat</th>
+                                    <th>Fiş ID</th>
+                                    <th>İçerik</th>
+                                    <th>Ödeme</th>
+                                    <th class="text-end">Tutar</th>
+                                    <th class="text-center">Durum</th>
+                                </tr>
+                            </thead>
+                            <tbody id="offlineQueueTableBody">
+                                <!-- Dinamik doldurulur -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2 px-3 d-flex justify-content-between">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="HiMarketOfflineEngine.syncCatalogFromServer().then(() => alert('Ürün kataloğu IndexedDB yerel hafızasına güncellendi.'))">
+                        <i class="bi bi-arrow-clockwise me-1"></i> Kataloğu Tazele
+                    </button>
+                    <div class="d-flex gap-2">
+                        <button type="button" id="offlineQueueSyncBtn" class="btn btn-warning btn-sm fw-bold text-dark" onclick="triggerManualOfflineSync()">
+                            <i class="bi bi-arrow-repeat me-1"></i> Şimdi Eşitle (Senkronize Et)
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Kapat</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Bootstrap 5.3 JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{% static 'js/offline_engine.js' %}"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').then((reg) => {
+                    console.log('[PWA] Service Worker aktif, scope:', reg.scope);
+                }).catch((err) => {
+                    console.warn('[PWA] Service Worker kayıt uyarısı:', err);
+                });
+            });
+        }
+
+        async function openOfflineQueueModal() {
+            const modalEl = document.getElementById('offlineQueueModal');
+            if (!modalEl) return;
+            const tbody = document.getElementById('offlineQueueTableBody');
+            const emptyMsg = document.getElementById('offlineQueueEmptyMsg');
+            const syncBtn = document.getElementById('offlineQueueSyncBtn');
+
+            const sales = await HiMarketOfflineEngine.getPendingSales();
+            if (sales.length === 0) {
+                emptyMsg.classList.remove('d-none');
+                tbody.innerHTML = '';
+                if (syncBtn) syncBtn.disabled = true;
+            } else {
+                emptyMsg.classList.add('d-none');
+                if (syncBtn) syncBtn.disabled = false;
+                tbody.innerHTML = sales.map((s) => `
+                    <tr>
+                        <td class="small text-muted">${new Date(s.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td>
+                        <td class="font-monospace small fw-bold text-primary">${s.offline_receipt_id}</td>
+                        <td class="small text-truncate" style="max-width: 220px;" title="${s.items_summary || ''}">${s.items_summary || '-'}</td>
+                        <td><span class="badge bg-secondary">${s.payment_type}</span></td>
+                        <td class="fw-bold text-end">${Number(s.total_amount).toFixed(2)} TL</td>
+                        <td class="text-center"><span class="badge bg-warning text-dark">Bekliyor</span></td>
+                    </tr>
+                `).join('');
+            }
+
+            const bsModal = new bootstrap.Modal(modalEl);
+            bsModal.show();
+        }
+
+        async function triggerManualOfflineSync() {
+            const syncBtn = document.getElementById('offlineQueueSyncBtn');
+            if (syncBtn) {
+                syncBtn.disabled = true;
+                syncBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Senkronize Ediliyor...';
+            }
+            try {
+                const res = await HiMarketOfflineEngine.syncPendingSales();
+                if (res.status === 'SUCCESS') {
+                    alert(`Senkronizasyon Başarılı! ${res.synced_count} fiş sunucuya aktarıldı.`);
+                    openOfflineQueueModal();
+                } else if (res.status === 'OFFLINE') {
+                    alert('Cihaz çevrimdışı! İnternet bağlantısı sağlandığında otomatik senkronize edilecektir.');
+                } else if (res.status === 'EMPTY') {
+                    alert('Kuyrukta bekleyen satış bulunmuyor.');
+                } else {
+                    alert(res.message || 'Senkronizasyon sırasında hata oluştu.');
+                }
+            } finally {
+                if (syncBtn) {
+                    syncBtn.disabled = false;
+                    syncBtn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i> Şimdi Eşitle';
+                }
+            }
+        }
+    </script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

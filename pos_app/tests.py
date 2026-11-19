@@ -3604,6 +3604,314 @@ class VariantAndApparelModuleTestSuite(TestCase):
         self.assertNotIn('Toplam Tutar', content)
 
 
+class OfflineKasaAndPwaTestSuite(TestCase):
+    """
+    FAZ 14: ÇEVRİMDIŞI (OFFLINE) KASA MOTORU (PWA + INDEXEDDB) BİRİM TESTLERİ
+    - Ürün Kataloğu Önbellek API'si (/api/pos/catalog-cache/)
+    - Çevrimdışı Satış Senkronizasyonu (/api/sale/offline-sync/)
+    - Idempotency & Tekrar Önleme (Aynı offline ID ile çift kayıt engelleme)
+    - Varyantlı Ürünlerin Çevrimdışı Senkronizasyonu ve Stok Düşümü
+    - Çevrimdışı Veresiye ve İade Senkronizasyonu
+    - PWA Manifest ve Service Worker Uç Noktaları
+    """
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            name="Test Offline Süpermarket",
+            code="test-offline-market",
+            tax_number="9876543210",
+            business_type="MARKET",
+            is_active=True
+        )
+        self.user = User.objects.create_user(
+            username="kasiyer_offline",
+            password="password123",
+            is_staff=True
+        )
+        UserProfile.objects.create(user=self.user, company=self.company)
+
+        self.register = CashRegister.objects.create(
+            company=self.company,
+            name="Offline Kasa 1",
+            register_code="KASA-OFFLINE"
+        )
+        self.shift = Shift.objects.create(
+            company=self.company,
+            cash_register=self.register,
+            cashier=self.user,
+            is_closed=False
+        )
+
+        self.category = Category.objects.create(
+            company=self.company,
+            name="Temel Gıda"
+        )
+        self.product = Product.objects.create(
+            company=self.company,
+            category=self.category,
+            name="Organik Köy Yumurtası 10'lu",
+            barcode="8690001112223",
+            sell_price=Decimal("65.00"),
+            buy_price=Decimal("45.00"),
+            vat_rate=Decimal("1.00"),
+            stock_quantity=Decimal("100.000"),
+            is_active=True
+        )
+
+        # Varyantlı Ürün (Giyim/Tekstil)
+        self.apparel_product = Product.objects.create(
+            company=self.company,
+            category=self.category,
+            name="Oversize Pamuklu Sweatshirt",
+            barcode="8690003334445",
+            sell_price=Decimal("400.00"),
+            buy_price=Decimal("250.00"),
+            vat_rate=Decimal("10.00"),
+            stock_quantity=Decimal("30.000"),
+            has_variants=True,
+            is_active=True
+        )
+        self.variant = ProductVariant.objects.create(
+            company=self.company,
+            product=self.apparel_product,
+            size="L",
+            color="Antrasit",
+            barcode="8690009998887",
+            stock_quantity=Decimal("15.000"),
+            price_override=Decimal("420.00"),
+            is_active=True
+        )
+
+        self.customer = Customer.objects.create(
+            company=self.company,
+            first_name="Ahmet",
+            last_name="Çevrimdışı",
+            phone="05551112233",
+            credit_limit=Decimal("2000.00"),
+            balance=Decimal("0.00"),
+            is_active=True
+        )
+
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_pos_catalog_cache_api(self):
+        """Katalog önbellek API'si aktif ürünleri ve varyantları doğru formatta döndürmelidir."""
+        url = reverse('pos_catalog_cache_api')
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+
+        self.assertTrue(data['success'])
+        self.assertEqual(data['company_name'], "Test Offline Süpermarket")
+        self.assertGreaterEqual(data['total_count'], 2)
+
+        products = {p['id']: p for p in data['products']}
+        self.assertIn(self.product.id, products)
+        self.assertEqual(products[self.product.id]['name'], "Organik Köy Yumurtası 10'lu")
+        self.assertEqual(products[self.product.id]['sell_price'], 65.0)
+
+        # Varyant kontrolü
+        apparel_data = products[self.apparel_product.id]
+        self.assertTrue(apparel_data['has_variants'])
+        self.assertEqual(len(apparel_data['variants']), 1)
+        self.assertEqual(apparel_data['variants'][0]['size'], 'L')
+        self.assertEqual(apparel_data['variants'][0]['color'], 'Antrasit')
+        self.assertEqual(apparel_data['variants'][0]['effective_price'], 420.0)
+
+    def test_offline_sale_sync_api_single_sale(self):
+        """Tekil bir çevrimdışı satış fişi sunucuya aktarıldığında Sale kaydı ve stok düşümü yapılmalıdır."""
+        url = reverse('offline_sale_sync_api')
+        offline_id = "OFF-20261119-100000-TEST1"
+
+        payload = {
+            "sales": [{
+                "offline_receipt_id": offline_id,
+                "created_at": "2026-11-19T10:00:00Z",
+                "items": [
+                    {"product_id": self.product.id, "quantity": 2}
+                ],
+                "payment_type": "NAKIT",
+                "cash_paid": 150.00,
+                "card_paid": 0.00,
+                "discount_amount": 0.00,
+                "is_return": False
+            }]
+        }
+
+        res = self.client.post(url, data=json.dumps(payload), content_type='application/json')
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+
+        self.assertTrue(data['success'])
+        self.assertEqual(data['synced_count'], 1)
+        self.assertEqual(data['failed_count'], 0)
+
+        # Veritabanı doğrulama
+        sale = Sale.objects.get(offline_sync_id=offline_id)
+        self.assertTrue(sale.is_offline_sync)
+        self.assertEqual(sale.total_amount, Decimal("130.00")) # 2 x 65
+        self.assertEqual(sale.change_given, Decimal("20.00"))  # 150 - 130
+
+        # Stok düşümü kontrolü
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, Decimal("98.000"))
+
+    def test_offline_sale_sync_api_idempotency(self):
+        """Aynı çevrimdışı fiş tekrar gönderildiğinde mükerrer kayıt açılmamalı ve stok tekrar düşmemelidir."""
+        url = reverse('offline_sale_sync_api')
+        offline_id = "OFF-20261119-100500-IDEMPOTENT"
+
+        payload = {
+            "sales": [{
+                "offline_receipt_id": offline_id,
+                "created_at": "2026-11-19T10:05:00Z",
+                "items": [
+                    {"product_id": self.product.id, "quantity": 1}
+                ],
+                "payment_type": "NAKIT",
+                "cash_paid": 65.00,
+                "card_paid": 0.00,
+                "discount_amount": 0.00,
+                "is_return": False
+            }]
+        }
+
+        # İlk senkronizasyon
+        res1 = self.client.post(url, data=json.dumps(payload), content_type='application/json')
+        self.assertEqual(res1.status_code, 200)
+        self.assertEqual(res1.json()['synced_count'], 1)
+
+        self.product.refresh_from_db()
+        stock_after_first = self.product.stock_quantity
+
+        # İkinci senkronizasyon (Aynı offline_receipt_id ile)
+        res2 = self.client.post(url, data=json.dumps(payload), content_type='application/json')
+        self.assertEqual(res2.status_code, 200)
+        data2 = res2.json()
+
+        self.assertEqual(data2['synced_count'], 0)
+        self.assertEqual(data2['already_synced_count'], 1)
+        self.assertEqual(data2['results'][0]['status'], 'ALREADY_SYNCED')
+
+        # Stok değişmemelidir
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, stock_after_first)
+        self.assertEqual(Sale.objects.filter(offline_sync_id=offline_id).count(), 1)
+
+    def test_offline_sale_sync_api_with_apparel_variants(self):
+        """Varyantlı giyim ürünleri çevrimdışı satıldığında hem varyant hem ana stok düşmelidir."""
+        url = reverse('offline_sale_sync_api')
+        offline_id = "OFF-20261119-101000-VARIANT"
+
+        payload = {
+            "sales": [{
+                "offline_receipt_id": offline_id,
+                "created_at": "2026-11-19T10:10:00Z",
+                "items": [
+                    {"product_id": self.apparel_product.id, "variant_id": self.variant.id, "quantity": 3}
+                ],
+                "payment_type": "KART",
+                "cash_paid": 0.00,
+                "card_paid": 1260.00, # 3 x 420.00
+                "discount_amount": 0.00,
+                "is_return": False
+            }]
+        }
+
+        res = self.client.post(url, data=json.dumps(payload), content_type='application/json')
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data['synced_count'], 1)
+
+        # Hem varyant stoku (15 - 3 = 12) hem ana ürün stoku (30 - 3 = 27) düşmelidir
+        self.variant.refresh_from_db()
+        self.apparel_product.refresh_from_db()
+        self.assertEqual(self.variant.stock_quantity, Decimal("12.000"))
+        self.assertEqual(self.apparel_product.stock_quantity, Decimal("27.000"))
+
+        sale = Sale.objects.get(offline_sync_id=offline_id)
+        self.assertEqual(sale.total_amount, Decimal("1260.00"))
+        item = sale.items.first()
+        self.assertEqual(item.variant, self.variant)
+        self.assertEqual(item.variant_info, "L · Antrasit")
+
+    def test_offline_sale_sync_api_veresiye(self):
+        """Çevrimdışı veresiye satış senkronize edildiğinde müşterinin borç bakiyesi artmalıdır."""
+        url = reverse('offline_sale_sync_api')
+        offline_id = "OFF-20261119-101500-VERESIYE"
+
+        payload = {
+            "sales": [{
+                "offline_receipt_id": offline_id,
+                "created_at": "2026-11-19T10:15:00Z",
+                "items": [
+                    {"product_id": self.product.id, "quantity": 1}
+                ],
+                "payment_type": "VERESIYE",
+                "customer_id": self.customer.id,
+                "cash_paid": 0.00,
+                "card_paid": 0.00,
+                "discount_amount": 0.00,
+                "is_return": False
+            }]
+        }
+
+        res = self.client.post(url, data=json.dumps(payload), content_type='application/json')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()['synced_count'], 1)
+
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.balance, Decimal("65.00"))
+        self.assertTrue(CustomerTransaction.objects.filter(sale__offline_sync_id=offline_id).exists())
+
+    def test_offline_sale_sync_api_return(self):
+        """Çevrimdışı iade fişi senkronize edildiğinde stok artmalı ve iade fişi oluşmalıdır."""
+        url = reverse('offline_sale_sync_api')
+        offline_id = "OFF-20261119-102000-RETURN"
+
+        payload = {
+            "sales": [{
+                "offline_receipt_id": offline_id,
+                "created_at": "2026-11-19T10:20:00Z",
+                "items": [
+                    {"product_id": self.product.id, "quantity": 1}
+                ],
+                "payment_type": "NAKIT",
+                "cash_paid": 0.00,
+                "card_paid": 0.00,
+                "discount_amount": 0.00,
+                "is_return": True
+            }]
+        }
+
+        res = self.client.post(url, data=json.dumps(payload), content_type='application/json')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()['synced_count'], 1)
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock_quantity, Decimal("101.000"))
+
+        sale = Sale.objects.get(offline_sync_id=offline_id)
+        self.assertTrue(sale.is_return)
+        self.assertTrue(sale.receipt_number.startswith('IADE-'))
+
+    def test_pwa_service_worker_and_manifest_endpoints(self):
+        """PWA manifest ve service worker uç noktaları HTTP 200 ve doğru content type ile yanıt vermelidir."""
+        res_sw = self.client.get(reverse('service_worker'))
+        self.assertEqual(res_sw.status_code, 200)
+        self.assertIn('application/javascript', res_sw['Content-Type'])
+        self.assertEqual(res_sw['Service-Worker-Allowed'], '/')
+
+        res_manifest = self.client.get(reverse('pwa_manifest'))
+        self.assertEqual(res_manifest.status_code, 200)
+        self.assertIn('application/manifest+json', res_manifest['Content-Type'])
+        manifest_data = json.loads(res_manifest.content.decode('utf-8'))
+        self.assertEqual(manifest_data['short_name'], 'HiMarket POS')
+        self.assertEqual(manifest_data['display'], 'standalone')
+
+
+
 
 
 

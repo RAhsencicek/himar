@@ -3094,6 +3094,11 @@
             }
         }
 
+        // Faz 14: Çevrimdışı (Offline) Mod Kontrolü
+        if (!navigator.onLine) {
+            return await processScannedCodeOffline(query, qty, fromCamera);
+        }
+
         scannerStatusEl.textContent = 'Sorgulanıyor...';
         try {
             const resp = await fetch(`${URL_BARCODE_SEARCH}?barcode=${encodeURIComponent(query)}`);
@@ -3126,12 +3131,58 @@
             scannerStatusEl.textContent = data.message || 'Barkod bulunamadı!';
             showPosToast(errMsg, 'error');
             return { ok: false, message: errMsg };
-        } catch {
-            if (!fromCamera) barcodeInput.value = '';
-            scannerStatusEl.textContent = 'Bağlantı hatası!';
-            showPosToast('Barkod sunucu sorgusunda bağlantı hatası.', 'error');
-            return { ok: false, message: 'Bağlantı hatası.' };
+        } catch (netErr) {
+            console.warn('Barkod sorgusunda sunucu bağlantı hatası, çevrimdışı IndexedDB deneniyor:', netErr);
+            return await processScannedCodeOffline(query, qty, fromCamera);
         }
+    }
+
+    async function processScannedCodeOffline(query, qty, fromCamera) {
+        scannerStatusEl.textContent = 'Çevrimdışı aranıyor...';
+        try {
+            const match = await HiMarketOfflineEngine.findProductByBarcode(query);
+            if (match && match.found) {
+                if (match.has_variants && Array.isArray(match.variants) && match.variants.length > 0) {
+                    openVariantSelectModal(match.product, match.variants, qty);
+                    if (!fromCamera) barcodeInput.value = '';
+                    scannerStatusEl.textContent = `[Çevrimdışı] ${match.product.name} için varyant seçiniz`;
+                    return { ok: true, product: match.product, has_variants: true };
+                }
+
+                const finalQty = match.is_weighted_barcode ? match.quantity : qty;
+                const prodToAdd = {
+                    id: match.product.id,
+                    name: match.product.name,
+                    barcode: match.product.barcode,
+                    sell_price: match.effective_price || match.product.sell_price,
+                    vat_rate: match.product.vat_rate,
+                    unit: match.product.unit || 'Adet',
+                    is_weighted: Boolean(match.product.is_weighted),
+                    stock_quantity: match.product.stock_quantity,
+                    variant_id: match.variant_id || null,
+                    variant_info: match.variant_info || ''
+                };
+
+                addToCart(prodToAdd, finalQty);
+                if (!fromCamera) barcodeInput.value = '';
+                scannerStatusEl.textContent = `[Çevrimdışı] Eklendi: ${prodToAdd.name}${match.variant_info ? ' (' + match.variant_info + ')' : ''}`;
+                playBeep(880, 0.08);
+                return { ok: true, product: prodToAdd, quantity: finalQty };
+            }
+
+            playBeep(260, 0.16);
+            if (!fromCamera) barcodeInput.value = '';
+            const errMsg = `[Çevrimdışı] Yerel katalogda barkod bulunamadı: ${query}`;
+            scannerStatusEl.textContent = errMsg;
+            showPosToast(errMsg, 'warning');
+            return { ok: false, message: errMsg };
+        } catch (e) {
+            if (!fromCamera) barcodeInput.value = '';
+            scannerStatusEl.textContent = 'Yerel veritabanı okuma hatası!';
+            showPosToast('Çevrimdışı arama hatası.', 'error');
+            return { ok: false, message: 'Çevrimdışı hata' };
+        }
+    }
     }
 
     async function submitBarcode() {
@@ -4168,6 +4219,18 @@
     }
 
     async function processSaleApi(paymentType, cashPaid, cardPaid) {
+        if (!cart || cart.length === 0) {
+            showPosToast('Sepette ürün bulunmuyor.', 'warning');
+            return;
+        }
+
+        // Faz 14: Eğer tarayıcı çevrimdışıysa doğrudan yerel IndexedDB satış motoruna aktar
+        if (!navigator.onLine) {
+            await processSaleOffline(paymentType, cashPaid, cardPaid);
+            focusBarcodeInput();
+            return;
+        }
+
         scannerStatusEl.textContent = 'Satış mali onaya gönderiliyor...';
 
         const payload = {
@@ -4221,10 +4284,76 @@
                 scannerStatusEl.textContent = data.message || 'Satış işlemi tamamlanamadı!';
                 showPosToast(data.message || 'Satış işlenemedi!', 'error');
             }
-        } catch {
-            showPosToast('Satış sunucusu ile bağlantı kurulamadı.', 'error');
+        } catch (netErr) {
+            console.warn('Satış sunucusuna erişilemedi, çevrimdışı satışa devrediliyor:', netErr);
+            await processSaleOffline(paymentType, cashPaid, cardPaid);
         }
         focusBarcodeInput();
+    }
+
+    async function processSaleOffline(paymentType, cashPaid, cardPaid) {
+        scannerStatusEl.textContent = 'Çevrimdışı satış yerel hafızaya kaydediliyor...';
+
+        const grandTotal = getGrandTotal();
+        const offlinePayload = {
+            items: cart.map(item => ({
+                product_id: item.product_id,
+                variant_id: item.variant_id || null,
+                quantity: item.quantity,
+                unit_price: item.unit_price,
+                name: item.name,
+                variant_info: item.variant_info || ''
+            })),
+            payment_type: paymentType,
+            cash_paid: Number(cashPaid) || 0,
+            card_paid: Number(cardPaid) || 0,
+            customer_id: selectedCustomer ? selectedCustomer.id : null,
+            discount_amount: getTotalDiscountAmount(),
+            is_return: isReturnMode,
+            total_amount: grandTotal,
+            created_at: new Date().toISOString()
+        };
+
+        try {
+            const savedRecord = await HiMarketOfflineEngine.saveOfflineSale(offlinePayload);
+            playBeep(1120, 0.14);
+            lastReceiptNumber = savedRecord.offline_receipt_id;
+
+            const badgeEl = document.getElementById('receiptNumberBadge');
+            if (badgeEl) {
+                badgeEl.innerHTML = `<i class="bi bi-cloud-slash-fill text-warning"></i> ${escapeHtml(savedRecord.offline_receipt_id)}`;
+                badgeEl.onclick = () => previewOfflineReceipt(savedRecord);
+            }
+
+            scannerStatusEl.textContent = `Çevrimdışı Fiş #${savedRecord.offline_receipt_id} kaydedildi. (İnternet gelince aktarılacak)`;
+            showPosToast(`Çevrimdışı Satış Kaydedildi! Fiş #${savedRecord.offline_receipt_id}`, 'warning');
+
+            // Çevrimdışı fişi doğrudan önizleme modalına yükle
+            previewOfflineReceipt(savedRecord);
+
+            cart = [];
+            selectedRowIndex = -1;
+            cartGlobalDiscount = 0;
+            clearSelectedCustomer();
+            if (isReturnMode) toggleReturnMode();
+            renderCart();
+        } catch (err) {
+            console.error('Çevrimdışı kayıt başarısız:', err);
+            showPosToast('Çevrimdışı satış kaydedilemedi!', 'error');
+        }
+    }
+
+    function previewOfflineReceipt(savedRecord) {
+        if (!savedRecord) return;
+        const html = HiMarketOfflineEngine.generateOfflineReceiptHtml(savedRecord, {
+            name: '{{ company.name|default:"HİMARKET" }}',
+            title: '{{ company.title|default:"HİMARKET MAĞAZACILIK" }}'
+        });
+        const frame = document.getElementById('receiptModalFrame');
+        if (frame) {
+            frame.srcdoc = html;
+            openDialog('receiptModal');
+        }
     }
 
     function previewReceipt(receiptNumber) {

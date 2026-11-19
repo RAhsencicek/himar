@@ -6126,6 +6126,450 @@ def gift_receipt_view(request, receipt_number):
     return render(request, 'thermal_gift_receipt.html', {'sale': sale, 'company': company})
 
 
+# =====================================================================
+# FAZ 14: ÇEVRİMDIŞI (OFFLINE) KASA MOTORU (PWA + INDEXEDDB) API'LERİ
+# =====================================================================
+
+@login_required
+def pos_catalog_cache_api(request):
+    """
+    Faz 14: Çevrimdışı Kasa Ürün Kataloğu Önbellek Uç Noktası (Multi-Tenancy)
+    Kasa açıldığında veya periyodik olarak mağazanın tüm aktif ürünlerini ve varyantlarını
+    tarayıcı IndexedDB katmanına indirilmek üzere kompakt JSON formatında sunar.
+    """
+    user_company = get_user_company(request.user)
+
+    products_qs = Product.objects.filter(company=user_company, is_active=True).prefetch_related(
+        'variants'
+    ).order_by('name')
+
+    catalog_list = []
+    for p in products_qs:
+        variants_list = []
+        if p.has_variants:
+            for v in p.variants.filter(is_active=True):
+                effective_price = float(v.price_override if v.price_override is not None else p.sell_price)
+                variants_list.append({
+                    'id': v.id,
+                    'size': v.size,
+                    'color': v.color,
+                    'barcode': v.barcode,
+                    'stock_quantity': float(v.stock_quantity),
+                    'price_override': float(v.price_override) if v.price_override is not None else None,
+                    'effective_price': effective_price,
+                })
+
+        catalog_list.append({
+            'id': p.id,
+            'name': p.name,
+            'barcode': p.barcode or '',
+            'sell_price': float(p.sell_price),
+            'vat_rate': float(p.vat_rate),
+            'unit': p.unit or 'Adet',
+            'is_weighted': bool(p.is_weighted),
+            'stock_quantity': float(p.stock_quantity),
+            'has_variants': bool(p.has_variants),
+            'variants': variants_list
+        })
+
+    return JsonResponse({
+        'success': True,
+        'company_id': user_company.id if user_company else None,
+        'company_name': user_company.name if user_company else 'HiMarket',
+        'business_type': getattr(user_company, 'business_type', 'MARKET'),
+        'timestamp': timezone.now().isoformat(),
+        'total_count': len(catalog_list),
+        'products': catalog_list
+    })
+
+
+@login_required
+def offline_sale_sync_api(request):
+    """
+    Faz 14: Çevrimdışı (Offline) Satışları Toplu / Tekil Senkronizasyon Uç Noktası
+    İnternet bağlantısı kesildiğinde IndexedDB'de biriken satış fişlerini sunucuya aktarır,
+    idempotency (tekrar önleme) denetimi yapar, stokları günceller ve mali fiş kaydeder.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'Yalnızca POST istekleri kabul edilir.'}, status=405)
+
+    user_company = get_user_company(request.user)
+    try:
+        data = json.loads(request.body.decode('utf-8'))
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return JsonResponse({'success': False, 'message': 'Geçersiz JSON verisi.'}, status=400)
+
+    sales_payload = data.get('sales', [])
+    if not isinstance(sales_payload, list) or not sales_payload:
+        if isinstance(data.get('sale'), dict):
+            sales_payload = [data['sale']]
+        elif 'items' in data:
+            sales_payload = [data]
+        else:
+            return JsonResponse({'success': False, 'message': 'Senkronize edilecek satış verisi bulunamadı.'}, status=400)
+
+    # Dinamik Kasa ve Aktif Vardiya Çözümleme
+    register = get_current_register(request, company=user_company)
+    shift = Shift.objects.filter(company=user_company, cash_register=register, is_closed=False).first()
+    if not shift:
+        register, shift = get_or_create_active_shift(request.user, register=register, request=request)
+
+    results = []
+    synced_count = 0
+    already_synced_count = 0
+    failed_count = 0
+
+    from django.utils.dateparse import parse_datetime
+    import uuid
+
+    for sale_dict in sales_payload:
+        offline_id = str(sale_dict.get('offline_receipt_id') or sale_dict.get('offline_id') or '').strip()
+        if not offline_id:
+            offline_id = f"OFF-{timezone.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}"
+
+        # 1. Idempotency Kontrolü: Bu çevrimdışı fiş daha önce işlendi mi?
+        existing_sale = Sale.objects.filter(company=user_company, offline_sync_id=offline_id).first()
+        if existing_sale:
+            already_synced_count += 1
+            results.append({
+                'offline_receipt_id': offline_id,
+                'status': 'ALREADY_SYNCED',
+                'server_receipt_number': existing_sale.receipt_number,
+                'total_amount': float(existing_sale.total_amount),
+                'message': 'Bu fiş daha önce başarıyla senkronize edilmişti.'
+            })
+            continue
+
+        items_data = sale_dict.get('items', [])
+        if not items_data:
+            failed_count += 1
+            results.append({
+                'offline_receipt_id': offline_id,
+                'status': 'FAILED',
+                'message': 'Fişte ürün bulunmuyor.'
+            })
+            continue
+
+        payment_type = sale_dict.get('payment_type', 'NAKIT')
+        cash_paid = Decimal(str(sale_dict.get('cash_paid', 0)))
+        card_paid = Decimal(str(sale_dict.get('card_paid', 0)))
+        discount_amount = Decimal(str(sale_dict.get('discount_amount', 0)))
+        is_return = bool(sale_dict.get('is_return', False))
+        customer_id = sale_dict.get('customer_id')
+
+        raw_created_at = sale_dict.get('created_at')
+        offline_created_dt = parse_datetime(raw_created_at) if raw_created_at else None
+        if not offline_created_dt:
+            offline_created_dt = timezone.now()
+
+        # Kalem ayrıştırma
+        parsed_items = []
+        parse_error = None
+        for item_info in items_data:
+            pid = item_info.get('product_id') or item_info.get('id')
+            if not pid:
+                parse_error = 'Ürün kimliği eksik.'
+                break
+            try:
+                qty = Decimal(str(item_info.get('quantity', 1)))
+            except (ValueError, TypeError, ArithmeticError):
+                parse_error = 'Miktar formatı geçersiz.'
+                break
+
+            if qty <= Decimal('0.000'):
+                parse_error = 'Ürün miktarı sıfırdan büyük olmalıdır.'
+                break
+
+            vid = item_info.get('variant_id')
+            variant_id = None
+            if vid:
+                try:
+                    variant_id = int(vid)
+                except (ValueError, TypeError):
+                    variant_id = None
+
+            parsed_items.append({
+                'product_id': int(pid),
+                'quantity': qty,
+                'variant_id': variant_id
+            })
+
+        if parse_error:
+            failed_count += 1
+            results.append({
+                'offline_receipt_id': offline_id,
+                'status': 'FAILED',
+                'message': parse_error
+            })
+            continue
+
+        # Atomik işlem ile satışı kaydet ve stokları düş
+        try:
+            with transaction.atomic():
+                shift = Shift.objects.select_for_update().get(id=shift.id)
+
+                product_ids_sorted = sorted({item['product_id'] for item in parsed_items})
+                variant_ids_sorted = sorted({item['variant_id'] for item in parsed_items if item['variant_id']})
+
+                locked_products = {p.id: p for p in Product.objects.select_for_update().filter(company=user_company, id__in=product_ids_sorted)}
+                locked_variants = {v.id: v for v in ProductVariant.objects.select_for_update().filter(company=user_company, id__in=variant_ids_sorted)} if variant_ids_sorted else {}
+
+                customer_obj = None
+                if customer_id:
+                    customer_obj = Customer.objects.select_for_update().filter(company=user_company, id=int(customer_id)).first()
+
+                prelim_subtotal = Decimal('0.00')
+                prelim_vat = Decimal('0.00')
+                items_for_vat = []
+
+                for item in parsed_items:
+                    product = locked_products.get(item['product_id'])
+                    if not product:
+                        raise ValueError(f"Ürün bulunamadı (ID: {item['product_id']})")
+                    vid = item['variant_id']
+                    var_obj = locked_variants.get(vid) if vid else None
+                    unit_price = var_obj.price_override if (var_obj and var_obj.price_override is not None) else product.sell_price
+
+                    line_total = round(item['quantity'] * unit_price, 2)
+                    if product.vat_rate > Decimal('0.00'):
+                        line_sub = round(line_total / (Decimal('1.00') + (product.vat_rate / Decimal('100.00'))), 2)
+                        line_v = line_total - line_sub
+                    else:
+                        line_sub = line_total
+                        line_v = Decimal('0.00')
+                    prelim_subtotal += line_sub
+                    prelim_vat += line_v
+
+                    items_for_vat.append({
+                        'vat_rate': product.vat_rate,
+                        'unit_price': unit_price,
+                        'quantity': item['quantity']
+                    })
+
+                grand_total = max(Decimal('0.00'), (prelim_subtotal + prelim_vat) - discount_amount)
+                change_given = Decimal('0.00')
+
+                if not is_return:
+                    if payment_type == 'NAKIT':
+                        change_given = (cash_paid - grand_total) if cash_paid >= grand_total else Decimal('0.00')
+                    elif payment_type == 'KART':
+                        card_paid = grand_total
+                    elif payment_type == 'PARCALI':
+                        total_collected = cash_paid + card_paid
+                        change_given = (total_collected - grand_total) if total_collected > grand_total else Decimal('0.00')
+
+                today_str = timezone.localtime(offline_created_dt).strftime('%Y%m%d')
+                prefix = "IADE" if is_return else "FIS"
+                last_today_sale = Sale.objects.filter(company=user_company, receipt_number__contains=f"-{today_str}-").order_by('-id').first()
+                next_seq = 1
+                if last_today_sale and last_today_sale.receipt_number:
+                    try:
+                        parts = last_today_sale.receipt_number.split('-')
+                        if len(parts) >= 3:
+                            next_seq = int(parts[-1]) + 1
+                    except (ValueError, TypeError):
+                        next_seq = Sale.objects.filter(company=user_company, receipt_number__contains=today_str).count() + 1
+
+                receipt_number = f"{prefix}-{today_str}-{next_seq:04d}"
+                while Sale.objects.filter(company=user_company, receipt_number=receipt_number).exists():
+                    next_seq += 1
+                    receipt_number = f"{prefix}-{today_str}-{next_seq:04d}"
+
+                vat_breakdown = calculate_vat_breakdown(items_for_vat, discount_amount)
+
+                sale = Sale.objects.create(
+                    company=user_company,
+                    receipt_number=receipt_number,
+                    shift=shift,
+                    cashier=request.user,
+                    customer=customer_obj,
+                    payment_type=payment_type,
+                    document_type='E_ARSIV',
+                    customer_tax_number=customer_obj.tax_number if (customer_obj and customer_obj.tax_number) else '11111111111',
+                    customer_title=customer_obj.full_name if customer_obj else 'Nihai Tüketici',
+                    subtotal=vat_breakdown['total_subtotal'],
+                    total_vat=vat_breakdown['total_vat'],
+                    vat_1_base=vat_breakdown['vat_1_base'],
+                    vat_1_amount=vat_breakdown['vat_1_amount'],
+                    vat_10_base=vat_breakdown['vat_10_base'],
+                    vat_10_amount=vat_breakdown['vat_10_amount'],
+                    vat_20_base=vat_breakdown['vat_20_base'],
+                    vat_20_amount=vat_breakdown['vat_20_amount'],
+                    discount_amount=discount_amount,
+                    total_amount=grand_total,
+                    cash_paid=cash_paid,
+                    card_paid=card_paid,
+                    change_given=change_given,
+                    is_return=is_return,
+                    is_offline_sync=True,
+                    offline_sync_id=offline_id,
+                    offline_created_at=offline_created_dt
+                )
+
+                apply_fiscal_data_to_sale(sale, {
+                    'tax_number': sale.customer_tax_number,
+                    'title': sale.customer_title,
+                    'tax_office': '',
+                    'document_type': 'E_ARSIV',
+                })
+
+                if customer_obj:
+                    if is_return:
+                        Customer.objects.filter(id=customer_obj.id).update(balance=F('balance') - grand_total)
+                        customer_obj.refresh_from_db(fields=['balance'])
+                        CustomerTransaction.objects.create(
+                            customer=customer_obj,
+                            transaction_type='IADE',
+                            amount=grand_total,
+                            balance_after=customer_obj.balance,
+                            sale=sale,
+                            shift=shift,
+                            document_no=sale.receipt_number,
+                            description=f"Çevrimdışı İade Fişi #{sale.receipt_number} (Yerel: {offline_id}) ile borçtan düşüldü.",
+                            user=request.user
+                        )
+                    elif payment_type == 'VERESIYE':
+                        Customer.objects.filter(id=customer_obj.id).update(balance=F('balance') + grand_total)
+                        customer_obj.refresh_from_db(fields=['balance'])
+                        CustomerTransaction.objects.create(
+                            customer=customer_obj,
+                            transaction_type='VERESIYE_SATIS',
+                            amount=grand_total,
+                            balance_after=customer_obj.balance,
+                            sale=sale,
+                            shift=shift,
+                            document_no=sale.receipt_number,
+                            description=f"Çevrimdışı Veresiye Satış Fişi #{sale.receipt_number} (Yerel: {offline_id}) ile borç eklendi.",
+                            user=request.user
+                        )
+
+                for item in parsed_items:
+                    product = locked_products[item['product_id']]
+                    vid = item['variant_id']
+                    var_obj = locked_variants.get(vid) if vid else None
+                    unit_price = var_obj.price_override if (var_obj and var_obj.price_override is not None) else product.sell_price
+                    var_info = f"{var_obj.size} · {var_obj.color}" if var_obj else ""
+                    item_barcode = var_obj.barcode if (var_obj and var_obj.barcode) else (product.barcode or '')
+                    display_pname = f"{product.name} ({var_info})" if var_info else product.name
+
+                    line_total = round(item['quantity'] * unit_price, 2)
+                    if product.vat_rate > Decimal('0.00'):
+                        line_sub = round(line_total / (Decimal('1.00') + (product.vat_rate / Decimal('100.00'))), 2)
+                        line_vat = line_total - line_sub
+                    else:
+                        line_vat = Decimal('0.00')
+
+                    SaleItem.objects.create(
+                        sale=sale,
+                        product=product,
+                        variant=var_obj,
+                        variant_info=var_info,
+                        product_name=display_pname,
+                        barcode=item_barcode,
+                        quantity=item['quantity'],
+                        unit_price=unit_price,
+                        vat_rate=product.vat_rate,
+                        vat_amount=line_vat,
+                        total_price=line_total
+                    )
+
+                    qty_delta = item['quantity'] if is_return else -item['quantity']
+                    if var_obj:
+                        ProductVariant.objects.filter(id=var_obj.id).update(stock_quantity=F('stock_quantity') + qty_delta)
+                    Product.objects.filter(id=product.id).update(stock_quantity=F('stock_quantity') + qty_delta)
+
+                effective_cash = max(Decimal('0.00'), cash_paid - change_given) if payment_type in ('NAKIT', 'PARCALI') else Decimal('0.00')
+
+                if not is_return:
+                    shift.total_sales_count = F('total_sales_count') + 1
+                    if payment_type == 'NAKIT':
+                        shift.total_cash_sales = F('total_cash_sales') + grand_total
+                        shift.expected_cash = F('expected_cash') + grand_total
+                    elif payment_type == 'KART':
+                        shift.total_card_sales = F('total_card_sales') + grand_total
+                    elif payment_type == 'PARCALI':
+                        shift.total_cash_sales = F('total_cash_sales') + effective_cash
+                        shift.expected_cash = F('expected_cash') + effective_cash
+                        shift.total_card_sales = F('total_card_sales') + card_paid
+                    elif payment_type == 'VERESIYE':
+                        shift.total_veresiye_sales = F('total_veresiye_sales') + grand_total
+                    shift.save(update_fields=['total_sales_count', 'total_cash_sales', 'total_card_sales', 'total_veresiye_sales', 'expected_cash'])
+                else:
+                    if payment_type == 'NAKIT':
+                        shift.total_cash_sales = F('total_cash_sales') - grand_total
+                        shift.expected_cash = F('expected_cash') - grand_total
+                    elif payment_type == 'KART':
+                        shift.total_card_sales = F('total_card_sales') - grand_total
+                    elif payment_type == 'PARCALI':
+                        shift.total_cash_sales = F('total_cash_sales') - effective_cash
+                        shift.expected_cash = F('expected_cash') - effective_cash
+                        shift.total_card_sales = F('total_card_sales') - card_paid
+                    elif payment_type == 'VERESIYE':
+                        shift.total_veresiye_sales = F('total_veresiye_sales') - grand_total
+                    shift.save(update_fields=['total_cash_sales', 'total_card_sales', 'total_veresiye_sales', 'expected_cash'])
+
+                log_action(
+                    'SALE',
+                    'Çevrimdışı Satış Senkronize Edildi',
+                    f"Çevrimdışı Fiş #{offline_id} başarıyla sunucuya aktarıldı -> #{sale.receipt_number} (Tutar: {sale.total_amount:.2f} TL)",
+                    user=request.user
+                )
+
+                synced_count += 1
+                results.append({
+                    'offline_receipt_id': offline_id,
+                    'status': 'SYNCED',
+                    'server_receipt_number': sale.receipt_number,
+                    'total_amount': float(sale.total_amount),
+                    'message': 'Başarıyla kaydedildi.'
+                })
+
+        except Exception as e:
+            failed_count += 1
+            results.append({
+                'offline_receipt_id': offline_id,
+                'status': 'FAILED',
+                'message': str(e)
+            })
+
+    return JsonResponse({
+        'success': True,
+        'synced_count': synced_count,
+        'already_synced_count': already_synced_count,
+        'failed_count': failed_count,
+        'results': results
+    })
+
+
+def service_worker_view(request):
+    """
+    PWA Service Worker Dosyası (Scope: '/')
+    """
+    sw_path = settings.BASE_DIR / 'static' / 'sw.js'
+    if not sw_path.exists():
+        return HttpResponse("// SW not found", content_type="application/javascript")
+    with open(sw_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    response = HttpResponse(content, content_type="application/javascript")
+    response['Service-Worker-Allowed'] = '/'
+    response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    return response
+
+
+def manifest_view(request):
+    """
+    PWA Web App Manifest
+    """
+    manifest_path = settings.BASE_DIR / 'static' / 'manifest.json'
+    if not manifest_path.exists():
+        return JsonResponse({"name": "HiMarket POS"}, content_type="application/manifest+json")
+    with open(manifest_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    response = HttpResponse(content, content_type="application/manifest+json")
+    response['Cache-Control'] = 'public, max-age=86400'
+    return response
+
+
 
 
 

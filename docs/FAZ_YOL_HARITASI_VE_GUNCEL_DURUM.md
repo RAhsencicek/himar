@@ -1,14 +1,14 @@
 # HİMARKET SAAS & POS — MASTER FAZ YOL HARİTASI VE GÜNCEL DURUM RAPORU
 **Doküman Kodu:** ROADMAP-HM-2026-V2  
 **Tarih:** 19 Kasım 2026  
-**Aktif Sürüm:** HiMarket Enterprise v2.7.0 (123/123 Birim Testi Başarılı - %100 Yeşil)  
+**Aktif Sürüm:** HiMarket Enterprise v2.8.0 (130/130 Birim Testi Başarılı - %100 Yeşil)  
 **Canlı Sistem:** `70.40.138.174` (`https://himarket.hayatisleri.com.tr/`)  
 **Statü:** Resmi Yol Haritası & Canlı Geliştirme Takip Kılavuzu
 
 ---
 
-## 📌 BÖLÜM 1: GEÇMİŞTEN BUGÜNE TAMAMLANAN FAZLAR (FAZ 1 — FAZ 13)
-*Aşağıdaki tüm fazlar kodlanmış, 123 otomatik test ile doğrulanmış ve canlı sunucuda devreye alınmıştır.*
+## 📌 BÖLÜM 1: GEÇMİŞTEN BUGÜNE TAMAMLANAN FAZLAR (FAZ 1 — FAZ 14)
+*Aşağıdaki tüm fazlar kodlanmış, 130 otomatik test ile doğrulanmış ve canlı sunucuda devreye alınmıştır.*
 
 | Faz | Kapsam | Durum | Test Sayısı |
 | :--- | :--- | :---: | :---: |
@@ -25,9 +25,11 @@
 | **Faz 11** | Çoklu Mağaza (Multi-Tenancy), Şirket İzolasyonu & Sıfır Kurulum Sihirbazı | ✅ TAMAMLANDI | 103 Test |
 | **Faz 12** | Kasa Başına Lisanslama, Abonelik, Süper Admin Konsolu & 403 Güvenliği | ✅ TAMAMLANDI | 115 Test |
 | **Faz 13** | Sektörel Modülerlik (Market/Giyim/Perakende), Beden-Renk Varyant Motoru, Dokunmatik Kodpos Modalı & Hediye Değişim Fişi | ✅ TAMAMLANDI | 123 Test |
+| **Faz 14** | Çevrimdışı (Offline) Kasa Motoru (PWA, IndexedDB, Arka Plan Senkronizasyon & Idempotency) | ✅ TAMAMLANDI | 130 Test |
 
 > [!NOTE]
 > **Halihazırda Çalışan Kritik MVP Özellikleri:**
+> - **Çevrimdışı (Offline) Kasa Dayanıklılığı:** İnternet kopsa dahi sıfır kesintiyle barkod tarama (terazi ve varyantlar dahil), yerel fiş basımı, IndexedDB kuyruğu ve bağlantı gelince otomatik çift-kayıt korumalı (idempotent) senkronizasyon.
 > - **Sektörel Uyumluluk & Varyantlar:** Giyim/Butik sektöründe Beden x Renk matrisi, her varyanta otomatik tekil EAN-13 barkodu, kasada dokunmatik seçim modalı, sepette varyant rozetleri ve fiyatsız 30 günlük Hediye Değişim Fişi.
 > - **Terazi Ayrıştırma Motoru:** GS1 Türkiye standartlarında 27 (Ağırlık/Gramaj) ve 28 (Fiyat/Tutar) gömülü barkodları otomatik tanır (Market modunda aktif).
 > - **Hızlı Tuşlar & Kısayollar:** F2 Nakit, F3 Kart, F4 Beklet, F7 Kısmi, F8 İade, F9 Veresiye, Dokunmatik hızlı ürün butonları.
@@ -35,12 +37,12 @@
 
 ---
 
-## 🚀 BÖLÜM 2: YENİ STRATEJİK YOL HARİTASI (FAZ 14 — FAZ 18)
+## 🚀 BÖLÜM 2: YENİ STRATEJİK YOL HARİTASI (FAZ 15 — FAZ 18)
 *Bu fazlar işletmenin kesintisiz çalışmasını, ürün havuzuna anında erişmesini ve kurumsal seviyeye ulaşmasını sağlar.*
 
 ```mermaid
 flowchart LR
-    F13["✅ Faz 13: Sektörel Modülerlik & Varyantlar"] --> F14["Faz 14: Çevrimdışı (Offline) Kasa"]
+    F13["✅ Faz 13: Sektörel Modülerlik"] --> F14["✅ Faz 14: Çevrimdışı Kasa (Offline)"]
     F14 --> F15["Faz 15: Ortak Barkod Havuzu"]
     F15 --> F16["Faz 16: SKT Takibi & Mobil Patron Kokpiti"]
     F16 --> F17["Faz 17: Müşteri Sadakati (Puan & Kart)"]
@@ -49,38 +51,26 @@ flowchart LR
 
 ---
 
-### 🟢 FAZ 13: SEKTÖREL MODÜLERLİK & VARYANT MOTORU (GİYİM / BUTİK UYUMU) — TAMAMLANDI ✅
-*Hedef: Programı sadece bir bakkal/market yazılımı olmaktan çıkarıp butik, giyim, ayakkabı ve tekstil mağazalarına anında satılabilir hale getirmek.*
-
-#### A. Tamamlanan ve Doğrulanan Kabiliyetler
-1. **Şirket Sektör Profili (`Company.business_type`):**
-   - `MARKET` (Süpermarket, Bakkal, Şarküteri, Manav): Terazi, gramaj, koli barkodu aktif.
-   - `APPAREL` (Giyim, Butik, Ayakkabı, Tekstil): Beden & Renk Varyant Matrisi aktif, Hediye Değişim Fişi aktif, Terazi menüleri gizli.
-   - `RETAIL` (Kırtasiye, Kozmetik, Züccaciye, Hırdavat): Genel perakende aktif.
-2. **Varyant Matrisi (Beden × Renk):**
-   - Ürün düzenleme ekranında otomatik matris üretici (`product_variants_api`), her varyanta tekil EAN-13 barkodu, stok ve özel fiyat belirleme.
-3. **Dokunmatik Kodpos Kasa Modalı (`#variantSelectModal`):**
-   - Kasada ana ürün okutulduğunda veya tıklandığında 1024x768 kodpos uyumlu dokunmatik Beden & Renk penceresi açılır.
-   - Varyant seçildiğinde sepete eklenir ve satırda varyant rozeti gösterilir.
-4. **Fiyatsız Hediye Değişim Fişi (`thermal_gift_receipt.html`):**
-   - Fiyat bilgisi içermeyen, 30 günlük değişim kurallarını ve barkodu basan 80mm/58mm termal çıktı şablonu.
-5. **Birim Testleri:**
-   - 8 yeni birim testi yazıldı, toplam 123 test eksiksiz geçti.
-
----
-
-### 🟢 FAZ 14: ÇEVRİMDIŞI (OFFLINE) KASA MOTORU (PWA + INDEXEDDB)
+### 🟢 FAZ 14: ÇEVRİMDIŞI (OFFLINE) KASA MOTORU (PWA + INDEXEDDB) — TAMAMLANDI ✅
 *Hedef: İnternet kesilse bile kasada satışın sıfır kesintiyle devam etmesi; bağlantı gelince otomatik senkronize olması.*
 
-#### A. İşlevsel Kapsam
-1. **Yerel Veri Depolama (IndexedDB):**
-   - Kasa açıldığında şirketin ürün kataloğu (Barkod, Ad, Fiyat, KDV, Stok) tarayıcının IndexedDB hafızasına önbelleğe alınır.
-2. **Çevrimdışı Satış Kuyruğu (`himarket_offline_queue`):**
-   - İnternet kesildiğinde kasa ekranı "Çevrimdışı Mod" rozetini yakar.
-   - Barkod okutma, fiş toplamı, nakit/kart tahsilat yerel olarak tamamlanır ve termal yazıcıdan fiş basılır.
-   - Satış fişi IndexedDB kuyruğuna yazılır.
-3. **Otomatik Arka Plan Senkronizasyonu (Background Sync):**
-   - İnternet bağlantısı sağlandığı anda kuyruktaki bekleyen fişler sırayla sunucuya (`/api/sale/complete/`) iletilir ve stoklar güncellenir.
+#### A. Tamamlanan ve Doğrulanan Kabiliyetler
+1. **PWA Altyapısı (Service Worker & Manifest):**
+   - `static/manifest.json`: Standalone POS terminal görünümü, kurumsal simgeler ve tema rengi.
+   - `static/sw.js` (`/sw.js`): Statik CSS, JS, font ve Bootstrap varlıklarını önbelleğe alarak internetsiz tam sayfa açılışı sağlar.
+2. **Yerel Veri Depolama (IndexedDB Motoru - `offline_engine.js`):**
+   - Kasa açıldığında şirketin ürün kataloğu (`/api/pos/catalog-cache/`) tek tıkla IndexedDB `products` ve `variants` tablolarına indirilir.
+   - Çevrimdışıyken yerel barkod arama, terazi (27/28) gramaj/tutar çözümleme ve giyim varyantları anında bulunur.
+3. **Çevrimdışı Satış ve Fiş Üretimi:**
+   - İnternet koptuğunda veya sunucuya erişilemediğinde satış duraksamaz; fiş `offline_sales` deposuna yazılır, yerel stok düşülür.
+   - Kasada 80mm/58mm çevrimdışı bilgilendirme fişi basılır.
+4. **Idempotent Arka Plan Senkronizasyonu (`/api/sale/offline-sync/`):**
+   - İnternet bağlantısı geldiğinde `window.online` olayı ile bekleyen tüm fişler sunucuya aktarılır.
+   - `Sale.offline_sync_id` sayesinde ağ kopmalarında mükerrer istek gelse dahi çift kayıt veya çift stok düşümü engellenir.
+5. **Kasa Kuyruk Yönetimi Modalı (`#offlineQueueModal`):**
+   - Kasa üst menüsünde bekleyen çevrimdışı fiş sayısı anlık gösterilir; tıklandığında liste incelenebilir ve manuel senkronizasyon tetiklenebilir.
+6. **Birim Testleri:**
+   - 7 yeni birim testi yazıldı (`OfflineKasaAndPwaTestSuite`), toplam **130 test eksiksiz geçti (%100 Yeşil)**.
 
 ---
 

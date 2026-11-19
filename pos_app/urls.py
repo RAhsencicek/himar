@@ -150,4 +150,10 @@ urlpatterns = [
     path('super-admin/companies/<int:company_id>/update-subscription/', views.super_admin_update_subscription_action, name='super_admin_update_subscription'),
     path('super-admin/companies/<int:company_id>/toggle-status/', views.super_admin_toggle_company_status_action, name='super_admin_toggle_company_status'),
     path('super-admin/registers/<int:register_id>/reset-hardware/', views.super_admin_reset_register_hardware_action, name='super_admin_reset_register_hardware'),
+
+    # PWA & Çevrimdışı (Offline) Kasa Motoru (Faz 14)
+    path('sw.js', views.service_worker_view, name='service_worker'),
+    path('manifest.json', views.manifest_view, name='pwa_manifest'),
+    path('api/pos/catalog-cache/', views.pos_catalog_cache_api, name='pos_catalog_cache_api'),
+    path('api/sale/offline-sync/', views.offline_sale_sync_api, name='offline_sale_sync_api'),
 ]
