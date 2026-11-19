@@ -4512,7 +4512,8 @@ def _filter_sales(params, company=None):
             Q(customer_title__icontains=search_q) |
             Q(customer_tax_number__icontains=search_q) |
             Q(cashier__username__icontains=search_q) |
-            Q(ettn__icontains=search_q)
+            Q(ettn__icontains=search_q) |
+            Q(offline_sync_id__icontains=search_q)
         )
 
     if register_code:
@@ -4684,6 +4685,9 @@ def sale_detail_api(request, sale_id):
             'customer_title': sale.customer_title,
             'customer_tax_number': sale.customer_tax_number,
             'payment_type': sale.payment_type,
+            'is_offline_sync': sale.is_offline_sync,
+            'offline_sync_id': sale.offline_sync_id or '',
+            'offline_created_at': timezone.localtime(sale.offline_created_at).strftime('%d.%m.%Y %H:%M:%S') if sale.offline_created_at else None,
             'payment_type_display': sale.get_payment_type_display(),
             'cash_paid': f"{sale.cash_paid:.2f}",
             'card_paid': f"{sale.card_paid:.2f}",

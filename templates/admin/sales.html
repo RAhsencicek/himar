@@ -144,7 +144,14 @@
                         <tr class="{% if sale.is_cancelled %}table-secondary opacity-75{% elif sale.is_return %}table-warning{% endif %}">
                             <td class="ps-3">
                                 <span class="font-monospace fw-bold text-primary d-block">{{ sale.receipt_number }}</span>
-                                <small class="text-slate-500">{{ sale.items.count }} Kalem</small>
+                                <div class="d-flex align-items-center gap-1 mt-0.5">
+                                    <small class="text-slate-500">{{ sale.items.count }} Kalem</small>
+                                    {% if sale.is_offline_sync %}
+                                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle py-0 px-1 fw-bold" style="font-size: 10px;" title="Çevrimdışı kesildi (Yerel ID: {{ sale.offline_sync_id }})">
+                                            <i class="bi bi-cloud-slash-fill"></i> Çevrimdışı
+                                        </span>
+                                    {% endif %}
+                                </div>
                             </td>
                             <td class="text-slate-700 font-monospace">{{ sale.created_at|date:"d.m.Y H:i" }}</td>
                             <td>
@@ -334,6 +341,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 addSummaryRow(metaGrid, 'Kasa / Kasiyer', `${s.register} · ${s.cashier}`);
                 addSummaryRow(metaGrid, 'Müşteri', `${s.customer_title} (${s.customer_tax_number})`);
                 addSummaryRow(metaGrid, 'Ödeme Türü', s.payment_type_display);
+                if (s.is_offline_sync) {
+                    addSummaryRow(metaGrid, 'Senkronizasyon Kaynağı', `Çevrimdışı Kasa (Yerel ID: ${s.offline_sync_id})`, true);
+                    if (s.offline_created_at) {
+                        addSummaryRow(metaGrid, 'Çevrimdışı Kesilme Saati', s.offline_created_at);
+                    }
+                }
                 if (s.is_return && s.return_reason) {
                     addSummaryRow(metaGrid, 'İade Gerekçesi', s.return_reason);
                 }
