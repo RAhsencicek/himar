@@ -73,6 +73,16 @@
                             </div>
 
                             <div class="col-12 col-md-6">
+                                <label class="form-label fw-bold text-slate-800 small mb-1">İşletme Sektörü & POS Modülü *</label>
+                                <select name="business_type" class="form-select form-select-sm fw-bold border-primary text-primary bg-white">
+                                    {% for b_val, b_name in business_types %}
+                                        <option value="{{ b_val }}" {% if company and company.business_type == b_val %}selected{% endif %}>{{ b_name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <small class="text-slate-500 fs-9">Giyim/Butik seçildiğinde varyant motoru ve hediye değişim fişi aktifleşir.</small>
+                            </div>
+
+                            <div class="col-12 col-md-6">
                                 <label class="form-label fw-bold text-slate-800 small mb-1">Vergi Kimlik No (VKN / TCKN) *</label>
                                 <input type="text" name="tax_number" class="form-control form-control-sm font-monospace fw-bold bg-white" 
                                        value="{{ setting.tax_number }}" maxlength="11" required placeholder="10 haneli VKN veya 11 haneli TCKN">

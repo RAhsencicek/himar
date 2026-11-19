@@ -1993,10 +1993,13 @@
                         data-unit="{{ p.unit }}"
                         data-weighted="{{ p.is_weighted|yesno:'true,false' }}"
                         data-stock="{{ p.stock_quantity|unlocalize }}"
+                        data-has-variants="{{ p.has_variants|yesno:'true,false' }}"
                         onclick="handleQuickButtonClick(this)">
                     <div class="quick-tile-media">
                         {% if p.image %}
                         <img src="{{ p.image.url }}" alt="" decoding="async">
+                        {% elif p.has_variants %}
+                        <i class="bi bi-diagram-3-fill quick-tile-icon" style="color:#6366f1;" aria-hidden="true"></i>
                         {% elif p.is_weighted %}
                         <i class="bi bi-speedometer2 quick-tile-icon" aria-hidden="true"></i>
                         {% else %}
@@ -2004,6 +2007,8 @@
                         {% endif %}
                         {% if p.stock_quantity <= 0 %}
                         <span class="quick-tile-badge quick-tile-badge--out">Tükendi</span>
+                        {% elif p.has_variants %}
+                        <span class="quick-tile-badge" style="background:#4338ca;"><i class="bi bi-diagram-3-fill"></i> Beden/Renk</span>
                         {% elif p.is_weighted %}
                         <span class="quick-tile-badge">{{ p.unit }}</span>
                         {% endif %}
@@ -2539,11 +2544,61 @@
     <div class="pos-dialog-body p-0" style="min-block-size: 420px;">
         <iframe id="receiptModalFrame" title="Fiş Önizleme" style="inline-size: 100%; block-size: 420px; border: 0; display: block;"></iframe>
     </div>
-    <div class="pos-dialog-foot">
-        <button type="button" class="btn btn-primary fw-bold" onclick="printReceiptIframe()">
-            <i class="bi bi-printer-fill"></i> Yazdır
-        </button>
+    <div class="pos-dialog-foot justify-content-between">
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-primary fw-bold" onclick="printReceiptIframe()">
+                <i class="bi bi-printer-fill"></i> Normal Fişi Yazdır
+            </button>
+            <button type="button" class="btn btn-outline-info fw-bold d-flex align-items-center gap-1.5" onclick="printGiftReceipt()">
+                <i class="bi bi-gift-fill text-danger"></i> <span>Hediye Değişim Fişi</span>
+            </button>
+        </div>
         <button type="button" class="btn btn-light border fw-bold" onclick="document.getElementById('receiptModal').close('cancel')">Kapat</button>
+    </div>
+</dialog>
+
+<!-- 12.1. Faz 13: Beden / Renk Dokunmatik Varyant Seçim Modalı (#variantSelectModal) -->
+<dialog id="variantSelectModal" class="pos-dialog pos-dialog--wide" closedby="any" aria-labelledby="variantModalTitle">
+    <div class="pos-dialog-head">
+        <h2 id="variantModalTitle" class="pos-dialog-title d-flex align-items-center gap-2">
+            <i class="bi bi-diagram-3-fill text-primary"></i>
+            <span id="variantModalProductName">BEDEN & RENK SEÇİMİ</span>
+        </h2>
+        <form method="dialog">
+            <button type="submit" value="cancel" class="pos-dialog-close" aria-label="Kapat">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </form>
+    </div>
+    <div class="pos-dialog-body p-3">
+        <!-- Beden Hızlı Filtresi -->
+        <div id="variantSizeFilterWrap" class="mb-2.5 d-none">
+            <label class="form-label text-secondary fs-8 fw-bold mb-1">BEDEN / NUMARA:</label>
+            <div id="variantSizeButtons" class="d-flex flex-wrap gap-1.5"></div>
+        </div>
+
+        <!-- Renk Hızlı Filtresi -->
+        <div id="variantColorFilterWrap" class="mb-2.5 d-none">
+            <label class="form-label text-secondary fs-8 fw-bold mb-1">RENK SEÇENEĞİ:</label>
+            <div id="variantColorButtons" class="d-flex flex-wrap gap-1.5"></div>
+        </div>
+
+        <!-- Varyant Butonları Tablosu / Grid (Parmak Dostu Dokunmatik Kodpos Formatı) -->
+        <div class="d-flex justify-content-between align-items-center mb-1.5">
+            <span class="form-label text-secondary fs-8 fw-bold mb-0">SEPETE EKLEMEK İÇİN İSTEDİĞİNİZ SEÇENEĞE DOKUNUN:</span>
+            <span id="variantCountBadge" class="badge bg-light text-slate-700 border fs-8"></span>
+        </div>
+        <div id="variantGrid" class="row g-2" style="max-height: 380px; overflow-y: auto;">
+            <!-- JS ile dinamik render edilecek -->
+        </div>
+    </div>
+    <div class="pos-dialog-foot justify-content-between">
+        <div class="small text-secondary d-none d-sm-block">
+            <i class="bi bi-info-circle me-1"></i> Beden veya renge dokunduğunuzda ürün anında sepete eklenir.
+        </div>
+        <button type="button" class="btn btn-light border fw-bold px-4" onclick="document.getElementById('variantSelectModal').close('cancel')">
+            Vazgeç
+        </button>
     </div>
 </dialog>
 
@@ -3045,6 +3100,14 @@
             const data = await resp.json();
 
             if (resp.ok && data.success) {
+                // Faz 13: Eğer ürün varyantlıysa dokunmatik seçim penceresini aç
+                if (data.has_variants && Array.isArray(data.variants) && data.variants.length > 0) {
+                    openVariantSelectModal(data.product, data.variants, qty);
+                    if (!fromCamera) barcodeInput.value = '';
+                    scannerStatusEl.textContent = `${data.product.name} için varyant seçiniz`;
+                    return { ok: true, product: data.product, has_variants: true };
+                }
+
                 const finalQty = data.is_weighted_barcode ? data.quantity : qty;
                 addToCart(data.product, finalQty);
                 if (!fromCamera) barcodeInput.value = '';
@@ -3090,6 +3153,21 @@
             stock_quantity: parseFloat(btn.dataset.stock || '0'),
         };
 
+        // Faz 13: Eğer ürün varyantlı bir ürünse, dokunmatik varyant penceresini aç
+        if (btn.dataset.hasVariants === 'true') {
+            fetch(`/api/products/${prod.id}/variants/`)
+                .then(r => r.json())
+                .then(d => {
+                    if (d.success && d.variants && d.variants.length > 0) {
+                        openVariantSelectModal(prod, d.variants, 1.0);
+                    } else {
+                        addDirectProduct(prod);
+                    }
+                })
+                .catch(() => addDirectProduct(prod));
+            return;
+        }
+
         if (prod.is_weighted) {
             openQtyModalForNew(prod);
         } else {
@@ -3104,6 +3182,140 @@
         focusBarcodeInput();
     }
 
+    /* ============================================================
+       FAZ 13: VARYANT SEÇİM MODALI & DOKUNMATİK SEPET MOTORU
+       ============================================================ */
+    let currentModalProduct = null;
+    let currentModalVariants = [];
+    let currentModalRequestedQty = 1.0;
+    let activeSizeFilter = null;
+    let activeColorFilter = null;
+
+    function openVariantSelectModal(product, variants, requestedQty) {
+        currentModalProduct = product;
+        currentModalVariants = variants || [];
+        currentModalRequestedQty = Number(requestedQty) || 1.0;
+        activeSizeFilter = null;
+        activeColorFilter = null;
+
+        document.getElementById('variantModalProductName').textContent = `${product.name} — Beden & Renk`;
+        document.getElementById('variantCountBadge').textContent = `${currentModalVariants.length} Seçenek`;
+
+        const sizes = [...new Set(currentModalVariants.map(v => v.size).filter(Boolean))];
+        const colors = [...new Set(currentModalVariants.map(v => v.color).filter(Boolean))];
+
+        const sizeWrap = document.getElementById('variantSizeFilterWrap');
+        const sizeBtns = document.getElementById('variantSizeButtons');
+        if (sizes.length > 1) {
+            sizeWrap.classList.remove('d-none');
+            sizeBtns.innerHTML = `<button type="button" class="btn btn-sm btn-primary fw-bold" onclick="filterVariantModal('size', null, this)">Tümü</button>` +
+                sizes.map(s => `<button type="button" class="btn btn-sm btn-outline-secondary fw-bold" onclick="filterVariantModal('size', '${escapeHtml(s)}', this)">${escapeHtml(s)}</button>`).join('');
+        } else {
+            sizeWrap.classList.add('d-none');
+        }
+
+        const colorWrap = document.getElementById('variantColorFilterWrap');
+        const colorBtns = document.getElementById('variantColorButtons');
+        if (colors.length > 1) {
+            colorWrap.classList.remove('d-none');
+            colorBtns.innerHTML = `<button type="button" class="btn btn-sm btn-primary fw-bold" onclick="filterVariantModal('color', null, this)">Tümü</button>` +
+                colors.map(c => `<button type="button" class="btn btn-sm btn-outline-secondary fw-bold" onclick="filterVariantModal('color', '${escapeHtml(c)}', this)">${escapeHtml(c)}</button>`).join('');
+        } else {
+            colorWrap.classList.add('d-none');
+        }
+
+        renderVariantGrid();
+        openDialog('variantSelectModal');
+    }
+
+    function filterVariantModal(type, val, btnEl) {
+        if (type === 'size') {
+            activeSizeFilter = val;
+            const container = document.getElementById('variantSizeButtons');
+            container.querySelectorAll('button').forEach(b => {
+                b.className = 'btn btn-sm btn-outline-secondary fw-bold';
+            });
+            btnEl.className = 'btn btn-sm btn-primary fw-bold';
+        } else if (type === 'color') {
+            activeColorFilter = val;
+            const container = document.getElementById('variantColorButtons');
+            container.querySelectorAll('button').forEach(b => {
+                b.className = 'btn btn-sm btn-outline-secondary fw-bold';
+            });
+            btnEl.className = 'btn btn-sm btn-primary fw-bold';
+        }
+        renderVariantGrid();
+    }
+
+    function renderVariantGrid() {
+        const grid = document.getElementById('variantGrid');
+        let filtered = currentModalVariants;
+        if (activeSizeFilter) {
+            filtered = filtered.filter(v => v.size === activeSizeFilter);
+        }
+        if (activeColorFilter) {
+            filtered = filtered.filter(v => v.color === activeColorFilter);
+        }
+
+        if (filtered.length === 0) {
+            grid.innerHTML = `<div class="col-12 text-center text-secondary py-4">Seçili filtreye uygun varyant bulunamadı.</div>`;
+            return;
+        }
+
+        grid.innerHTML = filtered.map(v => {
+            const isOut = v.stock_quantity <= 0;
+            const price = Number(v.sell_price || currentModalProduct.sell_price).toFixed(2);
+            const desc = v.display || `${v.size || ''} ${v.color || ''}`.trim() || 'Standart';
+            const stockLabel = isOut ? 'Tükendi' : `${Number(v.stock_quantity).toFixed(0)} Stok`;
+            const badgeCls = isOut ? 'bg-danger text-white' : 'bg-success-subtle text-success border border-success-subtle';
+
+            return `
+                <div class="col-6 col-md-4 col-lg-3">
+                    <button type="button"
+                            class="btn btn-outline-primary w-100 p-2 text-start d-flex flex-column justify-content-between rounded-3 border-2 shadow-xs ${isOut ? 'opacity-50' : ''}"
+                            style="min-height: 58px;"
+                            onclick="selectVariantAndAddToCart(${v.id})">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="fw-bold fs-7 text-slate-900">${escapeHtml(desc)}</span>
+                            <span class="badge ${badgeCls} fs-8">${stockLabel}</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="fw-extrabold text-primary fs-6">${price} ₺</span>
+                            <small class="text-secondary mono fs-8">${escapeHtml(v.barcode || '')}</small>
+                        </div>
+                    </button>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function selectVariantAndAddToCart(variantId) {
+        const variant = currentModalVariants.find(v => v.id === variantId);
+        if (!variant) return;
+
+        const desc = variant.display || `${variant.size || ''} ${variant.color || ''}`.trim();
+        const itemProduct = {
+            id: currentModalProduct.id,
+            name: currentModalProduct.name,
+            barcode: variant.barcode || currentModalProduct.barcode,
+            sell_price: parseFloat(variant.sell_price || currentModalProduct.sell_price),
+            vat_rate: parseFloat(currentModalProduct.vat_rate || 0),
+            unit: currentModalProduct.unit || 'Adet',
+            is_weighted: false,
+            stock_quantity: parseFloat(variant.stock_quantity),
+            variant_id: variant.id,
+            variant_info: desc,
+            size: variant.size,
+            color: variant.color,
+        };
+
+        addToCart(itemProduct, currentModalRequestedQty);
+        playBeep(880, 0.08);
+        scannerStatusEl.textContent = `Eklendi: ${itemProduct.name} (${desc})`;
+        document.getElementById('variantSelectModal').close();
+        focusBarcodeInput();
+    }
+
     function addToCart(product, quantity) {
         let qty = Number(quantity) || 1;
         if (activeMultiplier > 1.0) {
@@ -3111,13 +3323,16 @@
             activeMultiplier = 1.0;
             updateMultiplierBadge();
         }
-        const existingIndex = cart.findIndex(item => item.product_id === product.id);
+        // Faz 13: Varyantlı ürünlerde aynı ürünün farklı varyantları ayrı sepette tutulmalıdır
+        const existingIndex = cart.findIndex(item => item.product_id === product.id && (item.variant_id || null) === (product.variant_id || null));
         if (existingIndex >= 0) {
             cart[existingIndex].quantity = Number((cart[existingIndex].quantity + qty).toFixed(3));
             selectedRowIndex = existingIndex;
         } else {
             cart.push({
                 product_id: product.id,
+                variant_id: product.variant_id || null,
+                variant_info: product.variant_info || '',
                 name: product.name,
                 barcode: product.barcode || '',
                 unit_price: parseFloat(product.sell_price),
@@ -3263,7 +3478,10 @@
                     onclick="selectCartRow(${idx})">
                     <td class="col-barcode pos-row-barcode">${safeBarcode}</td>
                     <td>
-                        <div class="pos-row-name">${safeName}</div>
+                        <div class="pos-row-name">
+                            ${safeName}
+                            ${item.variant_info ? `<span class="badge ms-1 px-2 py-0.5 rounded-1 fw-bold" style="background:#e0e7ff;color:#3730a3;font-size:11px;letter-spacing:0.3px;"><i class="bi bi-tag-fill me-1"></i>${escapeHtml(item.variant_info)}</span>` : ''}
+                        </div>
                         <div class="pos-row-sub">${item.unit_price.toFixed(2)} ₺ / ${safeUnit}${hasLineDisc ? ' · İndirimli' : ''}</div>
                     </td>
                     <td class="col-unit-price text-end mono fw-bold">
@@ -3955,6 +4173,7 @@
         const payload = {
             items: cart.map(item => ({
                 product_id: item.product_id,
+                variant_id: item.variant_id || null,
                 quantity: item.quantity,
             })),
             payment_type: paymentType,
@@ -4025,6 +4244,16 @@
             frame.contentWindow.focus();
             frame.contentWindow.print();
         }
+    }
+
+    function printGiftReceipt() {
+        const targetNo = lastReceiptNumber;
+        if (!targetNo) {
+            showPosToast('Yazdırılacak son fiş bulunamadı.', 'info');
+            return;
+        }
+        const giftUrl = `/receipt/${encodeURIComponent(targetNo)}/gift/`;
+        window.open(giftUrl, '_blank', 'width=450,height=650');
     }
 
     /* Araçlar & Donanım Modalı İşlemleri */

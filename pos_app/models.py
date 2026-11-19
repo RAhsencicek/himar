@@ -21,6 +21,19 @@ class Company(models.Model):
     tax_office = models.CharField(max_length=100, blank=True, default='', verbose_name="Vergi Dairesi")
     receipt_header = models.CharField(max_length=255, blank=True, default="Hİ MARKET", verbose_name="Fiş Üstü Başlığı")
     receipt_footer = models.CharField(max_length=255, blank=True, default="Bizi tercih ettiğiniz için teşekkür ederiz.", verbose_name="Fiş Altı Notu")
+    
+    BUSINESS_TYPE_CHOICES = [
+        ('MARKET', 'Süpermarket / Bakkal / Şarküteri / Manav'),
+        ('APPAREL', 'Giyim / Butik / Ayakkabı / Tekstil'),
+        ('RETAIL', 'Genel Perakende / Kırtasiye / Kozmetik / Züccaciye'),
+    ]
+    business_type = models.CharField(
+        max_length=20,
+        choices=BUSINESS_TYPE_CHOICES,
+        default='MARKET',
+        verbose_name="İşletme Sektör Tipi"
+    )
+
     is_active = models.BooleanField(default=True, verbose_name="Aktif Mağaza")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Oluşturulma Tarihi")
 
@@ -234,6 +247,7 @@ class Product(models.Model):
     image = models.ImageField(upload_to='products/', blank=True, null=True, verbose_name="Ürün Görseli")
     
     supplier = models.ForeignKey('Supplier', on_delete=models.SET_NULL, null=True, blank=True, related_name="products", verbose_name="Varsayılan Toptancı")
+    has_variants = models.BooleanField(default=False, verbose_name="Varyantlı Ürün mü? (Beden/Renk)")
     is_active = models.BooleanField(default=True, verbose_name="Satışta mı?")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -281,6 +295,46 @@ class Product(models.Model):
     def vat_amount_in_sell(self):
         """Satış Fiyatı İçerisindeki KDV Tutarı"""
         return self.sell_price - self.vat_exclusive_price
+
+
+class ProductVariant(models.Model):
+    """
+    Faz 13: Giyim / Butik Sektörü için Beden ve Renk Varyant Modeli
+    Örn: Bir gömlek ana ürünü altında (Beden: M, Renk: Mavi) alt barkodu ve stoku
+    """
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, null=True, blank=True, related_name='product_variants', verbose_name="Mağaza")
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='variants', verbose_name="Ana Ürün")
+    size = models.CharField(max_length=40, blank=True, default='', verbose_name="Beden / Numara")
+    color = models.CharField(max_length=40, blank=True, default='', verbose_name="Renk")
+    barcode = models.CharField(max_length=50, db_index=True, verbose_name="Varyant Barkodu")
+    stock_quantity = models.DecimalField(max_digits=10, decimal_places=3, default=Decimal('0.000'), verbose_name="Varyant Stok Miktarı")
+    price_override = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="Özel Satış Fiyatı (Boşsa Ana Ürün Fiyatı)")
+    is_active = models.BooleanField(default=True, verbose_name="Aktif mi?")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Ürün Varyantı"
+        verbose_name_plural = "Ürün Varyantları"
+        constraints = [
+            models.UniqueConstraint(fields=['company', 'barcode'], name='unique_company_variant_barcode')
+        ]
+
+    def __str__(self):
+        desc = []
+        if self.size: desc.append(f"Beden: {self.size}")
+        if self.color: desc.append(f"Renk: {self.color}")
+        desc_str = " · ".join(desc) if desc else "Standart"
+        return f"{self.product.name} ({desc_str}) [{self.barcode}]"
+
+    def save(self, *args, **kwargs):
+        if not self.company_id and self.product and self.product.company_id:
+            self.company = self.product.company
+        super().save(*args, **kwargs)
+
+    @property
+    def final_price(self):
+        return self.price_override if (self.price_override is not None and self.price_override > Decimal('0.00')) else self.product.sell_price
 
 
 class CashRegister(models.Model):
@@ -513,7 +567,9 @@ class CustomerTransaction(models.Model):
 class SaleItem(models.Model):
     sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name="items", verbose_name="Fiş")
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, related_name="sale_items", verbose_name="Ürün")
+    variant = models.ForeignKey('ProductVariant', on_delete=models.SET_NULL, null=True, blank=True, related_name="sale_items", verbose_name="Ürün Varyantı")
     product_name = models.CharField(max_length=200, verbose_name="Ürün Adı")
+    variant_info = models.CharField(max_length=120, blank=True, default='', verbose_name="Varyant Bilgisi (Beden/Renk)")
     barcode = models.CharField(max_length=50, verbose_name="Barkod")
     
     quantity = models.DecimalField(max_digits=10, decimal_places=3, default=Decimal('1.000'), verbose_name="Miktar / Gramaj")

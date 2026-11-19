@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Hediye Değişim Fişi #{{ sale.receipt_number }}</title>
+    <style>
+        @page {
+            size: 80mm auto;
+            margin: 0;
+        }
+        body {
+            width: 78mm;
+            margin: 0 auto;
+            padding: 4mm 3mm;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 11.5px;
+            line-height: 1.25;
+            color: #000000;
+            background-color: #ffffff;
+        }
+        .text-center { text-align: center; }
+        .text-end { text-align: right; }
+        .text-start { text-align: left; }
+        .fw-bold { font-weight: bold; }
+        .dashed-line {
+            border-top: 1px dashed #000;
+            margin: 4px 0;
+        }
+        .double-line {
+            border-top: 2px solid #000;
+            margin: 4px 0;
+        }
+        .item-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .item-table td {
+            padding: 3px 0;
+            vertical-align: top;
+        }
+        .receipt-title {
+            font-size: 14px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+        }
+        .doc-badge {
+            display: inline-block;
+            font-size: 12px;
+            font-weight: bold;
+            padding: 3px 6px;
+            margin: 4px 0;
+            border: 2px solid #000;
+            text-transform: uppercase;
+        }
+        .barcode-container {
+            margin: 8px 0;
+            text-align: center;
+        }
+        .barcode-box {
+            display: inline-block;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            font-size: 12px;
+            letter-spacing: 2px;
+            padding: 4px 8px;
+            border: 1px solid #000;
+        }
+        .policy-box {
+            font-size: 9.5px;
+            line-height: 1.3;
+            text-align: center;
+            margin: 6px 0;
+            padding: 4px;
+            border: 1px dashed #666;
+        }
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 1. İŞLETME BAŞLIĞI -->
+    <div class="text-center">
+        <div class="receipt-title">{{ company.company_title|default:"HİMARKET BUTİK & TEKSTİL" }}</div>
+        {% if company.phone %}
+        <div style="font-size: 10px;">Tel: {{ company.phone }}</div>
+        {% endif %}
+        <div style="font-size: 10px;">{{ company.address|default:"Merkez Şube" }}</div>
+        <div class="dashed-line"></div>
+        
+        <div class="doc-badge">🎁 HEDİYE DEĞİŞİM FİŞİ</div>
+        <div style="font-size: 10px; color: #444;">(Bu belge fiyatsız değişim fişidir)</div>
+        <div class="dashed-line"></div>
+    </div>
+
+    <!-- 2. ALIŞVERİŞ VE BELGE BİLGİLERİ -->
+    <div style="font-size: 11px;">
+        <div><strong>Değişim Belge No:</strong> {{ sale.receipt_number }}</div>
+        <div><strong>Alışveriş Tarihi:</strong> {{ sale.created_at|date:"d.m.Y H:i" }}</div>
+        <div><strong>Son Değişim Tarihi:</strong> {{ sale.created_at|date:"d.m.Y" }} + 30 Gün</div>
+        <div><strong>Kasiyer :</strong> {{ sale.cashier.get_full_name|default:sale.cashier.username|default:"Personel" }}</div>
+        <div><strong>Kasa    :</strong> {{ sale.shift.cash_register.name|default:"Kasa" }}</div>
+    </div>
+    <div class="double-line"></div>
+
+    <!-- 3. HEDİYE ÜRÜN LİSTESİ (FİYATSIZ) -->
+    <table class="item-table">
+        <thead>
+            <tr style="border-bottom: 1px dashed #000; font-size: 10.5px;">
+                <th class="text-start" style="width: 75%;">ÜRÜN / VARYANT</th>
+                <th class="text-end" style="width: 25%;">MİKTAR</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in sale.items.all %}
+            <tr>
+                <td class="text-start">
+                    <div class="fw-bold">{{ item.product_name }}</div>
+                    {% if item.variant_info %}
+                        <div style="font-size: 10px; color: #333;">↳ Beden/Renk: <strong>{{ item.variant_info }}</strong></div>
+                    {% endif %}
+                    <div style="font-size: 9px; color: #666;">Barkod: {{ item.barcode }}</div>
+                </td>
+                <td class="text-end fw-bold" style="padding-top: 3px;">
+                    {{ item.quantity|floatformat:"-2" }} Adet
+                </td>
+            </tr>
+            {% if not forloop.last %}
+            <tr><td colspan="2"><div style="border-top: 1px dotted #ccc; margin: 2px 0;"></div></td></tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="double-line"></div>
+
+    <!-- 4. KASADA TARAMA İÇİN BARKOD / KOD KUTUSU -->
+    <div class="barcode-container">
+        <div style="font-size: 9.5px; margin-bottom: 2px;">Kasa Değişim Tarama Kodu:</div>
+        <div class="barcode-box">*{{ sale.receipt_number }}*</div>
+    </div>
+
+    <!-- 5. DEĞİŞİM KOŞULLARI VE BİLGİLENDİRME -->
+    <div class="policy-box">
+        <strong>DEĞİŞİM KURALLARI</strong><br>
+        1. Bu fiş ile ürünlerimizi alışveriş tarihinden itibaren <strong>30 gün</strong> içerisinde faturasız değiştirebilirsiniz.<br>
+        2. Değişim için ürünün kullanılmamış, etiketinin sökülmemiş ve orijinal ambalajında olması şarttır.<br>
+        3. Hijyen kuralları gereğince küpe, iç giyim ve çorap gibi ürünlerde değişim yapılmamaktadır.<br>
+        4. Hediye fişi ile nakit iadesi yapılmaz; ürün değişimi veya hediye çeki verilir.
+    </div>
+
+    <div class="text-center" style="font-size: 10px; margin-top: 6px;">
+        <div>Mutlu ve Sağlıklı Günlerde Kullanmanız Dileğiyle!</div>
+        <div style="font-size: 8.5px; color: #666; margin-top: 4px;">HiMarket Retail Engine</div>
+    </div>
+
+    <!-- YAZDIRMA BUTONU -->
+    <div class="no-print" style="margin-top: 15px; text-align: center;">
+        <button onclick="window.print()" style="padding: 10px 20px; font-size: 14px; font-weight: bold; background: #000; color: #fff; border: none; border-radius: 6px; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">
+            🖨️ Hediye Fişini Yazdır
+        </button>
+        <button onclick="window.close()" style="padding: 10px 15px; font-size: 14px; background: #eee; color: #333; border: 1px solid #ccc; border-radius: 6px; margin-left: 8px; cursor: pointer;">
+            Kapat
+        </button>
+    </div>
+
+    <script>
+        // Pencere açıldığında otomatik termal yazdırma diyaloğu
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                window.print();
+            }, 400);
+        });
+    </script>
+</body>
+</html>

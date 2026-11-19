@@ -10,7 +10,7 @@ from decimal import Decimal
 from pathlib import Path
 import json
 from .models import (
-    Product, Category, CashRegister, Shift, Sale, SaleItem, Supplier, SupplierTransaction,
+    Product, ProductVariant, Category, CashRegister, Shift, Sale, SaleItem, Supplier, SupplierTransaction,
     CompanySetting, Customer, CustomerTransaction, StockTake, StockTakeItem, StockEntry, StockEntryItem,
     SystemLog, Company, UserProfile, Subscription
 )
@@ -3257,6 +3257,352 @@ class SuperAdminConsoleTestSuite(TestCase):
         res = self.client.post(reset_url)
         self.assertEqual(res.status_code, 302)
         self.assertRedirects(res, reverse('super_admin_dashboard'))
+
+
+class VariantAndApparelModuleTestSuite(TestCase):
+    """
+    Faz 13: Sektörel Modülerlik, Giyim/Butik Beden-Renk Varyant Motoru ve Hediye Fişi Test Paketi
+    """
+    def setUp(self):
+        self.client = Client()
+
+        # Mağaza ve Kullanıcı Oluşturma
+        self.boutique = Company.objects.create(
+            name="Zarafet Butik",
+            code="BOUTIQUE-01",
+            business_type="APPAREL",
+            is_active=True
+        )
+        self.user = User.objects.create_user(
+            username='butik_mudur',
+            password='Password123!',
+            is_staff=True
+        )
+        UserProfile.objects.create(user=self.user, company=self.boutique)
+
+        self.cashier = User.objects.create_user(
+            username='butik_kasiyer',
+            password='Password123!',
+            is_staff=False
+        )
+        UserProfile.objects.create(user=self.cashier, company=self.boutique)
+
+        self.register = CashRegister.objects.create(
+            company=self.boutique,
+            register_code='KASA-01',
+            name='Kasa 1 (Ana Kasa)',
+            is_active=True
+        )
+
+        self.category = Category.objects.create(
+            company=self.boutique,
+            name="Kadın Giyim",
+            is_active=True
+        )
+
+        # Ana Ürün (Örn: İpek Elbise)
+        self.dress = Product.objects.create(
+            company=self.boutique,
+            category=self.category,
+            name="İpek Desenli Elbise",
+            barcode="8699999000014",
+            buy_price=Decimal("450.00"),
+            sell_price=Decimal("950.00"),
+            vat_rate=Decimal("20.00"),
+            unit="Adet",
+            stock_quantity=Decimal("0.000"),
+            has_variants=False,
+            is_active=True
+        )
+
+    def test_company_business_type_and_settings(self):
+        """Şirket business_type alanı APPAREL olarak ayarlanabilmeli ve ayarlar sayfasından güncellenebilmelidir."""
+        self.assertEqual(self.boutique.business_type, 'APPAREL')
+        self.assertEqual(self.boutique.get_business_type_display(), 'Giyim / Butik / Ayakkabı / Tekstil')
+
+        self.client.force_login(self.user)
+        res = self.client.post(reverse('company_settings_view'), {
+            'title': 'Zarafet Butik A.Ş.',
+            'brand_name': 'Zarafet Butik',
+            'tax_number': '9876543210',
+            'tax_office': 'Beyoğlu',
+            'address': 'İstiklal Cad. No:45',
+            'business_type': 'RETAIL',
+        })
+        self.assertEqual(res.status_code, 302)
+        self.boutique.refresh_from_db()
+        self.assertEqual(self.boutique.business_type, 'RETAIL')
+
+    def test_variant_matrix_creation_api(self):
+        """Beden x Renk matrisi gönderildiğinde tüm kombinasyonlar için otomatik EAN barkodlu varyantlar üretilmelidir."""
+        self.client.force_login(self.user)
+        url = reverse('product_variants_api', args=[self.dress.id])
+
+        payload = {
+            'sizes': ['S', 'M', 'L'],
+            'colors': ['Siyah', 'Kırmızı'],
+            'default_stock': 5,
+            'default_price': None
+        }
+        res = self.client.post(url, data=json.dumps(payload), content_type='application/json')
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['created_count'], 6)
+
+        self.dress.refresh_from_db()
+        self.assertTrue(self.dress.has_variants)
+        self.assertEqual(self.dress.stock_quantity, Decimal('30.000')) # 6 varyant x 5 adet
+
+        # Varyantların veritabanında doğru beden/renk ve tekil barkodla oluştuğunu doğrula
+        variants = self.dress.variants.all()
+        self.assertEqual(variants.count(), 6)
+        barcodes = [v.barcode for v in variants]
+        self.assertEqual(len(barcodes), len(set(barcodes))) # Hepsi benzersiz
+        for b in barcodes:
+            self.assertTrue(b.startswith('8690002'))
+
+    def test_variant_barcode_search_api(self):
+        """Kasada doğrudan varyant barkodu okutulduğunda varyant bilgisi ve fiyatı anında dönmelidir."""
+        self.client.force_login(self.cashier)
+
+        # Bir varyant oluşturalım
+        variant = ProductVariant.objects.create(
+            company=self.boutique,
+            product=self.dress,
+            size='M',
+            color='Siyah',
+            barcode='8690002100015',
+            stock_quantity=Decimal('8.000'),
+            price_override=Decimal('990.00'),
+            is_active=True
+        )
+        self.dress.has_variants = True
+        self.dress.stock_quantity = Decimal('8.000')
+        self.dress.save()
+
+        # Varyant barkodunu ara
+        search_url = f"{reverse('search_barcode')}?barcode=8690002100015"
+        res = self.client.get(search_url)
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data['success'])
+        self.assertFalse(data['has_variants'])
+        self.assertEqual(data['product']['id'], self.dress.id)
+        self.assertEqual(data['product']['variant_id'], variant.id)
+        self.assertEqual(data['product']['variant_info'], 'M · Siyah')
+        self.assertEqual(data['product']['sell_price'], 990.00) # price_override devrede
+        self.assertEqual(data['product']['stock_quantity'], 8.0)
+
+    def test_parent_product_search_returns_variant_list(self):
+        """Kasada ana ürün barkodu okutulduğunda dokunmatik seçim için varyant listesi (has_variants=True) dönmelidir."""
+        self.client.force_login(self.cashier)
+
+        ProductVariant.objects.create(
+            company=self.boutique,
+            product=self.dress,
+            size='S',
+            color='Mavi',
+            barcode='8690002100022',
+            stock_quantity=Decimal('4.000'),
+            is_active=True
+        )
+        ProductVariant.objects.create(
+            company=self.boutique,
+            product=self.dress,
+            size='L',
+            color='Mavi',
+            barcode='8690002100039',
+            stock_quantity=Decimal('6.000'),
+            is_active=True
+        )
+        self.dress.has_variants = True
+        self.dress.save()
+
+        search_url = f"{reverse('search_barcode')}?barcode={self.dress.barcode}"
+        res = self.client.get(search_url)
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data['success'])
+        self.assertTrue(data['has_variants'])
+        self.assertEqual(len(data['variants']), 2)
+        self.assertEqual(data['variants'][0]['size'], 'L')
+        self.assertEqual(data['variants'][1]['size'], 'S')
+
+    def test_process_sale_with_variant_atomic_stock(self):
+        """Varyantlı satış yapıldığında hem ProductVariant hem Product stoğu atomik düşmeli ve SaleItem'a variant FK yazılmalıdır."""
+        self.client.force_login(self.cashier)
+
+        variant = ProductVariant.objects.create(
+            company=self.boutique,
+            product=self.dress,
+            size='38',
+            color='Lacivert',
+            barcode='8690002100046',
+            stock_quantity=Decimal('10.000'),
+            is_active=True
+        )
+        self.dress.has_variants = True
+        self.dress.stock_quantity = Decimal('10.000')
+        self.dress.save()
+
+        # 3 Adet satalım
+        sale_payload = {
+            'items': [
+                {
+                    'product_id': self.dress.id,
+                    'variant_id': variant.id,
+                    'quantity': 3
+                }
+            ],
+            'payment_type': 'NAKIT',
+            'cash_paid': 3000,
+            'is_return': False
+        }
+        res = self.client.post(reverse('process_sale'), data=json.dumps(sale_payload), content_type='application/json')
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data['success'])
+
+        # Stok düşümü kontrolü
+        variant.refresh_from_db()
+        self.assertEqual(variant.stock_quantity, Decimal('7.000')) # 10 - 3 = 7
+        self.dress.refresh_from_db()
+        self.assertEqual(self.dress.stock_quantity, Decimal('7.000')) # 10 - 3 = 7
+
+        # Fiş ve Kalem Kontrolü
+        sale = Sale.objects.get(receipt_number=data['receipt_number'])
+        self.assertEqual(sale.items.count(), 1)
+        item = sale.items.first()
+        self.assertEqual(item.variant, variant)
+        self.assertEqual(item.variant_info, '38 / Lacivert')
+        self.assertIn('38 / Lacivert', item.product_name)
+        self.assertEqual(item.barcode, '8690002100046')
+        self.assertEqual(item.quantity, Decimal('3.000'))
+
+    def test_process_sale_insufficient_variant_stock(self):
+        """Varyant stoğundan fazla miktar talep edildiğinde satış 400 hatası vermeli ve işlem geri alınmalıdır."""
+        self.client.force_login(self.cashier)
+
+        variant = ProductVariant.objects.create(
+            company=self.boutique,
+            product=self.dress,
+            size='40',
+            color='Beyaz',
+            barcode='8690002100053',
+            stock_quantity=Decimal('2.000'),
+            is_active=True
+        )
+        self.dress.has_variants = True
+        self.dress.stock_quantity = Decimal('2.000')
+        self.dress.save()
+
+        sale_payload = {
+            'items': [
+                {
+                    'product_id': self.dress.id,
+                    'variant_id': variant.id,
+                    'quantity': 5 # Stok 2 iken 5 talep ediliyor
+                }
+            ],
+            'payment_type': 'NAKIT',
+            'cash_paid': 5000,
+            'is_return': False
+        }
+        res = self.client.post(reverse('process_sale'), data=json.dumps(sale_payload), content_type='application/json')
+        self.assertEqual(res.status_code, 400)
+        data = res.json()
+        self.assertFalse(data['success'])
+        self.assertIn('Yetersiz Stok', data['message'])
+
+        # Stok değişmemeli
+        variant.refresh_from_db()
+        self.assertEqual(variant.stock_quantity, Decimal('2.000'))
+
+    def test_return_sale_with_variant(self):
+        """Müşteri iadesinde varyant stoğu ve ana ürün stoğu geri artmalıdır."""
+        self.client.force_login(self.cashier)
+
+        variant = ProductVariant.objects.create(
+            company=self.boutique,
+            product=self.dress,
+            size='36',
+            color='Pembe',
+            barcode='8690002100060',
+            stock_quantity=Decimal('5.000'),
+            is_active=True
+        )
+        self.dress.has_variants = True
+        self.dress.stock_quantity = Decimal('5.000')
+        self.dress.save()
+
+        # İade işlemi
+        return_payload = {
+            'items': [
+                {
+                    'product_id': self.dress.id,
+                    'variant_id': variant.id,
+                    'quantity': 2
+                }
+            ],
+            'payment_type': 'NAKIT',
+            'is_return': True
+        }
+        res = self.client.post(reverse('process_sale'), data=json.dumps(return_payload), content_type='application/json')
+        self.assertEqual(res.status_code, 200)
+
+        variant.refresh_from_db()
+        self.assertEqual(variant.stock_quantity, Decimal('7.000')) # 5 + 2 = 7
+        self.dress.refresh_from_db()
+        self.assertEqual(self.dress.stock_quantity, Decimal('7.000'))
+
+    def test_gift_receipt_view_renders_clean_without_prices(self):
+        """Hediye değişim fişi 200 dönmeli, ürün adı ve varyantını göstermeli ama fiyat bilgisi içermemelidir."""
+        self.client.force_login(self.cashier)
+
+        variant = ProductVariant.objects.create(
+            company=self.boutique,
+            product=self.dress,
+            size='M',
+            color='Bej',
+            barcode='8690002100077',
+            stock_quantity=Decimal('10.000'),
+            is_active=True
+        )
+        self.dress.has_variants = True
+        self.dress.stock_quantity = Decimal('10.000')
+        self.dress.save()
+
+        sale_payload = {
+            'items': [
+                {
+                    'product_id': self.dress.id,
+                    'variant_id': variant.id,
+                    'quantity': 1
+                }
+            ],
+            'payment_type': 'NAKIT',
+            'cash_paid': 1000,
+            'is_return': False
+        }
+        res_sale = self.client.post(reverse('process_sale'), data=json.dumps(sale_payload), content_type='application/json')
+        receipt_no = res_sale.json()['receipt_number']
+
+        # Hediye Fişi Görüntüleme
+        gift_url = reverse('gift_receipt_view', args=[receipt_no])
+        res_gift = self.client.get(gift_url)
+        self.assertEqual(res_gift.status_code, 200)
+        content = res_gift.content.decode('utf-8')
+
+        self.assertIn('HEDİYE DEĞİŞİM FİŞİ', content)
+        self.assertIn('İpek Desenli Elbise', content)
+        self.assertIn('M / Bej', content)
+        self.assertIn('30 gün', content)
+        self.assertIn(receipt_no, content)
+        # Fiyat ve TL bilgisi fişte yer almamalıdır
+        self.assertNotIn('950.00', content)
+        self.assertNotIn('Toplam Tutar', content)
+
 
 
 

@@ -1,14 +1,14 @@
 # HİMARKET SAAS & POS — MASTER FAZ YOL HARİTASI VE GÜNCEL DURUM RAPORU
 **Doküman Kodu:** ROADMAP-HM-2026-V2  
 **Tarih:** 19 Kasım 2026  
-**Aktif Sürüm:** HiMarket Enterprise v2.6.0 (115/115 Birim Testi Başarılı)  
+**Aktif Sürüm:** HiMarket Enterprise v2.7.0 (123/123 Birim Testi Başarılı - %100 Yeşil)  
 **Canlı Sistem:** `70.40.138.174` (`https://himarket.hayatisleri.com.tr/`)  
 **Statü:** Resmi Yol Haritası & Canlı Geliştirme Takip Kılavuzu
 
 ---
 
-## 📌 BÖLÜM 1: GEÇMİŞTEN BUGÜNE TAMAMLANAN FAZLAR (FAZ 1 — FAZ 12)
-*Aşağıdaki tüm fazlar kodlanmış, 115 otomatik test ile doğrulanmış ve canlı sunucuda devreye alınmıştır.*
+## 📌 BÖLÜM 1: GEÇMİŞTEN BUGÜNE TAMAMLANAN FAZLAR (FAZ 1 — FAZ 13)
+*Aşağıdaki tüm fazlar kodlanmış, 123 otomatik test ile doğrulanmış ve canlı sunucuda devreye alınmıştır.*
 
 | Faz | Kapsam | Durum | Test Sayısı |
 | :--- | :--- | :---: | :---: |
@@ -24,21 +24,23 @@
 | **Faz 10** | Kullanılabilirlik, Satış Hızı, Numpad Ergonomisi & Inline Hızlı Fiyat | ✅ TAMAMLANDI | 96 Test |
 | **Faz 11** | Çoklu Mağaza (Multi-Tenancy), Şirket İzolasyonu & Sıfır Kurulum Sihirbazı | ✅ TAMAMLANDI | 103 Test |
 | **Faz 12** | Kasa Başına Lisanslama, Abonelik, Süper Admin Konsolu & 403 Güvenliği | ✅ TAMAMLANDI | 115 Test |
+| **Faz 13** | Sektörel Modülerlik (Market/Giyim/Perakende), Beden-Renk Varyant Motoru, Dokunmatik Kodpos Modalı & Hediye Değişim Fişi | ✅ TAMAMLANDI | 123 Test |
 
 > [!NOTE]
 > **Halihazırda Çalışan Kritik MVP Özellikleri:**
-> - **Terazi Ayrıştırma Motoru:** GS1 Türkiye standartlarında 27 (Ağırlık/Gramaj) ve 28 (Fiyat/Tutar) gömülü barkodları otomatik tanır.
+> - **Sektörel Uyumluluk & Varyantlar:** Giyim/Butik sektöründe Beden x Renk matrisi, her varyanta otomatik tekil EAN-13 barkodu, kasada dokunmatik seçim modalı, sepette varyant rozetleri ve fiyatsız 30 günlük Hediye Değişim Fişi.
+> - **Terazi Ayrıştırma Motoru:** GS1 Türkiye standartlarında 27 (Ağırlık/Gramaj) ve 28 (Fiyat/Tutar) gömülü barkodları otomatik tanır (Market modunda aktif).
 > - **Hızlı Tuşlar & Kısayollar:** F2 Nakit, F3 Kart, F4 Beklet, F7 Kısmi, F8 İade, F9 Veresiye, Dokunmatik hızlı ürün butonları.
 > - **Veresiye Defteri:** Müşteri borçlandırma, limit kontrolleri, bakiye ekstresi ve tahsilat makbuzu.
 
 ---
 
-## 🚀 BÖLÜM 2: YENİ STRATEJİK YOL HARİTASI (FAZ 13 — FAZ 18)
-*Bu fazlar işletmenin market bağımlılığını kırarak giyim, butik ve genel perakendeye açılmasını ve kurumsal seviyeye ulaşmasını sağlar.*
+## 🚀 BÖLÜM 2: YENİ STRATEJİK YOL HARİTASI (FAZ 14 — FAZ 18)
+*Bu fazlar işletmenin kesintisiz çalışmasını, ürün havuzuna anında erişmesini ve kurumsal seviyeye ulaşmasını sağlar.*
 
 ```mermaid
 flowchart LR
-    F13["Faz 13: Sektörel Modülerlik (Giyim/Beden-Renk)"] --> F14["Faz 14: Çevrimdışı (Offline) Kasa"]
+    F13["✅ Faz 13: Sektörel Modülerlik & Varyantlar"] --> F14["Faz 14: Çevrimdışı (Offline) Kasa"]
     F14 --> F15["Faz 15: Ortak Barkod Havuzu"]
     F15 --> F16["Faz 16: SKT Takibi & Mobil Patron Kokpiti"]
     F16 --> F17["Faz 17: Müşteri Sadakati (Puan & Kart)"]
@@ -47,27 +49,23 @@ flowchart LR
 
 ---
 
-### 🟢 FAZ 13: SEKTÖREL MODÜLERLİK & VARYANT MOTORU (GİYİM / BUTİK UYUMU)
+### 🟢 FAZ 13: SEKTÖREL MODÜLERLİK & VARYANT MOTORU (GİYİM / BUTİK UYUMU) — TAMAMLANDI ✅
 *Hedef: Programı sadece bir bakkal/market yazılımı olmaktan çıkarıp butik, giyim, ayakkabı ve tekstil mağazalarına anında satılabilir hale getirmek.*
 
-#### A. İşlevsel Kapsam
+#### A. Tamamlanan ve Doğrulanan Kabiliyetler
 1. **Şirket Sektör Profili (`Company.business_type`):**
-   - `MARKET` (Süpermarket, Bakkal, Şarküteri, Manav): Terazi, gramaj, koli barkodu, hızlı gıda butonları aktif.
-   - `APPAREL` (Giyim, Butik, Ayakkabı, Tekstil): Beden & Renk Varyant Matrisi aktif, Hediye Değişim Fişi aktif, Terazi/Gramaj gizli.
-   - `RETAIL` (Kırtasiye, Kozmetik, Züccaciye, Hırdavat): Genel perakende, marka/model hiyerarşisi aktif.
+   - `MARKET` (Süpermarket, Bakkal, Şarküteri, Manav): Terazi, gramaj, koli barkodu aktif.
+   - `APPAREL` (Giyim, Butik, Ayakkabı, Tekstil): Beden & Renk Varyant Matrisi aktif, Hediye Değişim Fişi aktif, Terazi menüleri gizli.
+   - `RETAIL` (Kırtasiye, Kozmetik, Züccaciye, Hırdavat): Genel perakende aktif.
 2. **Varyant Matrisi (Beden × Renk):**
-   - Ana Ürün (Örn: *Slim Fit Keten Gömlek*) -> Bedenler: *S, M, L, XL* / Renkler: *Mavi, Siyah, Beyaz*.
-   - Tek ekranda işaretlenir; sistem otomatik 12 ayrı alt barkod ve stok kartı üretir.
-   - Kasada ana ürün seçildiğinde dokunmatik ekranda "Beden / Renk Seç" balonu açılır veya her varyantın barkodu direkt okutulabilir.
-3. **Fiyatsız Hediye / Değişim Fişi (Gift Receipt):**
-   - Satış anında tek tıkla "Hediye Fişi Bas" seçeneği; fiyat görünmeyen, üzerinde QR/Barkod ve "30 Gün İçinde Değişim Geçerlidir" ibaresi bulunan makbuz.
-4. **Cihaz & Ekran Uyumu:**
-   - 1024×768 ve dokunmatik POS ekranlarında varyant seçim penceresi parmak dostu (min 44px) düğmelerle tasarlanacaktır.
-
-#### B. Kabul Kriterleri (Doğrulama)
-- Giyim mağazası olarak açılan şirkette terazi butonları görünmez.
-- 1 ana modelden üretilen 12 varyantın stoku ayrı ayrı takip edilir ve satılır.
-- Birim testleri yazılacak ve 115 testin üzerine eklenecektir.
+   - Ürün düzenleme ekranında otomatik matris üretici (`product_variants_api`), her varyanta tekil EAN-13 barkodu, stok ve özel fiyat belirleme.
+3. **Dokunmatik Kodpos Kasa Modalı (`#variantSelectModal`):**
+   - Kasada ana ürün okutulduğunda veya tıklandığında 1024x768 kodpos uyumlu dokunmatik Beden & Renk penceresi açılır.
+   - Varyant seçildiğinde sepete eklenir ve satırda varyant rozeti gösterilir.
+4. **Fiyatsız Hediye Değişim Fişi (`thermal_gift_receipt.html`):**
+   - Fiyat bilgisi içermeyen, 30 günlük değişim kurallarını ve barkodu basan 80mm/58mm termal çıktı şablonu.
+5. **Birim Testleri:**
+   - 8 yeni birim testi yazıldı, toplam 123 test eksiksiz geçti.
 
 ---
 

@@ -289,6 +289,9 @@
                                             {% if p.is_weighted %}
                                                 <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle fw-bold" style="font-size: 0.68rem;">Tartılı</span>
                                             {% endif %}
+                                            {% if p.has_variants %}
+                                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle fw-bold" style="font-size: 0.68rem;"><i class="bi bi-diagram-3-fill me-0.5"></i>Varyantlı</span>
+                                            {% endif %}
                                         </div>
                                         <!-- Küçük Ekranlarda Kategori & Tedarikçi İpuçları -->
                                         <div class="d-xl-none text-muted fs-8 mt-1">

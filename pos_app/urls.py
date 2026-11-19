@@ -25,6 +25,7 @@ urlpatterns = [
 
     # Termal Fiş Görüntüleme & Yazdırma
     path('receipt/<str:receipt_number>/', views.receipt_view, name='receipt_view'),
+    path('receipt/<str:receipt_number>/gift/', views.gift_receipt_view, name='gift_receipt_view'),
 
     # Z Raporu Ekranı & Vardiya İşlemleri
     path('z-report/', views.z_report_view, name='z_report_view'),
@@ -119,6 +120,11 @@ urlpatterns = [
     path('management/products/labels/', views.product_labels_view, name='product_labels_view'),
     path('api/product/generate-barcode/', views.generate_barcode_api, name='generate_barcode_api'),
     path('api/product/<int:product_id>/label-raw/', views.product_label_raw_api, name='product_label_raw_api'),
+
+    # Ürün Varyant Yönetimi API (Faz 13: Giyim/Butik Beden-Renk)
+    path('api/products/<int:product_id>/variants/', views.product_variants_api, name='product_variants_api'),
+    path('api/variants/<int:variant_id>/update/', views.product_variant_update_api, name='product_variant_update_api'),
+    path('api/variants/<int:variant_id>/delete/', views.product_variant_delete_api, name='product_variant_delete_api'),
 
     # Stok Sayım Fişleri & El Terminali (Faz 5.1)
     path('management/stock-take/', views.stock_take_list_view, name='stock_take_list'),

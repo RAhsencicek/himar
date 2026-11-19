@@ -27,7 +27,7 @@ from django.db import transaction, connection, IntegrityError
 import urllib.parse
 import re
 from .models import (
-    Product, Category, CashRegister, Shift, Sale, SaleItem,
+    Product, ProductVariant, Category, CashRegister, Shift, Sale, SaleItem,
     Supplier, SupplierTransaction, StockEntry, StockEntryItem, SystemLog, log_action,
     CompanySetting, Customer, CustomerTransaction, StockTake, StockTakeItem,
     Company, UserProfile, get_user_company, Subscription
@@ -510,13 +510,77 @@ def search_barcode(request):
     if not barcode:
         return JsonResponse({'success': False, 'message': 'Barkod girilmedi.'}, status=400)
 
+    # 0. Faz 13: Beden / Renk Varyant Barkodu Eşleşmesi (Giyim / Butik Önceliği)
+    variant = ProductVariant.objects.filter(
+        company=user_company, barcode=barcode, is_active=True
+    ).select_related('product').first()
+    if variant and variant.product.is_active:
+        prod = variant.product
+        variant_desc = f"{variant.size} · {variant.color}".strip(' · ')
+        display_name = f"{prod.name} ({variant_desc})" if variant_desc else prod.name
+        final_price = float(variant.price_override if variant.price_override is not None else prod.sell_price)
+        return JsonResponse({
+            'success': True,
+            'has_variants': False,
+            'product': {
+                'id': prod.id,
+                'name': display_name,
+                'barcode': variant.barcode,
+                'sell_price': final_price,
+                'vat_rate': float(prod.vat_rate),
+                'unit': prod.unit,
+                'is_weighted': False,
+                'stock_quantity': float(variant.stock_quantity),
+                'variant_id': variant.id,
+                'variant_info': variant_desc,
+                'size': variant.size,
+                'color': variant.color,
+            },
+            'quantity': 1.0,
+            'is_weighted_barcode': False
+        })
+
     # 1. Yerel Veritabanı Standart ve Koli Barkodu Eşleşmesi (Anında < 1ms)
     product = Product.objects.filter(company=user_company, is_active=True).filter(
         Q(barcode=barcode) | Q(secondary_barcode=barcode)
     ).first()
     if product:
+        # Faz 13: Eğer ürünün varyantları varsa, dokunmatik seçim için varyant listesini dön
+        active_variants = list(product.variants.filter(is_active=True).order_by('size', 'color'))
+        if product.has_variants and active_variants:
+            variants_data = [
+                {
+                    'id': v.id,
+                    'size': v.size,
+                    'color': v.color,
+                    'barcode': v.barcode,
+                    'sell_price': float(v.price_override if v.price_override is not None else product.sell_price),
+                    'stock_quantity': float(v.stock_quantity),
+                    'display': f"{v.size} / {v.color}".strip(' / ')
+                }
+                for v in active_variants
+            ]
+            return JsonResponse({
+                'success': True,
+                'has_variants': True,
+                'product': {
+                    'id': product.id,
+                    'name': product.name,
+                    'barcode': product.barcode,
+                    'sell_price': float(product.sell_price),
+                    'vat_rate': float(product.vat_rate),
+                    'unit': product.unit,
+                    'is_weighted': product.is_weighted,
+                    'stock_quantity': float(product.stock_quantity),
+                },
+                'variants': variants_data,
+                'quantity': 1.0,
+                'is_weighted_barcode': False
+            })
+
         return JsonResponse({
             'success': True,
+            'has_variants': False,
             'product': {
                 'id': product.id,
                 'name': product.name,
@@ -526,6 +590,8 @@ def search_barcode(request):
                 'unit': product.unit,
                 'is_weighted': product.is_weighted,
                 'stock_quantity': float(product.stock_quantity),
+                'variant_id': None,
+                'variant_info': '',
             },
             'quantity': 1.0,
             'is_weighted_barcode': False
@@ -556,6 +622,7 @@ def search_barcode(request):
 
                 return JsonResponse({
                     'success': True,
+                    'has_variants': False,
                     'product': {
                         'id': weighted_product.id,
                         'name': weighted_product.name,
@@ -576,8 +643,41 @@ def search_barcode(request):
     if len(barcode) >= 2:
         name_matched_product = Product.objects.filter(company=user_company, is_active=True, name__icontains=barcode).first()
         if name_matched_product:
+            active_variants = list(name_matched_product.variants.filter(is_active=True).order_by('size', 'color'))
+            if name_matched_product.has_variants and active_variants:
+                variants_data = [
+                    {
+                        'id': v.id,
+                        'size': v.size,
+                        'color': v.color,
+                        'barcode': v.barcode,
+                        'sell_price': float(v.price_override if v.price_override is not None else name_matched_product.sell_price),
+                        'stock_quantity': float(v.stock_quantity),
+                        'display': f"{v.size} / {v.color}".strip(' / ')
+                    }
+                    for v in active_variants
+                ]
+                return JsonResponse({
+                    'success': True,
+                    'has_variants': True,
+                    'product': {
+                        'id': name_matched_product.id,
+                        'name': name_matched_product.name,
+                        'barcode': name_matched_product.barcode,
+                        'sell_price': float(name_matched_product.sell_price),
+                        'vat_rate': float(name_matched_product.vat_rate),
+                        'unit': name_matched_product.unit,
+                        'is_weighted': name_matched_product.is_weighted,
+                        'stock_quantity': float(name_matched_product.stock_quantity),
+                    },
+                    'variants': variants_data,
+                    'quantity': 1.0,
+                    'is_weighted_barcode': False
+                })
+
             return JsonResponse({
                 'success': True,
+                'has_variants': False,
                 'product': {
                     'id': name_matched_product.id,
                     'name': name_matched_product.name,
@@ -608,16 +708,33 @@ def product_search_api(request):
     q = request.GET.get('q', '').strip()
     cat_id = request.GET.get('category', '').strip()
 
-    qs = Product.objects.filter(company=user_company, is_active=True).select_related('category')
+    qs = Product.objects.filter(company=user_company, is_active=True).select_related('category').prefetch_related('variants')
     if cat_id.isdigit():
         qs = qs.filter(category_id=int(cat_id))
     if q:
         qs = qs.filter(
-            Q(name__icontains=q) | Q(barcode__icontains=q) | Q(secondary_barcode__icontains=q)
-        )
+            Q(name__icontains=q) |
+            Q(barcode__icontains=q) |
+            Q(secondary_barcode__icontains=q) |
+            Q(variants__barcode__icontains=q) |
+            Q(variants__size__icontains=q) |
+            Q(variants__color__icontains=q)
+        ).distinct()
 
     products = []
     for prod in qs.order_by('-is_quick_button', 'quick_button_order', 'name')[:60]:
+        active_vars = [
+            {
+                'id': v.id,
+                'size': v.size,
+                'color': v.color,
+                'barcode': v.barcode,
+                'sell_price': float(v.price_override if v.price_override is not None else prod.sell_price),
+                'stock_quantity': float(v.stock_quantity),
+                'display': f"{v.size} / {v.color}".strip(' / ')
+            }
+            for v in prod.variants.all() if v.is_active
+        ]
         products.append({
             'id': prod.id,
             'name': prod.name,
@@ -632,6 +749,8 @@ def product_search_api(request):
             'category_id': prod.category_id,
             'category_name': prod.category.name if prod.category else 'Genel',
             'image_url': prod.image.url if prod.image else '',
+            'has_variants': prod.has_variants and len(active_vars) > 0,
+            'variants': active_vars,
         })
 
     return JsonResponse({'success': True, 'products': products})
@@ -690,7 +809,7 @@ def process_sale(request):
                 'message': f"Bu kasa Kasiyer '{cashier_name}' adına kilitlidir! Başka bir kasiyer bu kasadan satış yapamaz."
             }, status=403)
 
-        # İstek formatı ön doğrulaması
+        # İstek formatı ön doğrulaması (Ürün ve Varyant Desteği - Faz 13)
         parsed_items = []
         for item_info in items_data:
             product_id = item_info.get('product_id') or item_info.get('id')
@@ -704,33 +823,78 @@ def process_sale(request):
             if qty <= Decimal('0.000'):
                 return JsonResponse({'success': False, 'message': 'Ürün miktarı sıfırdan büyük olmalıdır.'}, status=400)
 
-            parsed_items.append((int(product_id), qty))
+            raw_vid = item_info.get('variant_id')
+            variant_id = None
+            if raw_vid:
+                try:
+                    variant_id = int(raw_vid)
+                except (ValueError, TypeError):
+                    variant_id = None
+
+            parsed_items.append({
+                'product_id': int(product_id),
+                'quantity': qty,
+                'variant_id': variant_id
+            })
 
         # ATOMİK VERİTABANI İŞLEMİ & SATIR KİLİTLEME (select_for_update + F() İfadesi)
         with transaction.atomic():
             # Vardiya satırını kilitle
             shift = Shift.objects.select_for_update().get(id=shift.id)
 
-            # Deadlock önlemek için ürün kimliklerini sıralı şekilde select_for_update() ile kilitle (şirket izolasyonu ile)
-            product_ids_sorted = sorted({pid for pid, _ in parsed_items})
+            # Deadlock önlemek için ürün ve varyant kimliklerini sıralı şekilde kilitle (şirket izolasyonu ile)
+            product_ids_sorted = sorted({item['product_id'] for item in parsed_items})
+            variant_ids_sorted = sorted({item['variant_id'] for item in parsed_items if item['variant_id']})
+
             locked_products_qs = Product.objects.select_for_update().filter(company=user_company, id__in=product_ids_sorted)
             locked_products_map = {p.id: p for p in locked_products_qs}
 
-            # Aynı ürün sepette birden fazla satırda varsa toplam talep miktarını kontrol et
-            aggregated_qty = {}
-            for pid, qty in parsed_items:
+            locked_variants_map = {}
+            if variant_ids_sorted:
+                locked_variants_qs = ProductVariant.objects.select_for_update().filter(company=user_company, id__in=variant_ids_sorted)
+                locked_variants_map = {v.id: v for v in locked_variants_qs}
+
+            # Talep edilen miktarları topla ve geçerlilik kontrolleri yap
+            aggregated_product_qty = {}
+            aggregated_variant_qty = {}
+
+            for item in parsed_items:
+                pid = item['product_id']
+                vid = item['variant_id']
+                qty = item['quantity']
+
                 product = locked_products_map.get(pid)
                 if not product:
                     return JsonResponse({'success': False, 'message': f'Ürün bulunamadı (ID: {pid}).'}, status=404)
                 if not product.is_active:
                     return JsonResponse({'success': False, 'message': f"'{product.name}' ürünü satışa kapalıdır (pasif ürün)."}, status=400)
-                aggregated_qty[pid] = aggregated_qty.get(pid, Decimal('0.000')) + qty
+
+                if vid:
+                    variant = locked_variants_map.get(vid)
+                    if not variant or variant.product_id != pid:
+                        return JsonResponse({'success': False, 'message': f'Geçersiz veya bulunamayan ürün varyantı (ID: {vid}).'}, status=404)
+                    if not variant.is_active:
+                        var_desc = f"{variant.size} / {variant.color}".strip(' / ')
+                        return JsonResponse({'success': False, 'message': f"'{product.name} ({var_desc})' varyantı satışa kapalıdır."}, status=400)
+                    aggregated_variant_qty[vid] = aggregated_variant_qty.get(vid, Decimal('0.000')) + qty
+
+                aggregated_product_qty[pid] = aggregated_product_qty.get(pid, Decimal('0.000')) + qty
 
             # Kilitli (güncel) stok üzerinden yetersiz stok kontrolü
             if not is_return:
-                for pid, total_req_qty in aggregated_qty.items():
+                for vid, req_v_qty in aggregated_variant_qty.items():
+                    variant = locked_variants_map[vid]
+                    if variant.stock_quantity < req_v_qty:
+                        var_desc = f"{variant.size} / {variant.color}".strip(' / ')
+                        return JsonResponse({
+                            'success': False,
+                            'message': f"Yetersiz Stok! '{variant.product.name} ({var_desc})' varyantından mevcut stok: {variant.stock_quantity:.3f}, talep edilen: {req_v_qty:.3f}."
+                        }, status=400)
+
+                for pid, total_req_qty in aggregated_product_qty.items():
                     product = locked_products_map[pid]
-                    if product.stock_quantity < total_req_qty:
+                    # Varyantlı ürünlerde stok kontrolü ilgili varyant üzerinden yapılmıştır
+                    if not product.has_variants and product.stock_quantity < total_req_qty:
                         return JsonResponse({
                             'success': False,
                             'message': f"Yetersiz Stok! '{product.name}' ürününden mevcut stok: {product.stock_quantity:.3f} {product.unit}, talep edilen: {total_req_qty:.3f} {product.unit}."
@@ -739,9 +903,13 @@ def process_sale(request):
             # Nakit ödemede eksik tahsilat ön kontrolü
             prelim_subtotal = Decimal('0.00')
             prelim_vat = Decimal('0.00')
-            for pid, qty in parsed_items:
-                product = locked_products_map[pid]
-                line_total = round(qty * product.sell_price, 2)
+            for item in parsed_items:
+                product = locked_products_map[item['product_id']]
+                vid = item['variant_id']
+                var_obj = locked_variants_map.get(vid) if vid else None
+                unit_price = var_obj.price_override if (var_obj and var_obj.price_override is not None) else product.sell_price
+
+                line_total = round(item['quantity'] * unit_price, 2)
                 if product.vat_rate > Decimal('0.00'):
                     line_sub = round(line_total / (Decimal('1.00') + (product.vat_rate / Decimal('100.00'))), 2)
                     line_v = line_total - line_sub
@@ -811,8 +979,18 @@ def process_sale(request):
                 next_seq += 1
                 receipt_number = f"{prefix}-{today_str}-{next_seq:04d}"
 
-            # VUK 507 Yasal KDV Baremleri Ayrıştırması (%1, %10, %20)
-            items_for_vat = [(locked_products_map[pid], qty) for pid, qty in parsed_items]
+            # VUK 507 Yasal KDV Baremleri Ayrıştırması (%1, %10, %20) (Varyant Fiyat Override Desteği)
+            items_for_vat = []
+            for item in parsed_items:
+                product = locked_products_map[item['product_id']]
+                vid = item['variant_id']
+                var_obj = locked_variants_map.get(vid) if vid else None
+                unit_price = var_obj.price_override if (var_obj and var_obj.price_override is not None) else product.sell_price
+                items_for_vat.append({
+                    'vat_rate': product.vat_rate,
+                    'unit_price': unit_price,
+                    'quantity': item['quantity']
+                })
             vat_breakdown = calculate_vat_breakdown(items_for_vat, discount_amount)
 
             sale = Sale.objects.create(
@@ -881,9 +1059,14 @@ def process_sale(request):
                         user=request.user
                     )
 
-            for pid, qty in parsed_items:
-                product = locked_products_map[pid]
-                line_total = round(qty * product.sell_price, 2)
+            for item in parsed_items:
+                product = locked_products_map[item['product_id']]
+                vid = item['variant_id']
+                qty = item['quantity']
+                var_obj = locked_variants_map.get(vid) if vid else None
+                unit_price = var_obj.price_override if (var_obj and var_obj.price_override is not None) else product.sell_price
+
+                line_total = round(qty * unit_price, 2)
                 if product.vat_rate > Decimal('0.00'):
                     line_subtotal = round(line_total / (Decimal('1.00') + (product.vat_rate / Decimal('100.00'))), 2)
                     line_vat = line_total - line_subtotal
@@ -891,24 +1074,38 @@ def process_sale(request):
                     line_subtotal = line_total
                     line_vat = Decimal('0.00')
 
+                var_info_str = f"{var_obj.size} / {var_obj.color}".strip(' / ') if var_obj else ''
+                display_pname = f"{product.name} ({var_info_str})" if var_info_str else product.name
+                item_barcode = var_obj.barcode if (var_obj and var_obj.barcode) else (product.barcode or '')
+
                 SaleItem.objects.create(
                     sale=sale,
                     product=product,
-                    product_name=product.name,
-                    barcode=product.barcode,
+                    variant=var_obj,
+                    variant_info=var_info_str,
+                    product_name=display_pname,
+                    barcode=item_barcode,
                     quantity=qty,
-                    unit_price=product.sell_price,
+                    unit_price=unit_price,
                     vat_rate=product.vat_rate,
                     vat_amount=line_vat,
                     total_price=line_total
                 )
 
-                # DB Seviyesinde Atomik Stok Güncelleme: F('stock_quantity') ile Race Condition Önleme
+                # DB Seviyesinde Atomik Stok Güncelleme: Hem Varyant hem Ana Ürün Stok Senkronu
                 if is_return:
+                    if var_obj:
+                        ProductVariant.objects.filter(id=var_obj.id).update(
+                            stock_quantity=F('stock_quantity') + qty
+                        )
                     Product.objects.filter(id=product.id).update(
                         stock_quantity=F('stock_quantity') + qty
                     )
                 else:
+                    if var_obj:
+                        ProductVariant.objects.filter(id=var_obj.id).update(
+                            stock_quantity=F('stock_quantity') - qty
+                        )
                     Product.objects.filter(id=product.id).update(
                         stock_quantity=F('stock_quantity') - qty
                     )
@@ -2555,12 +2752,15 @@ def product_create_edit_view(request, product_id=None):
     suppliers = Supplier.objects.filter(company_scope_q(user_company), is_active=True).order_by('company_name')
 
     def render_form(posted_data=None):
+        variants = product.variants.all().order_by('size', 'color') if product else []
         return render(request, 'admin/product_form.html', {
             'product': product,
             'posted': posted_data,
             'categories': categories,
             'suppliers': suppliers,
             'unit_choices': Product.UNIT_CHOICES,
+            'variants': variants,
+            'company': user_company,
         })
 
     if request.method == 'POST':
@@ -2573,6 +2773,7 @@ def product_create_edit_view(request, product_id=None):
         is_weighted = request.POST.get('is_weighted') == 'on'
         is_quick_button = request.POST.get('is_quick_button') == 'on'
         is_active = request.POST.get('is_active') == 'on'
+        has_variants = request.POST.get('has_variants') == 'on'
 
         posted_data = {
             'barcode': barcode,
@@ -2590,6 +2791,7 @@ def product_create_edit_view(request, product_id=None):
             'is_weighted': is_weighted,
             'is_quick_button': is_quick_button,
             'is_active': is_active,
+            'has_variants': has_variants,
         }
 
         if not barcode or not name:
@@ -2648,6 +2850,7 @@ def product_create_edit_view(request, product_id=None):
                 product.is_quick_button = is_quick_button
                 product.quick_button_order = quick_button_order
                 product.is_active = is_active
+                product.has_variants = has_variants
 
                 if 'image' in request.FILES:
                     product.image = request.FILES['image']
@@ -2673,6 +2876,7 @@ def product_create_edit_view(request, product_id=None):
                     is_quick_button=is_quick_button,
                     quick_button_order=quick_button_order,
                     is_active=is_active,
+                    has_variants=has_variants,
                     image=request.FILES.get('image')
                 )
                 log_action('PRODUCT', 'Yeni Ürün Eklendi', f"{product.name} ({product.barcode}) eklendi.", user=request.user)
@@ -3013,18 +3217,27 @@ def company_settings_view(request):
         except Exception:
             setting.supervisor_discount_limit_percent = Decimal('10.00')
 
+        # Faz 13: İşletme Sektörü (Market / Butik-Giyim / Genel Perakende)
+        if user_company:
+            b_type = request.POST.get('business_type', '').strip().upper()
+            if b_type in ('MARKET', 'APPAREL', 'RETAIL'):
+                user_company.business_type = b_type
+                user_company.save(update_fields=['business_type'])
+
         setting.save()
 
         log_action(
             'SYSTEM',
             'İşletme ve Mali Ayarlar Güncellendi',
-            f"Firma: '{setting.title}', VKN: {setting.tax_number}, Entegratör: {setting.fiscal_provider} ({setting.fiscal_environment})",
+            f"Firma: '{setting.title}', Sektör: {user_company.get_business_type_display() if user_company else 'N/A'}, VKN: {setting.tax_number}, Entegratör: {setting.fiscal_provider} ({setting.fiscal_environment})",
             user=request.user
         )
-        messages.success(request, f"'{setting.brand_name}' işletme, e-Arşiv ve donanım ayarları başarıyla kaydedildi.")
+        messages.success(request, f"'{setting.brand_name}' işletme, sektör ve donanım ayarları başarıyla kaydedildi.")
         return redirect('company_settings_view')
 
     context = {
+        'company': user_company,
+        'business_types': Company.BUSINESS_TYPE_CHOICES,
         'setting': setting,
         'fiscal_modes': CompanySetting.FISCAL_MODE_CHOICES,
         'integrators': CompanySetting.INTEGRATOR_CHOICES,
@@ -5662,6 +5875,256 @@ def super_admin_reset_register_hardware_action(request, register_id):
     )
     messages.success(request, f"'{comp_name}' mağazasının '{register.name}' ({register.register_code}) kasası için cihaz eşleşmesi sıfırlandı.")
     return redirect('super_admin_dashboard')
+
+
+# ==========================================================
+# FAZ 13: VARYANT MOTORU (BEDEN / RENK) & HEDİYE DEĞİŞİM FİŞİ
+# ==========================================================
+
+def _generate_unique_variant_barcode(company):
+    """Varyantlar için şirket bünyesinde benzersiz geçerli EAN-13 barkod üretir."""
+    prefix = '8690002'
+    last_v = ProductVariant.objects.filter(company=company).order_by('-id').first()
+    seq = (last_v.id + 100) if last_v else 100
+    candidate = generate_valid_ean13(prefix=prefix, sequence_number=seq)
+    attempts = 0
+    while (Product.objects.filter(company=company, barcode=candidate).exists() or
+           ProductVariant.objects.filter(company=company, barcode=candidate).exists()) and attempts < 1000:
+        seq += 1
+        candidate = generate_valid_ean13(prefix=prefix, sequence_number=seq)
+        attempts += 1
+    return candidate
+
+
+@staff_api_required
+def product_variants_api(request, product_id):
+    """
+    Faz 13: Bir ürünün varyantlarını JSON olarak listeleme (GET)
+    ve tekli / matris (Beden x Renk) varyant üretme (POST).
+    """
+    user_company = get_user_company(request.user)
+    product = get_object_or_404(Product.objects.filter(company_scope_q(user_company)), id=product_id)
+
+    if request.method == 'GET':
+        variants = product.variants.all().order_by('size', 'color')
+        data = [
+            {
+                'id': v.id,
+                'size': v.size,
+                'color': v.color,
+                'barcode': v.barcode,
+                'stock_quantity': float(v.stock_quantity),
+                'price_override': float(v.price_override) if v.price_override is not None else None,
+                'is_active': v.is_active,
+                'display': f"{v.size} / {v.color}".strip(' / ') or 'Varyant',
+            }
+            for v in variants
+        ]
+        return JsonResponse({
+            'success': True,
+            'product_id': product.id,
+            'product_name': product.name,
+            'has_variants': product.has_variants,
+            'variants': data,
+            'total_variants': len(data),
+        })
+
+    elif request.method == 'POST':
+        try:
+            body = json.loads(request.body.decode('utf-8'))
+        except Exception:
+            return JsonResponse({'success': False, 'message': 'Geçersiz JSON verisi.'}, status=400)
+
+        sizes = body.get('sizes', [])
+        colors = body.get('colors', [])
+        default_stock = Decimal(str(body.get('default_stock', '0.000')))
+        default_price_raw = body.get('default_price')
+        default_price = Decimal(str(default_price_raw)) if default_price_raw is not None and str(default_price_raw).strip() != '' else None
+
+        single_size = str(body.get('size', '')).strip()
+        single_color = str(body.get('color', '')).strip()
+        single_barcode = str(body.get('barcode', '')).strip()
+
+        created_variants = []
+
+        if single_size or single_color or single_barcode:
+            bc = single_barcode or _generate_unique_variant_barcode(user_company)
+            if ProductVariant.objects.filter(company=user_company, barcode=bc).exists():
+                return JsonResponse({'success': False, 'message': f"'{bc}' barkodu zaten başka bir varyantta kayıtlı!"}, status=400)
+
+            v = ProductVariant.objects.create(
+                company=user_company,
+                product=product,
+                size=single_size,
+                color=single_color,
+                barcode=bc,
+                stock_quantity=default_stock,
+                price_override=default_price,
+                is_active=True
+            )
+            created_variants.append(v)
+        elif sizes or colors:
+            size_list = [str(s).strip() for s in sizes if str(s).strip()] or ['']
+            color_list = [str(c).strip() for c in colors if str(c).strip()] or ['']
+
+            for s_val in size_list:
+                for c_val in color_list:
+                    exists = ProductVariant.objects.filter(
+                        company=user_company, product=product, size=s_val, color=c_val
+                    ).exists()
+                    if exists:
+                        continue
+                    bc = _generate_unique_variant_barcode(user_company)
+                    v = ProductVariant.objects.create(
+                        company=user_company,
+                        product=product,
+                        size=s_val,
+                        color=c_val,
+                        barcode=bc,
+                        stock_quantity=default_stock,
+                        price_override=default_price,
+                        is_active=True
+                    )
+                    created_variants.append(v)
+        else:
+            return JsonResponse({'success': False, 'message': 'Lütfen en az bir beden veya renk belirtiniz.'}, status=400)
+
+        product.has_variants = True
+        total_v_stock = product.variants.aggregate(total=Sum('stock_quantity'))['total'] or Decimal('0.000')
+        product.stock_quantity = total_v_stock
+        product.save(update_fields=['has_variants', 'stock_quantity'])
+
+        log_action(
+            'PRODUCT',
+            'Varyantlar Üretildi',
+            f"'{product.name}' ürünü için {len(created_variants)} yeni beden/renk varyantı oluşturuldu.",
+            user=request.user
+        )
+
+        return JsonResponse({
+            'success': True,
+            'message': f"{len(created_variants)} varyant başarıyla oluşturuldu.",
+            'created_count': len(created_variants),
+            'total_stock': float(total_v_stock),
+        })
+
+    return JsonResponse({'success': False, 'message': 'Desteklenmeyen metod.'}, status=405)
+
+
+@staff_api_required
+@require_POST
+def product_variant_update_api(request, variant_id):
+    """
+    Faz 13: Bir varyantın barkod, stok, fiyat override ve aktiflik durumunu güncelleme.
+    """
+    user_company = get_user_company(request.user)
+    variant = get_object_or_404(ProductVariant, id=variant_id, company=user_company)
+    product = variant.product
+
+    try:
+        body = json.loads(request.body.decode('utf-8'))
+    except Exception:
+        return JsonResponse({'success': False, 'message': 'Geçersiz JSON.'}, status=400)
+
+    new_barcode = str(body.get('barcode', '')).strip()
+    if new_barcode and new_barcode != variant.barcode:
+        dup = ProductVariant.objects.filter(company=user_company, barcode=new_barcode).exclude(id=variant.id).exists()
+        if dup:
+            return JsonResponse({'success': False, 'message': f"'{new_barcode}' barkodu zaten kullanımda!"}, status=400)
+        variant.barcode = new_barcode
+
+    if 'stock_quantity' in body:
+        try:
+            variant.stock_quantity = Decimal(str(body['stock_quantity']))
+        except Exception:
+            return JsonResponse({'success': False, 'message': 'Geçersiz stok miktarı.'}, status=400)
+
+    if 'price_override' in body:
+        val = body['price_override']
+        if val is None or str(val).strip() == '':
+            variant.price_override = None
+        else:
+            try:
+                variant.price_override = Decimal(str(val))
+            except Exception:
+                return JsonResponse({'success': False, 'message': 'Geçersiz fiyat.'}, status=400)
+
+    if 'size' in body:
+        variant.size = str(body['size']).strip()
+    if 'color' in body:
+        variant.color = str(body['color']).strip()
+    if 'is_active' in body:
+        variant.is_active = bool(body['is_active'])
+
+    variant.save()
+
+    # Ana ürün toplam stok senkronu
+    total_v_stock = product.variants.aggregate(total=Sum('stock_quantity'))['total'] or Decimal('0.000')
+    product.stock_quantity = total_v_stock
+    product.save(update_fields=['stock_quantity'])
+
+    return JsonResponse({
+        'success': True,
+        'message': f"Varyant ({variant.size} / {variant.color}) güncellendi.",
+        'variant': {
+            'id': variant.id,
+            'size': variant.size,
+            'color': variant.color,
+            'barcode': variant.barcode,
+            'stock_quantity': float(variant.stock_quantity),
+            'price_override': float(variant.price_override) if variant.price_override is not None else None,
+            'is_active': variant.is_active,
+        },
+        'product_total_stock': float(total_v_stock)
+    })
+
+
+@staff_api_required
+@require_POST
+def product_variant_delete_api(request, variant_id):
+    """
+    Faz 13: Bir varyantı silme ve ana ürün stok/bayrak senkronu.
+    """
+    user_company = get_user_company(request.user)
+    variant = get_object_or_404(ProductVariant, id=variant_id, company=user_company)
+    product = variant.product
+    var_desc = f"{variant.size} / {variant.color}".strip(' / ')
+
+    variant.delete()
+
+    # Kalan varyant kontrolü
+    remaining_count = product.variants.count()
+    if remaining_count == 0:
+        product.has_variants = False
+    total_v_stock = product.variants.aggregate(total=Sum('stock_quantity'))['total'] or Decimal('0.000')
+    product.stock_quantity = total_v_stock
+    product.save(update_fields=['has_variants', 'stock_quantity'])
+
+    log_action(
+        'PRODUCT',
+        'Varyant Silindi',
+        f"'{product.name}' ürününün ({var_desc}) varyantı silindi.",
+        user=request.user
+    )
+
+    return JsonResponse({
+        'success': True,
+        'message': f"Varyant ({var_desc}) silindi.",
+        'remaining_variants': remaining_count,
+        'product_total_stock': float(total_v_stock)
+    })
+
+
+def gift_receipt_view(request, receipt_number):
+    """
+    Faz 13: 80mm / 58mm Termal Hediye Değişim Fişi (Fiyatsız - Giyim/Butik/Perakende Uyumlu, Multi-Tenancy)
+    Müşterilere hediye ürün alışverişlerinde fiyatsız değişim fişi olarak verilir.
+    """
+    user_company = get_user_company(request.user)
+    sale = get_object_or_404(Sale, company=user_company, receipt_number=receipt_number)
+    company = get_company_fiscal_profile(company=user_company)
+    return render(request, 'thermal_gift_receipt.html', {'sale': sale, 'company': company})
+
 
 
 
