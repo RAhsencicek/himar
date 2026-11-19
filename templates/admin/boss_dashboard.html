@@ -206,6 +206,72 @@
         </div>
     </div>
 
+    <!-- 4. GÜNÜN / DÖNEMİN EN ÇOK SATAN ÜRÜNLERİ -->
+    <div class="card border-0 shadow-sm rounded-3 mb-3">
+        <div class="card-header bg-white py-2.5 px-3 border-bottom d-flex justify-content-between align-items-center">
+            <span class="fw-bold fs-7 text-dark">
+                <i class="bi bi-trophy-fill text-warning me-1"></i> En Çok Satan Ürünler
+            </span>
+            <span class="badge bg-primary bg-opacity-10 text-primary fw-bold">{{ m.top_selling_items|length }} Ürün</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="list-group list-group-flush">
+                {% for item in m.top_selling_items %}
+                    <div class="list-group-item p-3 d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center gap-2.5">
+                            <span class="badge rounded-circle bg-light text-primary border fw-bold fs-8" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;">
+                                {{ forloop.counter }}
+                            </span>
+                            <div>
+                                <div class="fw-bold text-dark fs-7">{{ item.product__name }}</div>
+                                <div class="text-muted fs-9 mt-0.5">Toplam Satış: {{ item.total_qty|floatformat:1 }} {{ item.product__unit|default:"Adet" }}</div>
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <div class="fs-6 fw-bold text-primary">{{ item.total_amount|floatformat:2 }} ₺</div>
+                            <div class="fs-9 text-muted">Ciro Payı</div>
+                        </div>
+                    </div>
+                {% empty %}
+                    <div class="p-3 text-center text-muted fs-8">
+                        Bu dönemde henüz ürün satışı gerçekleşmedi.
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. KRİTİK VE AZALAN STOKLAR LİSTESİ -->
+    <div class="card border-0 shadow-sm rounded-3 mb-3">
+        <div class="card-header bg-white py-2.5 px-3 border-bottom d-flex justify-content-between align-items-center">
+            <span class="fw-bold fs-7 text-dark">
+                <i class="bi bi-exclamation-triangle-fill text-danger me-1"></i> Kritik Stok Alarmı Veren Ürünler
+            </span>
+            <span class="badge bg-danger bg-opacity-10 text-danger fw-bold">{{ m.critical_stock_count }} Kritik</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="list-group list-group-flush">
+                {% for prod in m.critical_products %}
+                    <div class="list-group-item p-3 d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-bold text-dark fs-7">{{ prod.name }}</div>
+                            <div class="text-muted fs-9 mt-0.5">Barkod: {{ prod.barcode|default:"—" }} &middot; Min Limit: {{ prod.min_stock_level|floatformat:0 }} {{ prod.unit }}</div>
+                        </div>
+                        <div class="text-end">
+                            <span class="badge {% if prod.stock_quantity <= 0 %}bg-danger{% else %}bg-warning text-dark{% endif %} fs-8 fw-bold px-2 py-1">
+                                {{ prod.stock_quantity|floatformat:1 }} {{ prod.unit }}
+                            </span>
+                        </div>
+                    </div>
+                {% empty %}
+                    <div class="p-3 text-center text-success fs-8">
+                        <i class="bi bi-check-circle-fill me-1"></i> Tüm ürünlerin stok seviyesi güvenli.
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
     <!-- 4. KASA GÜVENLİK ALARMI: İPTAL EDİLEN FİŞLER LİSTESİ -->
     <div class="card border-0 shadow-sm rounded-3 mb-3">
         <div class="card-header bg-white py-2.5 px-3 border-bottom d-flex justify-content-between align-items-center">

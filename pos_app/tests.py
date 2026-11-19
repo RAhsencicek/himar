@@ -4536,6 +4536,81 @@ class BranchTransferAndFiscalTestSuite(TestCase):
         self.assertEqual(sale.qr_code_data, data['qr_code_data'])
 
 
+class MobilePosAndProductVisibilityTestSuite(TestCase):
+    """
+    Mobil Kasa Satış (POS) ve Patron Kokpiti Ürün Listeleme & Ergonomi Testleri.
+    """
+
+    def setUp(self):
+        self.company = Company.objects.create(name="Mobil Test Market Ltd", code="mobil-market")
+        self.user = User.objects.create_user(
+            username="mobil_kasiyer",
+            password="pospassword123",
+            is_staff=True
+        )
+        UserProfile.objects.create(user=self.user, company=self.company)
+
+        self.category = Category.objects.create(
+            company=self.company,
+            name="Temel Gıda"
+        )
+        self.product = Product.objects.create(
+            company=self.company,
+            name="Günlük Süt 1L",
+            barcode="869000000001",
+            sell_price=Decimal("25.00"),
+            buy_price=Decimal("18.00"),
+            stock_quantity=Decimal("5.00"),
+            min_stock_level=Decimal("10.00"),
+            category=self.category,
+            is_active=True,
+            is_quick_button=True
+        )
+
+        self.register = CashRegister.objects.create(
+            company=self.company,
+            register_code="KASA-MOBIL",
+            name="Mobil Satış Terminali",
+            is_active=True
+        )
+        self.client.login(username="mobil_kasiyer", password="pospassword123")
+
+    def test_pos_screen_renders_mobile_navigation_and_product_catalog(self):
+        """POS ekranı mobil sekme çubuğunu, yüzen sepet çubuğunu ve hızlı ürünleri eksiksiz render etmelidir."""
+        res = self.client.get(reverse('pos_screen'))
+        self.assertEqual(res.status_code, 200)
+        content = res.content.decode('utf-8')
+
+        # Mobil Sekme Barı ve Düğmeleri
+        self.assertIn('pos-mobile-nav', content)
+        self.assertIn('id="btnTabCatalog"', content)
+        self.assertIn('id="btnTabReceipt"', content)
+        self.assertIn('id="btnTabOps"', content)
+
+        # Yüzen Sepet Çubuğu
+        self.assertIn('pos-mobile-cart-floater', content)
+        self.assertIn('id="posMobileCartFloater"', content)
+
+        # Sepet Altı Mobil Hızlı Ödeme Butonları
+        self.assertIn('pos-mobile-receipt-actions', content)
+
+        # Ürünün katalogda görünürlüğü
+        self.assertIn('Günlük Süt 1L', content)
+        self.assertIn('869000000001', content)
+
+    def test_boss_dashboard_renders_top_selling_and_critical_products(self):
+        """Mobil Patron Kokpiti kritik stoktaki ve en çok satan ürünleri liste halinde sunmalıdır."""
+        res = self.client.get(reverse('mobile_boss_dashboard_view'))
+        self.assertEqual(res.status_code, 200)
+        content = res.content.decode('utf-8')
+
+        # Kritik Stok Bölümü
+        self.assertIn('Kritik Stok Alarmı Veren Ürünler', content)
+        self.assertIn('Günlük Süt 1L', content)
+        self.assertIn('En Çok Satan Ürünler', content)
+
+
+
 
 
 

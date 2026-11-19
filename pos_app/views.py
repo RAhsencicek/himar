@@ -5557,6 +5557,21 @@ def _calculate_boss_metrics(user_company, period='TODAY'):
         stock_quantity__lte=F('min_stock_level')
     ).count()
 
+    critical_products = list(Product.objects.filter(
+        company_scope_q(user_company),
+        is_active=True,
+        stock_quantity__lte=F('min_stock_level')
+    ).order_by('stock_quantity')[:6])
+
+    top_selling_items = list(SaleItem.objects.filter(
+        sale__in=normal_sales
+    ).values(
+        'product__id', 'product__name', 'product__unit'
+    ).annotate(
+        total_qty=Sum('quantity'),
+        total_amount=Sum(F('quantity') * F('unit_price'))
+    ).order_by('-total_qty')[:6])
+
     expired_skt_count = Product.objects.filter(
         company_scope_q(user_company),
         is_active=True,
@@ -5591,6 +5606,8 @@ def _calculate_boss_metrics(user_company, period='TODAY'):
         'cancelled_sales': list(cancelled_sales_qs[:10]),
         'open_shifts': open_shifts,
         'critical_stock_count': critical_stock_count,
+        'critical_products': critical_products,
+        'top_selling_items': top_selling_items,
         'expired_skt_count': expired_skt_count,
         'urgent_skt_count': urgent_skt_count,
     }

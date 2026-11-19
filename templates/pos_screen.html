@@ -1584,77 +1584,294 @@
         background: var(--pos-cash);
     }
 
+    /* ============================================================
+       MOBİL POS MODU (Square / Toast Tarzı Segmented Tab & Floater)
+       ============================================================ */
+    .pos-mobile-nav {
+        display: none !important;
+    }
+
+    .pos-mobile-cart-floater {
+        display: none !important;
+    }
+
+    .pos-mobile-receipt-actions {
+        display: none !important;
+    }
+
     /* Responsive Breakpoints (Tablet & Mobil) */
     @media (max-width: 991.98px) {
         .pos-shell {
-            block-size: auto;
-            min-block-size: 100dvb;
-            overflow: visible;
-            grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-            grid-template-rows: auto auto auto;
-            grid-template-areas:
-                "receipt ops"
-                "catalog catalog"
-                "dock    dock";
+            block-size: 100dvb !important;
+            height: 100dvb !important;
+            min-block-size: 100dvb !important;
+            display: flex !important;
+            flex-direction: column !important;
+            padding: 6px !important;
+            gap: 6px !important;
+            overflow: hidden !important;
         }
 
-        .pos-cart-card {
-            min-block-size: 440px;
-            max-block-size: 560px;
+        .pos-mobile-nav {
+            display: flex !important;
+            align-items: center;
+            justify-content: stretch;
+            background: #ffffff;
+            border: 1px solid var(--pos-border-subtle);
+            border-radius: 10px;
+            padding: 4px;
+            gap: 5px;
+            flex-shrink: 0;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+            z-index: 20;
         }
 
-        .pos-ops-card {
-            overflow: visible;
-        }
-
-        .pos-numpad-section {
-            flex: 0 0 auto;
-        }
-
-        .pos-numpad-grid {
-            flex: 0 0 auto;
-            min-block-size: auto;
-            grid-template-rows: repeat(5, 42px);
-        }
-
-        .pos-catalog-card {
-            max-block-size: 460px;
-        }
-
-        .pos-dock-actions {
-            flex-wrap: wrap;
-        }
-    }
-
-    @media (max-width: 599.98px) {
-        .pos-shell {
-            padding: 6px;
+        .pos-mobile-tab-btn {
+            flex: 1 1 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             gap: 6px;
-            grid-template-columns: minmax(0, 1fr);
-            grid-template-rows: auto auto auto auto;
-            grid-template-areas:
-                "receipt"
-                "ops"
-                "catalog"
-                "dock";
+            padding: 9px 6px;
+            border: none;
+            background: transparent;
+            color: var(--pos-ink-muted);
+            font-size: 0.84rem;
+            font-weight: 700;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            position: relative;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
 
-        .pos-cart-card {
-            min-block-size: 340px;
-            max-block-size: 460px;
+        .pos-mobile-tab-btn i {
+            font-size: 1.05rem;
         }
 
-        .pos-catalog-card {
-            max-block-size: 380px;
+        .pos-mobile-tab-btn.active {
+            background: var(--pos-navy);
+            color: #ffffff;
+            box-shadow: 0 2px 6px rgba(30, 58, 95, 0.25);
         }
 
-        .pos-bottom-dock {
-            flex-wrap: wrap;
+        .pos-mobile-tab-badge {
+            background: #ef4444;
+            color: #ffffff;
+            font-size: 0.68rem;
+            font-weight: 800;
+            padding: 1px 6px;
+            border-radius: 999px;
+            line-height: 1.2;
+        }
+
+        /* 1. SEKME: HIZLI ÜRÜNLER (VARSAYILAN AKTİF GÖRÜNÜM) */
+        body.pos-tab-catalog .pos-cart-card,
+        body.pos-tab-catalog .pos-ops-card,
+        body.pos-tab-catalog .pos-bottom-dock {
+            display: none !important;
+        }
+
+        body.pos-tab-catalog .pos-catalog-card {
+            display: flex !important;
+            flex: 1 1 auto !important;
+            height: calc(100dvb - 65px) !important;
+            max-block-size: none !important;
+            min-height: 0 !important;
+            overflow: hidden !important;
+            padding-bottom: 74px !important; /* Yüzen sepet çubuğu için boşluk */
+        }
+
+        body.pos-tab-catalog .pos-catalog-scroll {
+            flex: 1 1 auto !important;
+            overflow-y: auto !important;
+            min-height: 0 !important;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* 2. SEKME: SEPET / FİŞ */
+        body.pos-tab-receipt .pos-catalog-card,
+        body.pos-tab-receipt .pos-ops-card {
+            display: none !important;
+        }
+
+        body.pos-tab-receipt .pos-cart-card {
+            display: flex !important;
+            flex: 1 1 auto !important;
+            height: calc(100dvb - 110px) !important;
+            max-block-size: none !important;
+            min-height: 0 !important;
+            overflow: hidden !important;
+        }
+
+        body.pos-tab-receipt .pos-cart-card .table-wrapper {
+            flex: 1 1 auto !important;
+            overflow-y: auto !important;
+            min-height: 0 !important;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        body.pos-tab-receipt .pos-mobile-receipt-actions {
+            display: flex !important;
+            gap: 6px;
+            padding: 8px 10px;
+            background: #ffffff;
+            border-top: 1px solid var(--pos-border-subtle);
+            flex-shrink: 0;
+        }
+
+        body.pos-tab-receipt .pos-bottom-dock {
+            display: flex !important;
+            flex-shrink: 0 !important;
+            padding: 4px !important;
+            overflow-x: auto !important;
+        }
+
+        /* 3. SEKME: TUŞ & ÖDEME */
+        body.pos-tab-ops .pos-catalog-card,
+        body.pos-tab-ops .pos-cart-card {
+            display: none !important;
+        }
+
+        body.pos-tab-ops .pos-ops-card {
+            display: flex !important;
+            flex: 1 1 auto !important;
+            height: calc(100dvb - 110px) !important;
+            min-height: 0 !important;
+            overflow-y: auto !important;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        body.pos-tab-ops .pos-bottom-dock {
+            display: flex !important;
+            flex-shrink: 0 !important;
+            padding: 4px !important;
+            overflow-x: auto !important;
+        }
+
+        /* YÜZEN MOBİL SEPET ÇUBUĞU */
+        .pos-mobile-cart-floater {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
+            color: #ffffff;
+            border-radius: 12px;
+            padding: 9px 14px;
+            display: flex !important;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.45);
+            z-index: 999;
+            cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            animation: slideUpFloater 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        @keyframes slideUpFloater {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .pos-mobile-floater-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .pos-mobile-floater-icon {
+            position: relative;
+            width: 38px;
+            height: 38px;
+            background: rgba(255, 255, 255, 0.16);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            color: #ffffff;
+        }
+
+        .pos-mobile-floater-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #ef4444;
+            color: #ffffff;
+            font-size: 0.68rem;
+            font-weight: 800;
+            padding: 1px 6px;
+            border-radius: 999px;
+            border: 2px solid #1e3a5f;
+            line-height: 1.2;
+        }
+
+        .pos-mobile-floater-text {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .pos-mobile-floater-qty {
+            font-size: 0.72rem;
+            color: #cbd5e1;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+
+        .pos-mobile-floater-amount {
+            font-size: 1.15rem;
+            font-weight: 800;
+            color: #38bdf8;
+            font-family: 'Roboto Mono', monospace;
+            line-height: 1.2;
+        }
+
+        .pos-mobile-floater-action {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: #10b981;
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 0.84rem;
+            padding: 8px 12px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(16, 185, 129, 0.4);
+        }
+
+        /* MOBİLDE KATALOG IZGARA OPTİMİZASYONU */
+        .pos-products-grid {
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important;
+            gap: 8px !important;
+            padding: 4px !important;
+        }
+
+        .quick-btn {
+            min-block-size: 110px !important;
+            padding: 6px !important;
+        }
+
+        .quick-tile-media {
+            block-size: 64px !important;
+        }
+
+        .quick-tile-name {
+            font-size: 0.82rem !important;
+            line-height: 1.2 !important;
+            margin-top: 4px !important;
+        }
+
+        .quick-tile-price {
+            font-size: 0.95rem !important;
+            font-weight: 800 !important;
         }
 
         .pos-dock-actions {
-            flex-wrap: wrap;
-            overflow-x: visible;
+            flex-wrap: nowrap !important;
+            overflow-x: auto !important;
         }
     }
 
@@ -1771,6 +1988,23 @@
 {% endblock %}
 
 {% block content %}
+<!-- MOBİL SEGMENT SEKME SEÇİCİ (Yalnızca ekran <= 991px iken görünür) -->
+<nav class="pos-mobile-nav" id="posMobileNav" aria-label="Mobil POS Modu">
+    <button type="button" class="pos-mobile-tab-btn active" id="btnTabCatalog" data-tab="catalog" onclick="switchMobilePosTab('catalog')">
+        <i class="bi bi-grid-fill"></i>
+        <span>Hızlı Ürünler</span>
+    </button>
+    <button type="button" class="pos-mobile-tab-btn" id="btnTabReceipt" data-tab="receipt" onclick="switchMobilePosTab('receipt')">
+        <i class="bi bi-receipt"></i>
+        <span>Sepet / Fiş</span>
+        <span class="pos-mobile-tab-badge d-none" id="mobileTabCartCount">0</span>
+    </button>
+    <button type="button" class="pos-mobile-tab-btn" id="btnTabOps" data-tab="ops" onclick="switchMobilePosTab('ops')">
+        <i class="bi bi-calculator-fill"></i>
+        <span>Tuş &amp; Ödeme</span>
+    </button>
+</nav>
+
 <!-- SOL KOLON: ÖDENECEK TUTAR + BARKOD GİRİŞ + SEPET TABLOSU -->
 <section class="pos-pane pos-cart-card" aria-label="Satış Fişi ve Barkod">
     <div id="payableTotalBox" class="pos-payable-box">
@@ -1867,6 +2101,19 @@
     <div class="pos-cart-footer">
         <span id="itemCountDisplay">Adet: 0</span>
         <span id="selectedRowHint">Satır seçmek için kaleme dokunun</span>
+    </div>
+
+    <!-- MOBİL SEPET HIZLI ÖDEME & AKSİYON BARI (Sadece mobilde sepet açıkken görünür) -->
+    <div class="pos-mobile-receipt-actions">
+        <button type="button" class="btn btn-success fw-bold flex-fill py-2 d-flex align-items-center justify-content-center gap-1.5 shadow-sm" onclick="handleCashButtonClick()">
+            <i class="bi bi-cash-coin fs-6"></i> <span>Nakit</span>
+        </button>
+        <button type="button" class="btn btn-primary fw-bold flex-fill py-2 d-flex align-items-center justify-content-center gap-1.5 shadow-sm" onclick="completeCardSale()">
+            <i class="bi bi-credit-card-2-front-fill fs-6"></i> <span>POS / Kart</span>
+        </button>
+        <button type="button" class="btn btn-secondary fw-bold py-2 px-3 shadow-sm d-flex align-items-center justify-content-center gap-1" onclick="switchMobilePosTab('ops')" title="Tuş Takımı ve Diğer İşlemler">
+            <i class="bi bi-calculator-fill fs-6"></i>
+        </button>
     </div>
 </section>
 
@@ -2064,6 +2311,24 @@
     </a>
     {% endif %}
 </nav>
+
+<!-- YÜZEN MOBİL SEPET ÇUBUĞU (Katalog sekmesindeyken sepette ürün varsa ekranın altına yapışır) -->
+<div class="pos-mobile-cart-floater d-none" id="posMobileCartFloater" onclick="switchMobilePosTab('receipt')" role="button" aria-label="Sepete Git ve Öde">
+    <div class="pos-mobile-floater-info">
+        <div class="pos-mobile-floater-icon">
+            <i class="bi bi-cart3"></i>
+            <span class="pos-mobile-floater-badge" id="mobileFloaterBadge">0</span>
+        </div>
+        <div class="pos-mobile-floater-text">
+            <div class="pos-mobile-floater-qty" id="mobileFloaterQty">0 Kalem</div>
+            <div class="pos-mobile-floater-amount" id="mobileFloaterAmount">0.00 TL</div>
+        </div>
+    </div>
+    <div class="pos-mobile-floater-action">
+        <span>Sepete Git / Öde</span>
+        <i class="bi bi-arrow-right-short fs-4"></i>
+    </div>
+</div>
 
 <!-- ============================================================
      NATIVE <dialog> MODALLARI
@@ -2816,7 +3081,84 @@
         }, 2300);
     }
 
+    /* ============================================================
+       MOBİL POS SEKME YÖNETİMİ & YÜZEN SEPET (Square / Toast POS UX)
+       ============================================================ */
+    let currentMobileTab = 'catalog'; // Mobilde varsayılan sekme: Hızlı Ürünler!
+
+    function initMobilePosMode() {
+        if (window.innerWidth <= 991.98) {
+            switchMobilePosTab('catalog');
+        } else {
+            document.body.classList.remove('pos-tab-catalog', 'pos-tab-receipt', 'pos-tab-ops');
+        }
+        updateMobileCartFloater();
+    }
+
+    function switchMobilePosTab(tab) {
+        currentMobileTab = tab;
+        document.body.classList.remove('pos-tab-catalog', 'pos-tab-receipt', 'pos-tab-ops');
+        document.body.classList.add(`pos-tab-${tab}`);
+
+        document.querySelectorAll('.pos-mobile-tab-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tab);
+        });
+
+        updateMobileCartFloater();
+    }
+
+    function updateMobileCartFloater() {
+        const floater = document.getElementById('posMobileCartFloater');
+        const tabBadge = document.getElementById('mobileTabCartCount');
+        const itemCount = Array.isArray(cart) ? cart.length : 0;
+
+        if (tabBadge) {
+            if (itemCount > 0) {
+                tabBadge.textContent = String(itemCount);
+                tabBadge.classList.remove('d-none');
+            } else {
+                tabBadge.classList.add('d-none');
+            }
+        }
+
+        if (!floater) return;
+
+        const total = typeof getGrandTotal === 'function' ? getGrandTotal() : 0.00;
+        const totalUnits = Array.isArray(cart) ? cart.reduce((acc, item) => acc + (item.is_weighted ? 1 : item.quantity), 0) : 0;
+        const qtyLabel = Math.abs(totalUnits - Math.round(totalUnits)) < 0.01 ? Math.round(totalUnits) : totalUnits.toFixed(2);
+
+        const badgeEl = document.getElementById('mobileFloaterBadge');
+        const qtyEl = document.getElementById('mobileFloaterQty');
+        const amtEl = document.getElementById('mobileFloaterAmount');
+
+        if (badgeEl) badgeEl.textContent = String(itemCount);
+        if (qtyEl) qtyEl.textContent = `${itemCount} Kalem (${qtyLabel} Adet)`;
+        if (amtEl) amtEl.textContent = `${total.toFixed(2)} TL`;
+
+        if (window.innerWidth <= 991.98 && currentMobileTab === 'catalog' && itemCount > 0) {
+            floater.classList.remove('d-none');
+        } else {
+            floater.classList.add('d-none');
+        }
+    }
+
+    window.addEventListener('resize', () => {
+        if (window.innerWidth > 991.98) {
+            document.body.classList.remove('pos-tab-catalog', 'pos-tab-receipt', 'pos-tab-ops');
+            const floater = document.getElementById('posMobileCartFloater');
+            if (floater) floater.classList.add('d-none');
+        } else {
+            if (!document.body.classList.contains('pos-tab-catalog') &&
+                !document.body.classList.contains('pos-tab-receipt') &&
+                !document.body.classList.contains('pos-tab-ops')) {
+                switchMobilePosTab('catalog');
+            }
+            updateMobileCartFloater();
+        }
+    });
+
     document.addEventListener('DOMContentLoaded', () => {
+        initMobilePosMode();
         if (window.innerWidth >= 992 && barcodeInput) {
             barcodeInput.focus();
         }
@@ -3270,6 +3612,9 @@
     }
 
     function handleQuickButtonClick(btn) {
+        if (window.navigator && window.navigator.vibrate) {
+            try { window.navigator.vibrate(25); } catch (e) {}
+        }
         const prod = {
             id: parseInt(btn.dataset.id, 10),
             name: btn.dataset.name,
@@ -3779,6 +4124,8 @@
                 discPill.classList.add('d-none');
             }
         }
+
+        updateMobileCartFloater();
     }
 
     /* ============================================================
