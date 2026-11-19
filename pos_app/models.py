@@ -34,6 +34,20 @@ class Company(models.Model):
         verbose_name="İşletme Sektör Tipi"
     )
 
+    # Faz 18: Çoklu Şube & Depo Hiyerarşisi
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='branches',
+        verbose_name="Bağlı Olduğu Merkez / Ana Şirket"
+    )
+    is_warehouse = models.BooleanField(
+        default=False,
+        verbose_name="Depo mu? (Merkez / Lojistik Deposu)"
+    )
+
     is_active = models.BooleanField(default=True, verbose_name="Aktif Mağaza")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Oluşturulma Tarihi")
 
@@ -874,6 +888,159 @@ class StockTakeItem(models.Model):
         super().save(*args, **kwargs)
 
 
+class BranchTransfer(models.Model):
+    """
+    Faz 18: Şubeler ve Depolar Arası Stok Transferi (Sevk İrsaliyesi)
+    Merkez Depo -> Şube veya Şube -> Şube arası irsaliyeli mal sevkiyatı ve stok transferi.
+    """
+    STATUS_CHOICES = [
+        ('DRAFT', 'Taslak (Hazırlanıyor)'),
+        ('IN_TRANSIT', 'Sevk Edildi (Yolda)'),
+        ('COMPLETED', 'Teslim Alındı (Tamamlandı)'),
+        ('CANCELLED', 'İptal Edildi'),
+    ]
+
+    transfer_number = models.CharField(max_length=50, unique=True, verbose_name="Transfer / İrsaliye No")
+    from_company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name='transfers_sent', verbose_name="Çıkış Şubesi / Depo")
+    to_company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name='transfers_received', verbose_name="Varış Şubesi / Depo")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='DRAFT', verbose_name="Transfer Durumu")
+    
+    notes = models.TextField(blank=True, default='', verbose_name="Transfer Notları / Sevk Açıklaması")
+    
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='transfers_created', verbose_name="Oluşturan Personel")
+    received_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='transfers_received_by', verbose_name="Teslim Alan Personel")
+    
+    shipped_at = models.DateTimeField(null=True, blank=True, verbose_name="Sevk / Yola Çıkış Tarihi")
+    received_at = models.DateTimeField(null=True, blank=True, verbose_name="Teslim Alma / Varış Tarihi")
+    
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Kayıt Tarihi")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Son Güncelleme")
+
+    class Meta:
+        verbose_name = "Şubeler Arası Stok Transferi"
+        verbose_name_plural = "Şubeler Arası Stok Transferleri"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.transfer_number} ({self.from_company.name} -> {self.to_company.name}) [{self.get_status_display()}]"
+
+    @property
+    def total_quantity(self):
+        return sum((item.quantity for item in self.items.all()), Decimal('0.000'))
+
+    @property
+    def total_items_count(self):
+        return self.items.count()
+
+    def ship(self, user=None):
+        """
+        Transferi yola çıkarır:
+        1. Çıkış şubesindeki ürünlerin stoklarından transfer miktarlarını düşer.
+        2. Durumu IN_TRANSIT yapar.
+        """
+        if self.status != 'DRAFT':
+            raise ValueError(f"Sadece taslak transferler sevk edilebilir. Mevcut durum: {self.get_status_display()}")
+        if self.items.count() == 0:
+            raise ValueError("Transfer belgesinde hiç ürün bulunmamaktadır.")
+        
+        for item in self.items.select_related('product'):
+            item.product.stock_quantity -= item.quantity
+            item.product.save(update_fields=['stock_quantity', 'updated_at'])
+            
+        self.status = 'IN_TRANSIT'
+        self.shipped_at = timezone.now()
+        if user and not self.created_by:
+            self.created_by = user
+        self.save(update_fields=['status', 'shipped_at', 'created_by', 'updated_at'])
+
+    def receive(self, user=None):
+        """
+        Transferi teslim alır:
+        1. Varış şubesinde aynı barkodlu ürünü bulur veya oluşturur.
+        2. Varış şubesindeki ürün stoğunu artırır.
+        3. Durumu COMPLETED yapar.
+        """
+        if self.status != 'IN_TRANSIT':
+            raise ValueError(f"Sadece yoldaki transferler teslim alınabilir. Mevcut durum: {self.get_status_display()}")
+        
+        for item in self.items.select_related('product', 'product__category'):
+            src_prod = item.product
+            dest_prod = Product.objects.filter(company=self.to_company, barcode=src_prod.barcode).first()
+            if dest_prod:
+                dest_prod.stock_quantity += item.quantity
+                dest_prod.save(update_fields=['stock_quantity', 'updated_at'])
+            else:
+                dest_cat = None
+                if src_prod.category:
+                    dest_cat = Category.objects.filter(company=self.to_company, name=src_prod.category.name).first()
+                    if not dest_cat:
+                        dest_cat = Category.objects.create(
+                            company=self.to_company,
+                            name=src_prod.category.name,
+                            description=src_prod.category.description or ''
+                        )
+                Product.objects.create(
+                    company=self.to_company,
+                    barcode=src_prod.barcode,
+                    secondary_barcode=src_prod.secondary_barcode or '',
+                    name=src_prod.name,
+                    category=dest_cat,
+                    buy_price=src_prod.buy_price,
+                    sell_price=src_prod.sell_price,
+                    vat_rate=src_prod.vat_rate,
+                    unit=item.unit or src_prod.unit,
+                    is_weighted=src_prod.is_weighted,
+                    stock_quantity=item.quantity,
+                    min_stock_level=src_prod.min_stock_level,
+                    track_expiration=src_prod.track_expiration,
+                    expiration_date=src_prod.expiration_date,
+                    lot_number=src_prod.lot_number,
+                    has_variants=src_prod.has_variants,
+                    is_active=True
+                )
+        self.status = 'COMPLETED'
+        self.received_at = timezone.now()
+        if user:
+            self.received_by = user
+        self.save(update_fields=['status', 'received_at', 'received_by', 'updated_at'])
+
+    def cancel(self, user=None):
+        """
+        Transferi iptal eder:
+        Eğer IN_TRANSIT ise kaynak şubeden düşülen stoklar geri iade edilir.
+        """
+        if self.status == 'COMPLETED':
+            raise ValueError("Teslim alınmış transferler iptal edilemez.")
+        if self.status == 'CANCELLED':
+            return
+        
+        if self.status == 'IN_TRANSIT':
+            for item in self.items.select_related('product'):
+                item.product.stock_quantity += item.quantity
+                item.product.save(update_fields=['stock_quantity', 'updated_at'])
+                
+        self.status = 'CANCELLED'
+        self.save(update_fields=['status', 'updated_at'])
+
+
+class BranchTransferItem(models.Model):
+    """
+    Stok Transfer Detay Kalemi
+    """
+    transfer = models.ForeignKey(BranchTransfer, on_delete=models.CASCADE, related_name='items', verbose_name="Transfer Fişi")
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name='transfer_items', verbose_name="Sevk Edilen Ürün")
+    quantity = models.DecimalField(max_digits=10, decimal_places=3, verbose_name="Miktar")
+    unit = models.CharField(max_length=20, default='Adet', verbose_name="Birim")
+    notes = models.CharField(max_length=255, blank=True, default='', verbose_name="Kalem Notu")
+
+    class Meta:
+        verbose_name = "Transfer Kalemi"
+        verbose_name_plural = "Transfer Kalemleri"
+
+    def __str__(self):
+        return f"{self.product.name} ({self.quantity} {self.unit})"
+
+
 class SystemLog(models.Model):
     LOG_LEVELS = [
         ('INFO', 'Bilgi'),
@@ -885,6 +1052,7 @@ class SystemLog(models.Model):
     MODULES = [
         ('POS', 'Kasa Satış'),
         ('STOCK', 'Stok Yönetimi'),
+        ('TRANSFER', 'Şube Stok Transferi'),
         ('SUPPLIER', 'Toptancı Carileri'),
         ('PRODUCT', 'Ürün Yönetimi'),
         ('AUTH', 'Kullanıcı / Oturum'),

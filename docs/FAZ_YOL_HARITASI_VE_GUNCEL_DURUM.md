@@ -1,14 +1,14 @@
 # HİMARKET SAAS & POS — MASTER FAZ YOL HARİTASI VE GÜNCEL DURUM RAPORU
 **Doküman Kodu:** ROADMAP-HM-2026-V2  
 **Tarih:** 19 Kasım 2026  
-**Aktif Sürüm:** HiMarket Enterprise v2.8.0 (130/130 Birim Testi Başarılı - %100 Yeşil)  
+**Aktif Sürüm:** HiMarket Enterprise v2.10.0 (146/146 Birim Testi Başarılı - %100 Yeşil)  
 **Canlı Sistem:** `70.40.138.174` (`https://himarket.hayatisleri.com.tr/`)  
 **Statü:** Resmi Yol Haritası & Canlı Geliştirme Takip Kılavuzu
 
 ---
 
-## 📌 BÖLÜM 1: GEÇMİŞTEN BUGÜNE TAMAMLANAN FAZLAR (FAZ 1 — FAZ 14)
-*Aşağıdaki tüm fazlar kodlanmış, 130 otomatik test ile doğrulanmış ve canlı sunucuda devreye alınmıştır.*
+## 📌 BÖLÜM 1: GEÇMİŞTEN BUGÜNE TAMAMLANAN FAZLAR (FAZ 1 — FAZ 18)
+*Aşağıdaki tüm fazlar kodlanmış, 146 otomatik test ile doğrulanmış ve canlı sunucuda devreye alınmıştır.*
 
 | Faz | Kapsam | Durum | Test Sayısı |
 | :--- | :--- | :---: | :---: |
@@ -26,6 +26,9 @@
 | **Faz 12** | Kasa Başına Lisanslama, Abonelik, Süper Admin Konsolu & 403 Güvenliği | ✅ TAMAMLANDI | 115 Test |
 | **Faz 13** | Sektörel Modülerlik (Market/Giyim/Perakende), Beden-Renk Varyant Motoru, Dokunmatik Kodpos Modalı & Hediye Değişim Fişi | ✅ TAMAMLANDI | 123 Test |
 | **Faz 14** | Çevrimdışı (Offline) Kasa Motoru (PWA, IndexedDB, Arka Plan Senkronizasyon & Idempotency) | ✅ TAMAMLANDI | 130 Test |
+| **Faz 15** | Ortak Hazır Ürün Havuzu (Global FMCG Kataloğu, Otomatik Havuz Tanıma, Excel/CSV İçe Aktarma) | ✅ TAMAMLANDI | 136 Test |
+| **Faz 16** | SKT & Parti (Lot) Takibi, Kırmızı Kasa Alarmı ve Mobil Patron Kokpiti (Canlı Ciro & Kâr Analizi) | ✅ TAMAMLANDI | 140 Test |
+| **Faz 18** | Çoklu Şube, Depo Yönetimi & Stok Transferleri + Merkezi Fiyat Dağıtımı + Yeni Nesil ÖKC Simülasyonu | ✅ TAMAMLANDI | 146 Test |
 
 > [!NOTE]
 > **Halihazırda Çalışan Kritik MVP Özellikleri:**
@@ -45,8 +48,8 @@ flowchart LR
     F13["✅ Faz 13: Sektörel Modülerlik"] --> F14["✅ Faz 14: Çevrimdışı Kasa (Offline)"]
     F14 --> F15["✅ Faz 15: Ortak Barkod Havuzu"]
     F15 --> F16["✅ Faz 16: SKT Takibi & Mobil Patron Kokpiti"]
-    F16 --> F17["Faz 17: Müşteri Sadakati (Puan & Kart)"]
-    F17 --> F18["Faz 18: Çoklu Şube, Depo & E-Belge / ÖKC"]
+    F16 --> F18["✅ Faz 18: Çoklu Şube, Depo & ÖKC/E-Belge"]
+    F18 --> F17["Faz 17: Müşteri Sadakati (Puan & Kart)"]
 ```
 
 ---
@@ -121,6 +124,36 @@ flowchart LR
 
 ---
 
+### 🟢 FAZ 18: ÇOKLU ŞUBE, DEPO YÖNETİMİ & STOK TRANSFERLERİ + MERKEZİ FİYAT VE ÖKC — TAMAMLANDI ✅
+*Hedef: Zincirleşen işletmeler için merkez depo - şube arası çift taraflı irsaliyeli mal sevkiyatı, tek tıkla şubelere merkezi fiyat yayılımı ve yeni nesil GMP-3 ÖKC/E-Belge simülasyon altyapısı.*
+
+#### A. Tamamlanan ve Doğrulanan Kabiliyetler
+1. **Şube & Depo Hiyerarşisi (`Company`):**
+   - `Company` modeline `parent` (Merkez / Ana Şirket bağlantısı) ve `is_warehouse` (Merkez / Lojistik Deposu) alanları eklendi (Migrasyon: `0018`).
+   - Merkez mağazanın altında bağlı şubelerin yönetimi ve hiyerarşik sorgulamalar sağlandı.
+2. **Şubeler ve Depolar Arası Stok Transfer Motoru (`BranchTransfer` & `BranchTransferItem`):**
+   - Çift taraflı irsaliyeli mal sevkiyatı: `transfer_number` (TRF-...), `from_company`, `to_company`, `shipped_at`, `received_at`.
+   - **Durum Makinesi:** `DRAFT` (Taslak Hazırlık), `IN_TRANSIT` (Yolda / Sevk Edildi), `COMPLETED` (Teslim Alındı / Stoğa Eklendi), `CANCELLED` (İptal).
+   - **Stok Bütünlüğü & Otomasyonu:**
+     - Transfer yola çıktığında (`ship()`) kaynak şubenin stoğundan ürünler otomatik düşülür.
+     - Hedef şube transferi teslim aldığında (`receive()`) ürün hedef şube kataloğunda yoksa otomatik oluşturulur, varsa mevcut stoğuna eklenir.
+     - Yoldaki bir transfer iptal edilirse (`cancel()`) düşülen stoklar anında kaynak depoya geri iade edilir.
+3. **Yönetim Ekranları & A4 Yazdırılabilir Sevk İrsaliyesi:**
+   - **Transfer Listesi Paneli (`/management/transfers/`):** Gelen / Giden filtreleri, durum rozetleri, sevk ve teslimat zamanları, bekleyen kabul uyarıları ve CSV dışa aktarımı (`/management/transfers/export/`).
+   - **Transfer Hazırlama Sihirbazı (`/management/transfers/create/`):** Dinamik satır ekleme, anlık mevcut stok kontrolü, "Taslak Kaydet" veya "Doğrudan Sevk Et" seçenekleri.
+   - **Detay & Yazdırılabilir Sevk İrsaliyesi (`/management/transfers/<id>/`):** `@media print` standartlarında A4 resmi irsaliye çıktısı, teslim eden ve teslim alan yetkili imza/kaşe alanları.
+4. **Merkezi Fiyat Yayılımı (HQ Price Push):**
+   - Merkez mağaza ürün satış fiyatını güncellediğinde tek tıkla `[✓ Merkezi Fiyat Yayılımı: Yeni Fiyatı Bağlı Şubelere Otomatik Senkronize Et]` kutucuğu ile tüm alt şubelerdeki raf fiyatları ve KDV oranları anında güncellenir.
+   - Ürün kataloğunda 3 nokta menüsünden tek tıkla doğrudan tetikleme: `/api/product/<id>/propagate-price/`.
+   - Satır içi hızlı fiyat güncellemede (`product_quick_price_update_api`) `propagate_to_branches` desteği.
+5. **Yeni Nesil ÖKC & E-Belge Simülasyon API'si (`/api/okc/sale-trigger/`):**
+   - Beko, Hugin, Ingenico GMP-3 protokolü standartlarında JSON haberleşme uç noktası.
+   - Satışa anında resmi Mali Onay Kodu (`FP-YYYYMMDD-XXXX`), ETTN (UUID) ve GİB uyumlu karekod (`qr_code_data`) üretir ve satış kaydına işler.
+6. **Birim Testleri & Kalite Güvencesi:**
+   - 6 yeni kapsamlı birim testi yazıldı (`BranchTransferAndFiscalTestSuite`), toplam **146 test eksiksiz geçti (%100 Yeşil)**.
+
+---
+
 ### 🔵 FAZ 17: MÜŞTERİ SADAKATİ (LOYALTY & PUAN SİSTEMİ)
 *Hedef: Müşterileri markete veya butiğe bağlamak, ciro artıran kampanya araçları sunmak.*
 
@@ -130,16 +163,6 @@ flowchart LR
    - Kasada puanla ödeme seçeneği.
 2. **Müşteri İndirim Kartları & SMS:**
    - Telefon numarası veya müşteri kartı ile anında tanıma.
-
----
-
-### 🔵 FAZ 18: ÇOKLU ŞUBE, DEPO TRANSFERLERİ & E-BELGE / ÖKC
-*Hedef: Zincirleşen işletmeler ve kurumsal yasal mevzuat uyumluluğu.*
-
-#### A. İşlevsel Kapsam
-1. **Şubeler Arası Stok Transferi:** Merkez depo -> Şube 1, Şube 2 arası irsaliyeli mal sevkiyatı.
-2. **Merkezi Fiyat Yönetimi:** Merkezden tek tıkla tüm şubelerin satış fiyatını güncelleme.
-3. **Yeni Nesil ÖKC & E-Arşiv:** GMP-3 haberleşmesi ve entegratör üzerinden e-Arşiv / e-Fatura üretimi.
 
 ---
 

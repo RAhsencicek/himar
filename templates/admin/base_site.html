@@ -1443,6 +1443,11 @@
         <i class="bi bi-box-arrow-in-down"></i>
         <span>Mal Kabul / İade / Fire</span>
     </a>
+    <a href="{% url 'branch_transfers_view' %}" class="himarket-nav-item {% if '/management/transfers/' in request.path %}active{% endif %}" title="Şubeler ve Depolar Arası Stok Transferi (Sevk İrsaliyesi)">
+        <i class="bi bi-arrow-left-right text-info"></i>
+        <span>Şubeler Arası Transfer</span>
+        <span class="badge bg-info-subtle text-info border border-info-subtle ms-auto fs-9">Faz 18</span>
+    </a>
     <a href="{% url 'stock_take_list' %}" class="himarket-nav-item {% if '/management/stock-take/' in request.path %}active{% endif %}">
         <i class="bi bi-upc-scan"></i>
         <span>Sayım Fişleri (El Terminali)</span>

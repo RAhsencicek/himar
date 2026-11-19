@@ -15,7 +15,7 @@ import json
 from .models import (
     Product, ProductVariant, Category, CashRegister, Shift, Sale, SaleItem, Supplier, SupplierTransaction,
     CompanySetting, Customer, CustomerTransaction, StockTake, StockTakeItem, StockEntry, StockEntryItem,
-    SystemLog, Company, UserProfile, Subscription, GlobalProductPool
+    SystemLog, Company, UserProfile, Subscription, GlobalProductPool, BranchTransfer, BranchTransferItem
 )
 
 
@@ -4276,6 +4276,265 @@ class ExpirationAndBossCockpitTestSuite(TestCase):
         self.assertEqual(data['metrics']['cancelled_count'], 1)
         self.assertEqual(data['metrics']['cancelled_total'], 80.00)
         self.assertEqual(len(data['open_shifts']), 1)
+
+
+class BranchTransferAndFiscalTestSuite(TestCase):
+    """
+    Faz 18: Çoklu Şube, Depo Stok Transferi, Merkezi Fiyat Yayılımı ve Yeni Nesil ÖKC Testleri
+    """
+    def setUp(self):
+        self.client = Client()
+
+        # 1. Merkez Mağaza / Depo ve Bağlı Şube
+        self.hq_company = Company.objects.create(
+            name="HiMarket Merkez Depo",
+            code="merkez-depo",
+            is_warehouse=True,
+            is_active=True
+        )
+        self.branch_company = Company.objects.create(
+            name="HiMarket Kadıköy Şube",
+            code="kadikoy-sube",
+            parent=self.hq_company,
+            is_warehouse=False,
+            is_active=True
+        )
+
+        # 2. Kullanıcılar ve Profiller
+        self.hq_user = User.objects.create_user(
+            username="hq_admin",
+            password="Password123!",
+            is_staff=True
+        )
+        UserProfile.objects.create(user=self.hq_user, company=self.hq_company)
+
+        self.branch_user = User.objects.create_user(
+            username="branch_admin",
+            password="Password123!",
+            is_staff=True
+        )
+        UserProfile.objects.create(user=self.branch_user, company=self.branch_company)
+
+        # 3. Kategori ve Ürünler
+        self.cat_hq = Category.objects.create(company=self.hq_company, name="Temel Gıda")
+        self.prod_hq = Product.objects.create(
+            company=self.hq_company,
+            barcode="869000001801",
+            name="Organik Süt 1L",
+            category=self.cat_hq,
+            buy_price=Decimal("20.00"),
+            sell_price=Decimal("30.00"),
+            vat_rate=Decimal("1.00"),
+            stock_quantity=Decimal("50.000"),
+            unit="Adet",
+            is_active=True
+        )
+
+        # Kasa ve Satış için setup
+        self.register = CashRegister.objects.create(
+            company=self.hq_company,
+            name="HQ Kasa 1",
+            register_code="HQ-01",
+            is_active=True
+        )
+        self.shift = Shift.objects.create(
+            cash_register=self.register,
+            cashier=self.hq_user,
+            opening_float=Decimal("500.00"),
+            is_closed=False
+        )
+
+    def test_company_hierarchy_and_warehouse(self):
+        """Şirket hiyerarşisi (parent/child) ve depo özelliği doğru çalışmalıdır."""
+        self.assertTrue(self.hq_company.is_warehouse)
+        self.assertFalse(self.branch_company.is_warehouse)
+        self.assertEqual(self.branch_company.parent, self.hq_company)
+        self.assertIn(self.branch_company, self.hq_company.branches.all())
+
+    def test_branch_transfer_lifecycle_ship_and_receive(self):
+        """Stok transferi sevk edildiğinde kaynak stok düşmeli, teslim alındığında hedef stoğa eklenmelidir."""
+        # 1. Transfer Oluştur (Taslak)
+        transfer = BranchTransfer.objects.create(
+            transfer_number="TRF-TEST-001",
+            from_company=self.hq_company,
+            to_company=self.branch_company,
+            status="DRAFT",
+            created_by=self.hq_user
+        )
+        BranchTransferItem.objects.create(
+            transfer=transfer,
+            product=self.prod_hq,
+            quantity=Decimal("15.000"),
+            unit="Adet"
+        )
+        self.assertEqual(transfer.status, "DRAFT")
+        self.assertEqual(transfer.total_quantity, Decimal("15.000"))
+
+        # 2. Sevk Et (Yola Çıkar)
+        transfer.ship(user=self.hq_user)
+        self.assertEqual(transfer.status, "IN_TRANSIT")
+        self.assertIsNotNone(transfer.shipped_at)
+
+        self.prod_hq.refresh_from_db()
+        self.assertEqual(self.prod_hq.stock_quantity, Decimal("35.000"))  # 50 - 15 = 35
+
+        # 3. Varış Şubesinde Teslim Al
+        transfer.receive(user=self.branch_user)
+        self.assertEqual(transfer.status, "COMPLETED")
+        self.assertIsNotNone(transfer.received_at)
+        self.assertEqual(transfer.received_by, self.branch_user)
+
+        # Hedef şubede ürün otomatik oluşmuş veya stoku artmış olmalı
+        branch_prod = Product.objects.filter(company=self.branch_company, barcode=self.prod_hq.barcode).first()
+        self.assertIsNotNone(branch_prod)
+        self.assertEqual(branch_prod.stock_quantity, Decimal("15.000"))
+        self.assertEqual(branch_prod.sell_price, Decimal("30.000"))
+
+    def test_branch_transfer_cancellation_restores_stock(self):
+        """Yoldaki bir transfer iptal edildiğinde düşülen stoklar kaynak depoya iade edilmelidir."""
+        transfer = BranchTransfer.objects.create(
+            transfer_number="TRF-TEST-002",
+            from_company=self.hq_company,
+            to_company=self.branch_company,
+            status="DRAFT",
+            created_by=self.hq_user
+        )
+        BranchTransferItem.objects.create(
+            transfer=transfer,
+            product=self.prod_hq,
+            quantity=Decimal("10.000"),
+            unit="Adet"
+        )
+        transfer.ship(user=self.hq_user)
+        self.prod_hq.refresh_from_db()
+        self.assertEqual(self.prod_hq.stock_quantity, Decimal("40.000"))  # 50 - 10 = 40
+
+        # İptal et
+        transfer.cancel(user=self.hq_user)
+        self.assertEqual(transfer.status, "CANCELLED")
+        self.prod_hq.refresh_from_db()
+        self.assertEqual(self.prod_hq.stock_quantity, Decimal("50.000"))  # Stok geri iade edildi!
+
+    def test_branch_transfers_views_and_actions(self):
+        """Transfer yönetim ekranları, oluşturma formu ve aksiyon uç noktaları doğru çalışmalıdır."""
+        self.client.force_login(self.hq_user)
+
+        # Liste sayfası
+        res_list = self.client.get(reverse('branch_transfers_view'))
+        self.assertEqual(res_list.status_code, 200)
+
+        # Yeni transfer oluşturma formu (GET)
+        res_create_get = self.client.get(reverse('branch_transfer_create_view'))
+        self.assertEqual(res_create_get.status_code, 200)
+
+        # Yeni transfer oluşturma (POST - DRAFT)
+        res_create_post = self.client.post(reverse('branch_transfer_create_view'), {
+            'to_company_id': self.branch_company.id,
+            'action_type': 'DRAFT',
+            'notes': 'Test sevk',
+            'product_id[]': [self.prod_hq.id],
+            'quantity[]': ['5.000'],
+            'item_notes[]': ['Özenli taşıyınız']
+        })
+        self.assertEqual(res_create_post.status_code, 302)
+
+        created_transfer = BranchTransfer.objects.filter(from_company=self.hq_company, status='DRAFT').first()
+        self.assertIsNotNone(created_transfer)
+        self.assertEqual(created_transfer.items.count(), 1)
+
+        # Detay sayfası (GET)
+        res_detail = self.client.get(reverse('branch_transfer_detail_view', args=[created_transfer.id]))
+        self.assertEqual(res_detail.status_code, 200)
+        self.assertContains(res_detail, created_transfer.transfer_number)
+
+        # Sevk aksiyonu (POST)
+        res_ship = self.client.post(reverse('branch_transfer_ship_action', args=[created_transfer.id]))
+        self.assertEqual(res_ship.status_code, 302)
+        created_transfer.refresh_from_db()
+        self.assertEqual(created_transfer.status, 'IN_TRANSIT')
+
+        # CSV İndirme
+        res_csv = self.client.get(reverse('export_transfers_csv'))
+        self.assertEqual(res_csv.status_code, 200)
+        self.assertIn('text/csv', res_csv['Content-Type'])
+
+    def test_central_price_propagation(self):
+        """Merkez mağazadan fiyat güncellendiğinde bağlı alt şubelere otomatik yayılmalıdır."""
+        # Şubede de aynı ürün tanımlı olsun
+        branch_prod = Product.objects.create(
+            company=self.branch_company,
+            barcode=self.prod_hq.barcode,
+            name="Organik Süt 1L",
+            buy_price=Decimal("20.00"),
+            sell_price=Decimal("30.00"),
+            vat_rate=Decimal("1.00"),
+            stock_quantity=Decimal("5.000"),
+            unit="Adet",
+            is_active=True
+        )
+
+        self.client.force_login(self.hq_user)
+
+        # 1. API ile Fiyat Yayılımı
+        self.prod_hq.sell_price = Decimal("35.00")
+        self.prod_hq.save()
+
+        propagate_url = reverse('product_propagate_price_api', args=[self.prod_hq.id])
+        res_prop = self.client.post(propagate_url)
+        self.assertEqual(res_prop.status_code, 200)
+        data = res_prop.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['updated_count'], 1)
+
+        branch_prod.refresh_from_db()
+        self.assertEqual(branch_prod.sell_price, Decimal("35.00"))
+
+        # 2. Hızlı Satır İçi Fiyat Güncellemede Şubelere Yayılım
+        quick_url = reverse('product_quick_price_update_api', args=[self.prod_hq.id])
+        res_quick = self.client.post(
+            quick_url,
+            data=json.dumps({'sell_price': '38.50', 'propagate_to_branches': True}),
+            content_type='application/json'
+        )
+        self.assertEqual(res_quick.status_code, 200)
+        branch_prod.refresh_from_db()
+        self.assertEqual(branch_prod.sell_price, Decimal("38.50"))
+
+    def test_okc_sale_trigger_api(self):
+        """Yeni Nesil ÖKC API'si satış için geçerli mali onay kodu, ETTN ve QR kod üretmelidir."""
+        sale = Sale.objects.create(
+            company=self.hq_company,
+            shift=self.shift,
+            cashier=self.hq_user,
+            receipt_number="OKC-TEST-001",
+            payment_type="KART",
+            total_amount=Decimal("125.50"),
+            is_cancelled=False
+        )
+
+        url = reverse('okc_sale_trigger_api')
+        res = self.client.post(
+            url,
+            data=json.dumps({
+                'sale_id': sale.id,
+                'device_brand': 'BEKO_300TR',
+                'slip_number': '123456'
+            }),
+            content_type='application/json'
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data['success'])
+        self.assertTrue(data['fiscal_code'].startswith('FP-'))
+        self.assertIsNotNone(data['ettn'])
+        self.assertIn('VKN:', data['qr_code_data'])
+        self.assertIn('TUTAR:125.50', data['qr_code_data'])
+
+        sale.refresh_from_db()
+        self.assertEqual(sale.fiscal_approval_code, data['fiscal_code'])
+        self.assertEqual(str(sale.ettn), data['ettn'])
+        self.assertEqual(sale.qr_code_data, data['qr_code_data'])
+
 
 
 

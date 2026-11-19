@@ -403,6 +403,11 @@
                                                     <i class="bi bi-tag text-info"></i> Raf Etiketi Bas
                                                 </a>
                                             </li>
+                                            <li>
+                                                <button type="button" class="dropdown-item py-1.5 d-flex align-items-center gap-2 text-primary" onclick="propagatePrice({{ p.id }}, '{{ p.name|escapejs }}', '{{ p.sell_price }}')">
+                                                    <i class="bi bi-diagram-3-fill"></i> Şubelere Fiyatı Dağıt
+                                                </button>
+                                            </li>
                                             <li><hr class="dropdown-divider my-1"></li>
                                             <li>
                                                 <form method="post" action="{% url 'product_toggle_active_action' p.id %}">
@@ -679,6 +684,29 @@ async function submitQuickPriceEdit(btnOrInput, productId) {
         displayEl.classList.remove('d-none');
     } finally {
         input.disabled = false;
+    }
+}
+
+async function propagatePrice(productId, productName, currentPrice) {
+    if (!confirm(`'${productName}' ürününün güncel fiyatı (${currentPrice} TL) bağlı tüm şubelere aktarılacaktır. Onaylıyor musunuz?`)) {
+        return;
+    }
+    try {
+        const response = await fetch(`/api/product/${productId}/propagate-price/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': '{{ csrf_token }}',
+                'Content-Type': 'application/json'
+            }
+        });
+        const data = await response.json();
+        if (data.success) {
+            alert(data.message);
+        } else {
+            alert('Hata: ' + data.message);
+        }
+    } catch (err) {
+        alert('Sunucu iletişim hatası: ' + err.message);
     }
 }
 </script>

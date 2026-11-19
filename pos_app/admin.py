@@ -4,7 +4,8 @@ from django.utils.safestring import mark_safe
 from .models import (
     Category, Product, CashRegister, Shift, Sale, SaleItem,
     Supplier, SupplierTransaction, StockEntry, StockEntryItem, SystemLog,
-    Company, UserProfile, Subscription, CompanySetting
+    Company, UserProfile, Subscription, CompanySetting,
+    BranchTransfer, BranchTransferItem
 )
 
 
@@ -84,6 +85,31 @@ class SupplierTransactionAdmin(admin.ModelAdmin):
 class StockEntryItemInline(admin.TabularInline):
     model = StockEntryItem
     extra = 0
+
+
+class BranchTransferItemInline(admin.TabularInline):
+    model = BranchTransferItem
+    extra = 0
+    autocomplete_fields = ['product']
+
+
+@admin.register(BranchTransfer)
+class BranchTransferAdmin(admin.ModelAdmin):
+    list_display = ('transfer_number', 'from_company', 'to_company', 'status_badge', 'shipped_at', 'received_at', 'created_at')
+    list_filter = ('status', 'from_company', 'to_company')
+    search_fields = ('transfer_number', 'notes')
+    inlines = [BranchTransferItemInline]
+
+    def status_badge(self, obj):
+        colors = {
+            'DRAFT': 'secondary',
+            'IN_TRANSIT': 'warning',
+            'COMPLETED': 'success',
+            'CANCELLED': 'danger'
+        }
+        color = colors.get(obj.status, 'info')
+        return mark_safe(f'<span class="badge bg-{color} text-white px-2 py-1">{obj.get_status_display()}</span>')
+    status_badge.short_description = "Transfer Durumu"
 
 
 @admin.register(StockEntry)

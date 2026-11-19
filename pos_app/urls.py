@@ -170,4 +170,17 @@ urlpatterns = [
     path('manifest.json', views.manifest_view, name='pwa_manifest'),
     path('api/pos/catalog-cache/', views.pos_catalog_cache_api, name='pos_catalog_cache_api'),
     path('api/sale/offline-sync/', views.offline_sale_sync_api, name='offline_sale_sync_api'),
+
+    # Faz 18: Çoklu Şube, Depo Stok Transferi & Merkezi Fiyat Dağıtımı
+    path('management/transfers/', views.branch_transfers_view, name='branch_transfers_view'),
+    path('management/transfers/create/', views.branch_transfer_create_view, name='branch_transfer_create_view'),
+    path('management/transfers/export/', views.export_transfers_csv, name='export_transfers_csv'),
+    path('management/transfers/<int:transfer_id>/', views.branch_transfer_detail_view, name='branch_transfer_detail_view'),
+    path('management/transfers/<int:transfer_id>/ship/', views.branch_transfer_ship_action, name='branch_transfer_ship_action'),
+    path('management/transfers/<int:transfer_id>/receive/', views.branch_transfer_receive_action, name='branch_transfer_receive_action'),
+    path('management/transfers/<int:transfer_id>/cancel/', views.branch_transfer_cancel_action, name='branch_transfer_cancel_action'),
+    path('api/product/<int:product_id>/propagate-price/', views.product_propagate_price_api, name='product_propagate_price_api'),
+
+    # Faz 18: Yeni Nesil ÖKC & E-Belge Simülasyon API (GMP-3 / JSON)
+    path('api/okc/sale-trigger/', views.okc_sale_trigger_api, name='okc_sale_trigger_api'),
 ]

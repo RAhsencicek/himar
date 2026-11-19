@@ -21,16 +21,20 @@ import shutil
 import json
 import datetime
 import calendar
+import random
+import uuid
 from datetime import timedelta
 from django.db.models import Q, Sum, Count, F
 from django.db import transaction, connection, IntegrityError
+from django.views.decorators.csrf import csrf_exempt
 import urllib.parse
 import re
 from .models import (
     Product, ProductVariant, Category, CashRegister, Shift, Sale, SaleItem,
     Supplier, SupplierTransaction, StockEntry, StockEntryItem, SystemLog, log_action,
     CompanySetting, Customer, CustomerTransaction, StockTake, StockTakeItem,
-    Company, UserProfile, get_user_company, Subscription, GlobalProductPool
+    Company, UserProfile, get_user_company, Subscription, GlobalProductPool,
+    BranchTransfer, BranchTransferItem
 )
 from .printer_service import silent_print_receipt, trigger_cash_drawer_only, silent_print_collection_receipt
 from .fiscal_service import calculate_vat_breakdown, apply_fiscal_data_to_sale, get_company_fiscal_profile
@@ -3006,6 +3010,30 @@ def product_create_edit_view(request, product_id=None):
                 )
                 log_action('PRODUCT', 'Yeni Ürün Eklendi', f"{product.name} ({product.barcode}) eklendi.", user=request.user)
                 messages.success(request, f"Yeni ürün '{name}' başarıyla eklendi.")
+
+            # Faz 18: Merkezi Fiyat Yayılımı (HQ Price Push)
+            propagate_price = request.POST.get('propagate_price') == 'on'
+            if propagate_price and user_company:
+                branches = Company.objects.filter(is_active=True).exclude(id=user_company.id)
+                if user_company.branches.exists():
+                    branches = user_company.branches.filter(is_active=True)
+                elif user_company.parent:
+                    branches = Company.objects.filter(
+                        Q(id=user_company.parent.id) | Q(parent=user_company.parent)
+                    ).exclude(id=user_company.id).filter(is_active=True)
+                
+                synced_count = 0
+                for b in branches:
+                    cnt = Product.objects.filter(company=b, barcode=product.barcode).update(
+                        sell_price=product.sell_price,
+                        buy_price=product.buy_price,
+                        vat_rate=product.vat_rate,
+                        updated_at=timezone.now()
+                    )
+                    if cnt:
+                        synced_count += cnt
+                if synced_count > 0:
+                    messages.info(request, f"Fiyat ve KDV güncellemesi {synced_count} bağlı şubeye otomatik yansıtıldı.")
         except IntegrityError:
             messages.error(request, f"'{barcode}' barkodu veritabanında zaten kayıtlı.")
             return render_form(posted_data)
@@ -6215,10 +6243,38 @@ def product_quick_price_update_api(request, product_id):
         product.sell_price = new_price
         product.save(update_fields=['sell_price'])
 
+        # Faz 18: Şubelere anında fiyat senkronizasyonu
+        propagate_branches = False
+        if request.content_type == 'application/json':
+            propagate_branches = bool(payload.get('propagate_to_branches', False))
+        else:
+            propagate_branches = request.POST.get('propagate_to_branches') in ('true', '1', 'on')
+
+        synced_branches_count = 0
+        if propagate_branches and user_company:
+            branches = Company.objects.filter(is_active=True).exclude(id=user_company.id)
+            if user_company.branches.exists():
+                branches = user_company.branches.filter(is_active=True)
+            elif user_company.parent:
+                branches = Company.objects.filter(
+                    Q(id=user_company.parent.id) | Q(parent=user_company.parent)
+                ).exclude(id=user_company.id).filter(is_active=True)
+            for b in branches:
+                c = Product.objects.filter(company=b, barcode=product.barcode).update(
+                    sell_price=new_price,
+                    updated_at=timezone.now()
+                )
+                if c:
+                    synced_branches_count += c
+
+        log_msg = f"{product.name} [{product.barcode}] satış fiyatı ₺{old_price:.2f} -> ₺{new_price:.2f} olarak güncellendi."
+        if synced_branches_count > 0:
+            log_msg += f" ({synced_branches_count} şubeye senkronize edildi)"
+
         log_action(
             'PRODUCT',
             'Hızlı Satır İçi Fiyat Güncelleme',
-            f"{product.name} [{product.barcode}] satış fiyatı ₺{old_price:.2f} -> ₺{new_price:.2f} olarak güncellendi.",
+            log_msg,
             user=request.user
         )
 
@@ -6230,11 +6286,12 @@ def product_quick_price_update_api(request, product_id):
 
         return JsonResponse({
             'success': True,
-            'message': f"'{product.name}' satış fiyatı ₺{new_price:.2f} olarak güncellendi.",
+            'message': f"'{product.name}' satış fiyatı ₺{new_price:.2f} olarak güncellendi." + (f" ({synced_branches_count} şubeye uygulandı)" if synced_branches_count > 0 else ""),
             'product_id': product.id,
             'new_sell_price': float(new_price),
             'profit_amount': float(profit_amount),
             'profit_percent': float(round(profit_percent, 1)),
+            'synced_branches_count': synced_branches_count,
         })
     except (ValueError, ArithmeticError) as e:
         return JsonResponse({'success': False, 'message': f'Geçersiz sayısal fiyat: {e}'}, status=400)
@@ -7357,6 +7414,406 @@ def manifest_view(request):
     response = HttpResponse(content, content_type="application/manifest+json")
     response['Cache-Control'] = 'public, max-age=86400'
     return response
+
+
+# ==========================================================
+# FAZ 18: ÇOKLU ŞUBE, DEPO STOK TRANSFERİ & MERKEZİ FİYAT YÖNETİMİ
+# ==========================================================
+
+@staff_required
+def branch_transfers_view(request):
+    """
+    Faz 18: Şubeler ve Depolar Arası Stok Transferleri Listesi
+    Merkez Depo ile şubeler veya şubeler arası sevk irsaliyelerini listeler.
+    """
+    user_company = get_user_company(request.user)
+    status_filter = request.GET.get('status', '').strip()
+    direction_filter = request.GET.get('direction', '').strip()  # 'SENT' or 'RECEIVED'
+    q = request.GET.get('q', '').strip()
+
+    if request.user.is_superuser and not user_company:
+        base_qs = BranchTransfer.objects.all()
+    else:
+        base_qs = BranchTransfer.objects.filter(Q(from_company=user_company) | Q(to_company=user_company))
+
+    transfers = base_qs.select_related('from_company', 'to_company', 'created_by', 'received_by').prefetch_related('items__product')
+
+    if status_filter:
+        transfers = transfers.filter(status=status_filter)
+    if direction_filter == 'SENT':
+        transfers = transfers.filter(from_company=user_company)
+    elif direction_filter == 'RECEIVED':
+        transfers = transfers.filter(to_company=user_company)
+
+    if q:
+        transfers = transfers.filter(
+            Q(transfer_number__icontains=q) |
+            Q(notes__icontains=q) |
+            Q(from_company__name__icontains=q) |
+            Q(to_company__name__icontains=q)
+        )
+
+    # KPI Metrikleri
+    all_scoped = base_qs
+    total_count = all_scoped.count()
+    in_transit_count = all_scoped.filter(status='IN_TRANSIT').count()
+    completed_count = all_scoped.filter(status='COMPLETED').count()
+    incoming_pending_count = all_scoped.filter(to_company=user_company, status='IN_TRANSIT').count()
+
+    paginator = Paginator(transfers, 20)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    query_params = request.GET.copy()
+    query_params.pop('page', None)
+    query_string = query_params.urlencode()
+
+    context = {
+        'page_obj': page_obj,
+        'transfers': page_obj.object_list,
+        'status_filter': status_filter,
+        'direction_filter': direction_filter,
+        'q': q,
+        'query_string': query_string,
+        'total_count': total_count,
+        'in_transit_count': in_transit_count,
+        'completed_count': completed_count,
+        'incoming_pending_count': incoming_pending_count,
+        'user_company': user_company,
+    }
+    return render(request, 'admin/branch_transfers.html', context)
+
+
+@staff_required
+def branch_transfer_create_view(request):
+    """
+    Faz 18: Yeni Şubeler Arası Stok Transferi (Sevk İrsaliyesi) Hazırlama
+    """
+    user_company = get_user_company(request.user)
+    target_companies = Company.objects.filter(is_active=True).exclude(id=user_company.id)
+
+    available_products = Product.objects.filter(
+        company_scope_q(user_company),
+        is_active=True
+    ).order_by('name')
+
+    if request.method == 'POST':
+        to_company_id = request.POST.get('to_company_id')
+        notes = request.POST.get('notes', '').strip()
+        action_type = request.POST.get('action_type', 'DRAFT')  # 'DRAFT' or 'SHIP'
+
+        to_company = target_companies.filter(id=to_company_id).first()
+        if not to_company:
+            messages.error(request, "Lütfen geçerli bir varış şubesi veya depo seçiniz.")
+            return render(request, 'admin/branch_transfer_form.html', {
+                'target_companies': target_companies,
+                'available_products': available_products,
+                'user_company': user_company,
+            })
+
+        product_ids = request.POST.getlist('product_id[]')
+        quantities = request.POST.getlist('quantity[]')
+        item_notes = request.POST.getlist('item_notes[]')
+
+        items_to_create = []
+        for i, pid in enumerate(product_ids):
+            if not pid:
+                continue
+            prod = available_products.filter(id=pid).first()
+            if not prod:
+                continue
+            try:
+                qty_val = _parse_decimal(quantities[i] if i < len(quantities) else '1', Decimal('1.000'))
+            except ValueError:
+                qty_val = Decimal('1.000')
+
+            if qty_val <= Decimal('0.000'):
+                continue
+
+            note = item_notes[i].strip() if i < len(item_notes) else ''
+            items_to_create.append({
+                'product': prod,
+                'quantity': qty_val,
+                'unit': prod.unit,
+                'notes': note
+            })
+
+        if not items_to_create:
+            messages.error(request, "Transfer belgesine en az bir geçerli ürün ve miktar eklemelisiniz.")
+            return render(request, 'admin/branch_transfer_form.html', {
+                'target_companies': target_companies,
+                'available_products': available_products,
+                'user_company': user_company,
+            })
+
+        transfer_num = f"TRF-{timezone.now().strftime('%Y%m%d%H%M%S')}"
+        with transaction.atomic():
+            transfer = BranchTransfer.objects.create(
+                transfer_number=transfer_num,
+                from_company=user_company,
+                to_company=to_company,
+                status='DRAFT',
+                notes=notes,
+                created_by=request.user
+            )
+            for itm in items_to_create:
+                BranchTransferItem.objects.create(
+                    transfer=transfer,
+                    product=itm['product'],
+                    quantity=itm['quantity'],
+                    unit=itm['unit'],
+                    notes=itm['notes']
+                )
+
+            if action_type == 'SHIP':
+                transfer.ship(user=request.user)
+                log_action('TRANSFER', 'Transfer Sevk Edildi', f"{transfer.transfer_number} sevk edildi ({user_company.name} -> {to_company.name})", user=request.user, company=user_company)
+                messages.success(request, f"Transfer #{transfer.transfer_number} oluşturuldu ve doğrudan sevk edildi (yola çıktı).")
+            else:
+                log_action('TRANSFER', 'Taslak Transfer Oluşturuldu', f"{transfer.transfer_number} taslağı kaydedildi ({user_company.name} -> {to_company.name})", user=request.user, company=user_company)
+                messages.success(request, f"Transfer #{transfer.transfer_number} taslak olarak kaydedildi.")
+
+        return redirect('branch_transfer_detail_view', transfer_id=transfer.id)
+
+    return render(request, 'admin/branch_transfer_form.html', {
+        'target_companies': target_companies,
+        'available_products': available_products,
+        'user_company': user_company,
+    })
+
+
+@staff_required
+def branch_transfer_detail_view(request, transfer_id):
+    """
+    Transfer Belgesi Detayı ve Yazdırılabilir Sevk İrsaliyesi / Transfer Fişi
+    """
+    user_company = get_user_company(request.user)
+    if request.user.is_superuser and not user_company:
+        transfer = get_object_or_404(BranchTransfer.objects.select_related('from_company', 'to_company', 'created_by', 'received_by'), id=transfer_id)
+    else:
+        transfer = get_object_or_404(
+            BranchTransfer.objects.filter(Q(from_company=user_company) | Q(to_company=user_company)).select_related('from_company', 'to_company', 'created_by', 'received_by'),
+            id=transfer_id
+        )
+
+    items = transfer.items.select_related('product', 'product__category').all()
+    can_ship = (transfer.status == 'DRAFT' and (transfer.from_company == user_company or request.user.is_superuser))
+    can_receive = (transfer.status == 'IN_TRANSIT' and (transfer.to_company == user_company or request.user.is_superuser))
+    can_cancel = (transfer.status in ('DRAFT', 'IN_TRANSIT') and (transfer.from_company == user_company or request.user.is_superuser))
+
+    context = {
+        'transfer': transfer,
+        'items': items,
+        'user_company': user_company,
+        'can_ship': can_ship,
+        'can_receive': can_receive,
+        'can_cancel': can_cancel,
+    }
+    return render(request, 'admin/branch_transfer_detail.html', context)
+
+
+@staff_required
+@require_POST
+def branch_transfer_ship_action(request, transfer_id):
+    """Transferi yola çıkarır (Kaynak şubeden stok düşer)"""
+    user_company = get_user_company(request.user)
+    transfer = get_object_or_404(BranchTransfer, id=transfer_id)
+    if transfer.from_company != user_company and not request.user.is_superuser:
+        messages.error(request, "Bu transferi sevk etme yetkiniz bulunmamaktadır.")
+        return redirect('branch_transfer_detail_view', transfer_id=transfer.id)
+
+    try:
+        with transaction.atomic():
+            transfer.ship(user=request.user)
+        log_action('TRANSFER', 'Transfer Sevk Edildi', f"{transfer.transfer_number} yola çıkarıldı.", user=request.user, company=user_company)
+        messages.success(request, f"Transfer #{transfer.transfer_number} başarıyla sevk edildi. Ürünler şube stoğunuzdan düşüldü.")
+    except Exception as e:
+        messages.error(request, f"Sevk işlemi başarısız: {e}")
+    return redirect('branch_transfer_detail_view', transfer_id=transfer.id)
+
+
+@staff_required
+@require_POST
+def branch_transfer_receive_action(request, transfer_id):
+    """Transferi varış şubesinde teslim alır (Hedef şube stoğuna dahil eder)"""
+    user_company = get_user_company(request.user)
+    transfer = get_object_or_404(BranchTransfer, id=transfer_id)
+    if transfer.to_company != user_company and not request.user.is_superuser:
+        messages.error(request, "Bu transferi teslim alma yetkiniz bulunmamaktadır.")
+        return redirect('branch_transfer_detail_view', transfer_id=transfer.id)
+
+    try:
+        with transaction.atomic():
+            transfer.receive(user=request.user)
+        log_action('TRANSFER', 'Transfer Teslim Alındı', f"{transfer.transfer_number} teslim alındı ve stoğa eklendi.", user=request.user, company=user_company)
+        messages.success(request, f"Transfer #{transfer.transfer_number} başarıyla teslim alındı ve ürünler şube stoğunuza dahil edildi.")
+    except Exception as e:
+        messages.error(request, f"Teslim alma işlemi başarısız: {e}")
+    return redirect('branch_transfer_detail_view', transfer_id=transfer.id)
+
+
+@staff_required
+@require_POST
+def branch_transfer_cancel_action(request, transfer_id):
+    """Transferi iptal eder (Yoldaysa stokları kaynak şubeye geri yükler)"""
+    user_company = get_user_company(request.user)
+    transfer = get_object_or_404(BranchTransfer, id=transfer_id)
+    if transfer.from_company != user_company and not request.user.is_superuser:
+        messages.error(request, "Bu transferi iptal etme yetkiniz bulunmamaktadır.")
+        return redirect('branch_transfer_detail_view', transfer_id=transfer.id)
+
+    try:
+        with transaction.atomic():
+            transfer.cancel(user=request.user)
+        log_action('TRANSFER', 'Transfer İptal Edildi', f"{transfer.transfer_number} iptal edildi.", user=request.user, company=user_company)
+        messages.info(request, f"Transfer #{transfer.transfer_number} iptal edildi. Varsa düşülen stoklar geri iade edildi.")
+    except Exception as e:
+        messages.error(request, f"İptal işlemi başarısız: {e}")
+    return redirect('branch_transfer_detail_view', transfer_id=transfer.id)
+
+
+@staff_required
+def export_transfers_csv(request):
+    """Transfer belgeleri CSV dışa aktarımı"""
+    user_company = get_user_company(request.user)
+    transfers = BranchTransfer.objects.filter(
+        Q(from_company=user_company) | Q(to_company=user_company)
+    ).select_related('from_company', 'to_company', 'created_by')
+
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = f'attachment; filename="himarket_transferler_{timezone.now().strftime("%Y%m%d")}.csv"'
+    response.write('\ufeff'.encode('utf-8'))
+
+    writer = csv.writer(response, delimiter=';')
+    writer.writerow(['Transfer No', 'Çıkış Şubesi', 'Varış Şubesi', 'Durum', 'Toplam Miktar', 'Oluşturan', 'Sevk Tarihi', 'Teslim Tarihi', 'Notlar'])
+
+    for t in transfers:
+        writer.writerow([
+            t.transfer_number,
+            t.from_company.name,
+            t.to_company.name,
+            t.get_status_display(),
+            f"{t.total_quantity:.3f}",
+            t.created_by.username if t.created_by else '-',
+            t.shipped_at.strftime('%d.%m.%Y %H:%M') if t.shipped_at else '-',
+            t.received_at.strftime('%d.%m.%Y %H:%M') if t.received_at else '-',
+            t.notes or ''
+        ])
+    return response
+
+
+@staff_required
+@require_POST
+def product_propagate_price_api(request, product_id):
+    """
+    Faz 18: Merkezi Fiyat Yayılımı API (HQ Price Push)
+    Merkez mağazadaki ürünün güncel satış fiyatını, aynı barkoda sahip tüm aktif bağlı şubelere tek tıkla senkronize eder.
+    """
+    user_company = get_user_company(request.user)
+    product = get_object_or_404(Product.objects.filter(company_scope_q(user_company)), id=product_id)
+
+    target_companies = Company.objects.filter(is_active=True).exclude(id=user_company.id)
+    if user_company.branches.exists():
+        target_companies = user_company.branches.filter(is_active=True)
+    elif user_company.parent:
+        target_companies = Company.objects.filter(
+            Q(id=user_company.parent.id) | Q(parent=user_company.parent)
+        ).exclude(id=user_company.id).filter(is_active=True)
+
+    updated_count = 0
+    branches_updated = []
+    with transaction.atomic():
+        for comp in target_companies:
+            count = Product.objects.filter(company=comp, barcode=product.barcode).update(
+                sell_price=product.sell_price,
+                buy_price=product.buy_price,
+                vat_rate=product.vat_rate,
+                updated_at=timezone.now()
+            )
+            if count > 0:
+                updated_count += count
+                branches_updated.append(comp.name)
+
+    log_action(
+        'PRODUCT',
+        'Merkezi Fiyat Dağıtımı',
+        f"{product.name} [{product.barcode}] fiyatı (₺{product.sell_price:.2f}) {len(branches_updated)} şubeye senkronize edildi: {', '.join(branches_updated)}",
+        user=request.user,
+        company=user_company
+    )
+
+    return JsonResponse({
+        'success': True,
+        'message': f"'{product.name}' ürününün yeni satış fiyatı (₺{product.sell_price:.2f}) {len(branches_updated)} şubeye başarıyla dağıtıldı.",
+        'updated_count': updated_count,
+        'branches': branches_updated
+    })
+
+
+# ==========================================================
+# FAZ 18: YENİ NESİL ÖKC & E-BELGE SİMÜLASYON API (GMP-3 / JSON)
+# ==========================================================
+
+@csrf_exempt
+def okc_sale_trigger_api(request):
+    """
+    Faz 18: Yeni Nesil ÖKC & Harici POS / Mali Fiş Simülasyon API (GMP-3 / JSON)
+    Beko, Hugin, Ingenico vb. yeni nesil ödeme kaydedici cihazlarla entegrasyonu simüle eder.
+    Satış için mali onay kodu (FP-...), ETTN (UUID) ve GİB uyumlu karekod oluşturur.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'Yalnızca POST istekleri kabul edilir.'}, status=405)
+
+    try:
+        if request.content_type == 'application/json':
+            payload = json.loads(request.body.decode('utf-8'))
+        else:
+            payload = request.POST
+
+        receipt_number = payload.get('receipt_number')
+        sale_id = payload.get('sale_id')
+        device_brand = payload.get('device_brand', 'BEKO_300TR')
+        slip_number = payload.get('slip_number', f"{timezone.now().strftime('%H%M%S')}")
+
+        sale = None
+        if sale_id:
+            sale = Sale.objects.filter(id=sale_id).first()
+        elif receipt_number:
+            sale = Sale.objects.filter(receipt_number=receipt_number).first()
+
+        if not sale:
+            return JsonResponse({'success': False, 'message': 'İlgili satış kaydı bulunamadı.'}, status=404)
+
+        if not sale.ettn:
+            sale.ettn = uuid.uuid4()
+
+        fiscal_code = f"FP-{timezone.now().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
+        sale.fiscal_approval_code = fiscal_code
+        sale.document_type = 'BILGI_FISI' if sale.document_type == 'BILGI_FISI' else 'E_ARSIV'
+
+        qr_data = (
+            f"VKN:{sale.company.tax_number if sale.company and sale.company.tax_number else '1234567890'}|"
+            f"TUTAR:{sale.total_amount:.2f}|"
+            f"TARIH:{timezone.now().strftime('%Y-%m-%d')}|"
+            f"ETTN:{str(sale.ettn)}|"
+            f"OKC:{device_brand}"
+        )
+        sale.qr_code_data = qr_data
+        sale.save(update_fields=['ettn', 'fiscal_approval_code', 'document_type', 'qr_code_data'])
+
+        return JsonResponse({
+            'success': True,
+            'message': 'ÖKC Mali Onayı Başarıyla Alındı.',
+            'fiscal_code': fiscal_code,
+            'ettn': str(sale.ettn),
+            'slip_number': slip_number,
+            'qr_code_data': qr_data,
+            'document_type': sale.document_type,
+            'total_amount': float(sale.total_amount),
+            'timestamp': timezone.now().isoformat()
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f'ÖKC entegrasyon hatası: {str(e)}'}, status=500)
+
 
 
 

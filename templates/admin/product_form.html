@@ -150,6 +150,21 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- FAZ 18: MERKEZİ FİYAT YAYILIMI (HQ PRICE PUSH) -->
+                            {% if company.branches.exists or company.parent or company.code == 'default' %}
+                            <div class="col-12 mt-2">
+                                <div class="form-check form-switch p-2.5 ps-5 rounded-2 border bg-light d-flex align-items-center justify-content-between">
+                                    <div>
+                                        <label class="form-check-label fw-bold text-dark fs-8 d-block" for="propagatePriceCheck">
+                                            <i class="bi bi-diagram-3-fill text-primary me-1"></i> Merkezi Fiyat Yayılımı: Yeni Fiyatı Bağlı Şubelere Otomatik Senkronize Et
+                                        </label>
+                                        <small class="text-secondary fs-8">Bu seçenek seçiliyken ürün kaydedildiğinde, aynı barkoda sahip alt şubelerdeki raf fiyatı ve KDV oranı tek tıkla eşitlenir.</small>
+                                    </div>
+                                    <input class="form-check-input ms-2" type="checkbox" name="propagate_price" id="propagatePriceCheck" checked style="width: 2.5em; height: 1.3em;">
+                                </div>
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>

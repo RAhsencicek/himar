@@ -1,0 +1,235 @@
+{% extends "admin/base_site.html" %}
+{% load static l10n %}
+
+{% block content %}
+<div class="container-fluid p-0">
+    <!-- EKRAN ÜSTÜ AKSİYON ÇUBUĞU (YAZDIRMA SIRASINDA GİZLENİR) -->
+    <div class="d-print-none d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-2 border-bottom">
+        <div class="d-flex align-items-center gap-2">
+            <a href="{% url 'branch_transfers_view' %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Listeye Dön</a>
+            <h4 class="mb-0 fw-extrabold text-slate-900 tracking-tight font-monospace">TRANSFER #{{ transfer.transfer_number }}</h4>
+            {% if transfer.status == 'DRAFT' %}
+            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-2.5 py-1">
+                <i class="bi bi-pencil-square me-1"></i>Taslak
+            </span>
+            {% elif transfer.status == 'IN_TRANSIT' %}
+            <span class="badge bg-warning text-dark px-2.5 py-1 fw-bold shadow-xs">
+                <i class="bi bi-truck me-1"></i>Yolda (Sevk Edildi)
+            </span>
+            {% elif transfer.status == 'COMPLETED' %}
+            <span class="badge bg-success-subtle text-success border border-success-subtle px-2.5 py-1 fw-bold">
+                <i class="bi bi-check-circle-fill me-1"></i>Teslim Alındı
+            </span>
+            {% elif transfer.status == 'CANCELLED' %}
+            <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-2.5 py-1">
+                <i class="bi bi-x-circle me-1"></i>İptal Edildi
+            </span>
+            {% endif %}
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-outline-secondary fw-bold px-3 py-1.5 fs-7 shadow-xs" onclick="window.print()">
+                <i class="bi bi-printer-fill me-1"></i> İrsaliye Yazdır (A4)
+            </button>
+
+            {% if can_ship %}
+            <form method="post" action="{% url 'branch_transfer_ship_action' transfer.id %}" class="d-inline" onsubmit="return confirm('Bu transfer sevk edilip mağaza stoğunuzdan düşülecektir. Onaylıyor musunuz?');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-warning fw-bold px-3 py-1.5 fs-7 shadow-xs">
+                    <i class="bi bi-truck me-1"></i> Yola Çıkar / Sevk Et
+                </button>
+            </form>
+            {% endif %}
+
+            {% if can_receive %}
+            <form method="post" action="{% url 'branch_transfer_receive_action' transfer.id %}" class="d-inline" onsubmit="return confirm('Transfer edilen ürünler mağaza stoğunuza eklenecektir. Onaylıyor musunuz?');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success fw-bold px-3 py-1.5 fs-7 shadow-xs">
+                    <i class="bi bi-check-circle-fill me-1"></i> Teslim Al & Stoğa Ekle
+                </button>
+            </form>
+            {% endif %}
+
+            {% if can_cancel %}
+            <form method="post" action="{% url 'branch_transfer_cancel_action' transfer.id %}" class="d-inline" onsubmit="return confirm('Transfer iptal edilecek ve yoldaki stoklar çıkış şubesine iade edilecektir. Onaylıyor musunuz?');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-danger fw-bold px-3 py-1.5 fs-7">
+                    <i class="bi bi-x-circle me-1"></i> İptal Et
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- SEVK İRSALİYESİ / YAZDIRILABİLİR İÇERİK KARTI -->
+    <div class="card shadow-xs border print-voucher">
+        <div class="card-body p-4">
+            <!-- BAŞLIK VE LOGO BÖLÜMÜ -->
+            <div class="d-flex justify-content-between align-items-start border-bottom pb-3 mb-3">
+                <div>
+                    <h3 class="fw-extrabold text-slate-900 tracking-tight mb-1">HİMARKET PERAKENDE SİSTEMİ</h3>
+                    <h5 class="fw-bold text-primary mb-1">ŞUBELER ARASI SEVK İRSALİYESİ / TRANSFER FİŞİ</h5>
+                    <span class="text-secondary fs-8">Belge Tarihi: {{ transfer.created_at|date:"d.m.Y H:i" }}</span>
+                </div>
+                <div class="text-end">
+                    <div class="fs-4 fw-extrabold font-monospace text-slate-900">{{ transfer.transfer_number }}</div>
+                    <div class="mt-1">
+                        <span class="badge border px-2 py-1 fs-8 {% if transfer.status == 'COMPLETED' %}bg-success-subtle text-success border-success-subtle{% elif transfer.status == 'IN_TRANSIT' %}bg-warning-subtle text-warning-emphasis border-warning-subtle{% else %}bg-light text-dark{% endif %}">
+                            DURUM: {{ transfer.get_status_display|upper }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ŞUBE / GÜZERGAH BİLGİLERİ -->
+            <div class="row g-3 mb-4">
+                <div class="col-6">
+                    <div class="p-3 rounded border bg-light h-100">
+                        <div class="text-secondary fs-8 fw-bold text-uppercase mb-2">
+                            <i class="bi bi-box-arrow-up-right me-1 text-danger"></i> ÇIKIŞ YAPAN ŞUBE / DEPO (SEVK EDEN)
+                        </div>
+                        <h6 class="fw-bold text-slate-900 mb-1">{{ transfer.from_company.name }}</h6>
+                        <div class="text-slate-700 fs-8">
+                            <div><strong>Mağaza Kodu:</strong> {{ transfer.from_company.code }}</div>
+                            {% if transfer.from_company.address %}<div><strong>Adres:</strong> {{ transfer.from_company.address }}</div>{% endif %}
+                            {% if transfer.from_company.phone %}<div><strong>Telefon:</strong> {{ transfer.from_company.phone }}</div>{% endif %}
+                            {% if transfer.from_company.tax_number %}<div><strong>Vergi No:</strong> {{ transfer.from_company.tax_number }}</div>{% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-6">
+                    <div class="p-3 rounded border bg-light h-100">
+                        <div class="text-secondary fs-8 fw-bold text-uppercase mb-2">
+                            <i class="bi bi-box-arrow-in-down me-1 text-success"></i> VARIŞ ŞUBESİ / DEPO (TESLİM ALAN)
+                        </div>
+                        <h6 class="fw-bold text-slate-900 mb-1">{{ transfer.to_company.name }}</h6>
+                        <div class="text-slate-700 fs-8">
+                            <div><strong>Mağaza Kodu:</strong> {{ transfer.to_company.code }}</div>
+                            {% if transfer.to_company.address %}<div><strong>Adres:</strong> {{ transfer.to_company.address }}</div>{% endif %}
+                            {% if transfer.to_company.phone %}<div><strong>Telefon:</strong> {{ transfer.to_company.phone }}</div>{% endif %}
+                            {% if transfer.to_company.tax_number %}<div><strong>Vergi No:</strong> {{ transfer.to_company.tax_number }}</div>{% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {% if transfer.notes %}
+            <div class="alert alert-light border py-2 px-3 mb-4 fs-8">
+                <strong><i class="bi bi-info-circle me-1"></i> Sevk Açıklaması:</strong> {{ transfer.notes }}
+            </div>
+            {% endif %}
+
+            <!-- ÜRÜN KALEMLERİ TABLOSU -->
+            <div class="table-responsive mb-4">
+                <table class="table table-bordered align-middle mb-0">
+                    <thead class="table-light text-secondary fs-8 text-uppercase">
+                        <tr>
+                            <th style="width: 50px;" class="text-center">#</th>
+                            <th style="width: 150px;">Barkod</th>
+                            <th>Ürün Adı</th>
+                            <th style="width: 140px;">Kategori</th>
+                            <th style="width: 130px;" class="text-center">Sevk Miktarı</th>
+                            <th>Kalem Notu</th>
+                        </tr>
+                    </thead>
+                    <tbody class="fs-7">
+                        {% for itm in items %}
+                        <tr>
+                            <td class="text-center text-muted fw-bold">{{ forloop.counter }}</td>
+                            <td class="font-monospace fw-bold text-slate-800">{{ itm.product.barcode }}</td>
+                            <td>
+                                <strong class="text-slate-900">{{ itm.product.name }}</strong>
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-dark border">{{ itm.product.category.name|default:"-" }}</span>
+                            </td>
+                            <td class="text-center">
+                                <span class="fw-extrabold text-primary fs-7 font-monospace">{{ itm.quantity|floatformat:3 }}</span>
+                                <span class="text-muted fs-8">{{ itm.unit }}</span>
+                            </td>
+                            <td class="text-muted fs-8">
+                                {{ itm.notes|default:"-" }}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center py-4 text-muted">Bu belgede ürün bulunmamaktadır.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-light fw-bold fs-7">
+                        <tr>
+                            <td colspan="4" class="text-end">TOPLAM SEVKİYAT:</td>
+                            <td class="text-center text-primary font-monospace fs-6">{{ transfer.total_quantity|floatformat:3 }}</td>
+                            <td class="text-muted fs-8">{{ transfer.total_items_count }} Kalem Ürün</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            <!-- İMZA VE ONAY ALANLARI -->
+            <div class="row pt-4 mt-4 border-top">
+                <div class="col-6 text-center">
+                    <div class="text-secondary fs-8 fw-bold text-uppercase mb-1">SEVK EDEN / ÇIKIŞ YAPAN YETKİLİ</div>
+                    <div class="text-slate-800 fs-7 fw-bold mb-4">
+                        {{ transfer.created_by.get_full_name|default:transfer.created_by.username|default:"Personel" }}
+                    </div>
+                    {% if transfer.shipped_at %}
+                    <small class="text-muted d-block fs-8 mb-4">Sevk Zamanı: {{ transfer.shipped_at|date:"d.m.Y H:i" }}</small>
+                    {% else %}
+                    <div class="mb-4 text-muted fs-8">Tarih / Saat: ..../..../........ __:__</div>
+                    {% endif %}
+                    <div class="border-top mx-auto" style="width: 180px; padding-top: 5px;">
+                        <small class="text-muted fs-9">İmza / Kaşe</small>
+                    </div>
+                </div>
+
+                <div class="col-6 text-center">
+                    <div class="text-secondary fs-8 fw-bold text-uppercase mb-1">TESLİM ALAN / KABUL EDEN YETKİLİ</div>
+                    <div class="text-slate-800 fs-7 fw-bold mb-4">
+                        {% if transfer.received_by %}
+                        {{ transfer.received_by.get_full_name|default:transfer.received_by.username }}
+                        {% else %}
+                        Teslim Alan Personel
+                        {% endif %}
+                    </div>
+                    {% if transfer.received_at %}
+                    <small class="text-muted d-block fs-8 mb-4">Teslim Zamanı: {{ transfer.received_at|date:"d.m.Y H:i" }}</small>
+                    {% else %}
+                    <div class="mb-4 text-muted fs-8">Tarih / Saat: ..../..../........ __:__</div>
+                    {% endif %}
+                    <div class="border-top mx-auto" style="width: 180px; padding-top: 5px;">
+                        <small class="text-muted fs-9">İmza / Kaşe</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+@media print {
+    /* Yazdırma sırasında admin menü ve başlıklarını gizle */
+    body {
+        background-color: #fff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    .himarket-sidebar, .himarket-header, .d-print-none, .breadcrumb, footer {
+        display: none !important;
+    }
+    .print-voucher {
+        border: none !important;
+        box-shadow: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+    }
+    .container-fluid {
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+}
+</style>
+{% endblock %}
