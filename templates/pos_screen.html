@@ -1780,6 +1780,13 @@
                 <span class="pos-mini-pill">
                     <i class="bi bi-pc-display"></i> {{ register.register_code }}
                 </span>
+                <!-- Faz 14: Kasa Ekranı Ağ Durumu & Çevrimdışı Kuyruk Göstergesi -->
+                <span class="pos-mini-pill" id="posNetworkBadge" style="background: rgba(16, 185, 129, 0.15); color: #059669; border-color: #10b981; font-weight: 700;">
+                    <i class="bi bi-wifi"></i> Çevrimiçi
+                </span>
+                <button type="button" class="pos-mini-pill d-none" id="posOfflineQueueBadge" onclick="openOfflineQueueModal()" style="background: #fef08a; color: #854d0e; border-color: #eab308; cursor: pointer; font-weight: 800;" title="Bekleyen çevrimdışı satışları incele">
+                    <i class="bi bi-cloud-slash-fill"></i> <span id="posOfflineQueueBadgeText">0 Çevrimdışı Fiş</span>
+                </button>
                 <button type="button" class="pos-mini-pill" id="receiptNumberBadge" onclick="previewReceipt()">
                     <i class="bi bi-receipt"></i> YENİ FİŞ
                 </button>
@@ -3183,7 +3190,6 @@
             return { ok: false, message: 'Çevrimdışı hata' };
         }
     }
-    }
 
     async function submitBarcode() {
         const raw = barcodeInput.value.trim();
@@ -3204,8 +3210,19 @@
             stock_quantity: parseFloat(btn.dataset.stock || '0'),
         };
 
-        // Faz 13: Eğer ürün varyantlı bir ürünse, dokunmatik varyant penceresini aç
+        // Faz 13 & 14: Eğer ürün varyantlı bir ürünse, dokunmatik varyant penceresini aç (Online & Offline)
         if (btn.dataset.hasVariants === 'true') {
+            if (!navigator.onLine) {
+                HiMarketOfflineEngine.findProductByBarcode(prod.barcode).then((m) => {
+                    if (m && m.has_variants && Array.isArray(m.variants) && m.variants.length > 0) {
+                        openVariantSelectModal(prod, m.variants, 1.0);
+                    } else {
+                        addDirectProduct(prod);
+                    }
+                }).catch(() => addDirectProduct(prod));
+                return;
+            }
+
             fetch(`/api/products/${prod.id}/variants/`)
                 .then(r => r.json())
                 .then(d => {

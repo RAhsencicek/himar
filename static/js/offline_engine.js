@@ -548,7 +548,8 @@ const HiMarketOfflineEngine = (function () {
 
         const badgeBtn = document.getElementById('offlineQueueBtn');
         const badgeText = document.getElementById('offlineQueueBadgeText');
-        const posOfflineIndicator = document.getElementById('posOfflineIndicator');
+        const posQueueBtn = document.getElementById('posOfflineQueueBadge');
+        const posQueueText = document.getElementById('posOfflineQueueBadgeText');
 
         if (badgeBtn) {
             if (pendingCount > 0) {
@@ -562,12 +563,43 @@ const HiMarketOfflineEngine = (function () {
             }
         }
 
-        if (posOfflineIndicator) {
+        if (posQueueBtn) {
             if (pendingCount > 0) {
-                posOfflineIndicator.classList.remove('d-none');
-                posOfflineIndicator.textContent = `${pendingCount} bekliyor`;
+                posQueueBtn.classList.remove('d-none');
+                posQueueBtn.classList.add('d-inline-flex');
+                if (posQueueText) posQueueText.textContent = `${pendingCount} Çevrimdışı Fiş`;
             } else {
-                posOfflineIndicator.classList.add('d-none');
+                posQueueBtn.classList.add('d-none');
+                posQueueBtn.classList.remove('d-inline-flex');
+            }
+        }
+    }
+
+    function updateNetworkBadge(isOnline) {
+        const netBadge = document.getElementById('networkStatusBadge');
+        const posBadge = document.getElementById('posNetworkBadge');
+
+        if (isOnline) {
+            if (netBadge) {
+                netBadge.className = 'badge bg-success-subtle text-success border border-success-subtle fw-bold d-inline-flex align-items-center gap-1';
+                netBadge.innerHTML = '<i class="bi bi-wifi"></i> Çevrimiçi';
+            }
+            if (posBadge) {
+                posBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+                posBadge.style.color = '#059669';
+                posBadge.style.borderColor = '#10b981';
+                posBadge.innerHTML = '<i class="bi bi-wifi"></i> Çevrimiçi';
+            }
+        } else {
+            if (netBadge) {
+                netBadge.className = 'badge bg-warning text-dark border border-warning fw-bold d-inline-flex align-items-center gap-1';
+                netBadge.innerHTML = '<i class="bi bi-wifi-off"></i> Çevrimdışı (Offline)';
+            }
+            if (posBadge) {
+                posBadge.style.background = '#fef08a';
+                posBadge.style.color = '#854d0e';
+                posBadge.style.borderColor = '#eab308';
+                posBadge.innerHTML = '<i class="bi bi-wifi-off"></i> ÇEVRİMDİŞI (OFFLINE)';
             }
         }
     }
@@ -592,18 +624,15 @@ const HiMarketOfflineEngine = (function () {
         getPendingSales,
         syncPendingSales,
         generateOfflineReceiptHtml,
-        updateOfflineUI
+        updateOfflineUI,
+        updateNetworkBadge
     };
 })();
 
 // Tarayıcı Online / Offline Olaylarını Dinleme
 window.addEventListener('online', function () {
     console.log('[OfflineEngine] İnternet bağlantısı sağlandı. Çevrimdışı kuyruk taranıyor...');
-    const netBadge = document.getElementById('networkStatusBadge');
-    if (netBadge) {
-        netBadge.className = 'badge bg-success-subtle text-success border border-success-subtle fw-bold d-inline-flex align-items-center gap-1';
-        netBadge.innerHTML = '<i class="bi bi-wifi"></i> Çevrimiçi';
-    }
+    HiMarketOfflineEngine.updateNetworkBadge(true);
 
     // Otomatik Arka Plan Senkronizasyonunu Tetikle
     HiMarketOfflineEngine.syncPendingSales().then((res) => {
@@ -617,18 +646,15 @@ window.addEventListener('online', function () {
 
 window.addEventListener('offline', function () {
     console.warn('[OfflineEngine] İnternet bağlantısı koptu! Çevrimdışı moda geçildi.');
-    const netBadge = document.getElementById('networkStatusBadge');
-    if (netBadge) {
-        netBadge.className = 'badge bg-warning text-dark border border-warning fw-bold d-inline-flex align-items-center gap-1';
-        netBadge.innerHTML = '<i class="bi bi-wifi-off"></i> Çevrimdışı (Offline)';
-    }
+    HiMarketOfflineEngine.updateNetworkBadge(false);
     if (typeof showPosToast === 'function') {
         showPosToast('İnternet kesildi! Satışlar çevrimdışı devam edecek, yerel hafızaya kaydediliyor.', 'warning');
     }
 });
 
-// Sayfa yüklendiğinde DB'yi aç ve çevrimdışı kuyruk sayısını güncelle
+// Sayfa yüklendiğinde DB'yi aç, bağlantı durumunu ve çevrimdışı kuyruk sayısını güncelle
 document.addEventListener('DOMContentLoaded', function () {
+    HiMarketOfflineEngine.updateNetworkBadge(navigator.onLine);
     HiMarketOfflineEngine.openDB().then(() => {
         HiMarketOfflineEngine.updateOfflineUI();
         // Online ise kataloğu arka planda güncelle
