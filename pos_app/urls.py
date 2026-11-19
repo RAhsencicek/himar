@@ -13,6 +13,7 @@ urlpatterns = [
     # Barkod & Terazi API Uç Noktası
     path('api/barcode/', views.search_barcode, name='search_barcode'),
     path('api/products/search/', views.product_search_api, name='product_search_api'),
+    path('api/product/create-from-pool/', views.create_product_from_pool_api, name='create_product_from_pool_api'),
 
     # Satış İşleme & ESC/POS Sessiz Baskı / Çekmece API Uç Noktaları
     path('api/sale/process/', views.process_sale, name='process_sale'),
@@ -70,6 +71,10 @@ urlpatterns = [
     # Ürün Kataloğu & Ürün Yönetimi
     path('management/products/', views.product_catalog_view, name='product_catalog_view'),
     path('management/products/export/', views.export_products_csv, name='export_products_csv'),
+    path('management/products/import/', views.product_import_view, name='product_import_view'),
+    path('management/products/import/sample-csv/', views.download_product_import_sample_csv, name='download_product_import_sample_csv'),
+    path('management/products/pool/', views.global_product_pool_view, name='global_product_pool_view'),
+    path('management/products/pool/add-to-store/', views.add_pool_product_to_store_action, name='add_pool_product_to_store_action'),
     path('management/products/bulk-update/', views.product_bulk_update_action, name='product_bulk_update_action'),
     path('api/product/<int:product_id>/quick-price-update/', views.product_quick_price_update_api, name='product_quick_price_update_api'),
     path('management/products/create/', views.product_create_edit_view, name='product_create_view'),

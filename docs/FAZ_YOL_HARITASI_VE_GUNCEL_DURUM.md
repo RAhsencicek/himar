@@ -43,7 +43,7 @@
 ```mermaid
 flowchart LR
     F13["✅ Faz 13: Sektörel Modülerlik"] --> F14["✅ Faz 14: Çevrimdışı Kasa (Offline)"]
-    F14 --> F15["Faz 15: Ortak Barkod Havuzu"]
+    F14 --> F15["✅ Faz 15: Ortak Barkod Havuzu"]
     F15 --> F16["Faz 16: SKT Takibi & Mobil Patron Kokpiti"]
     F16 --> F17["Faz 17: Müşteri Sadakati (Puan & Kart)"]
     F17 --> F18["Faz 18: Çoklu Şube, Depo & E-Belge / ÖKC"]
@@ -74,16 +74,25 @@ flowchart LR
 
 ---
 
-### 🟡 FAZ 15: ORTAK HAZIR ÜRÜN HAVUZU (GLOBAL BARKOD KATALOĞU)
-*Hedef: Yeni müşteri kayıt olduğunda 10.000 ürünü tek tek elle girmekten kurtarmak; Türkiye'deki 20.000+ FMCG ürününü hazır getirmek.*
+### 🟢 FAZ 15: ORTAK HAZIR ÜRÜN HAVUZU & GLOBAL BARKOD KATALOĞU — TAMAMLANDI ✅
+*Hedef: Yeni müşteri kayıt olduğunda 10.000 ürünü tek tek elle girmekten kurtarmak; Türkiye'deki yaygın FMCG (hızlı tüketim) market ürünlerini hazır getirmek ve Excel/CSV ile toplu aktarımı sağlamak.*
 
-#### A. İşlevsel Kapsam
-1. **Global Master Barcode Pool:**
-   - Türkiye genelinde en çok tüketilen bisküvi, meşrubat, temizlik, gıda ürünlerinin hazır barkod, ad, varsayılan KDV oranı ve reyon kataloğu.
-2. **Kasada Akıllı Eşleşme (Auto-Lookup):**
-   - Kasiyer mağazada henüz tanımlı olmayan bir ürün okuttuğunda sistem havuzdan bulur: *"Ülker Çikolatalı Gofret bulundu. 15.00 TL satış fiyatıyla kataloğunuza eklensin mi?"*
-3. **Excel / CSV Toplu İçe Aktarım (Bulk Import):**
-   - Mağazanın eski programındaki stok listesini hatasız eşleştirip içeri aktarma sihirbazı.
+#### A. Tamamlanan ve Doğrulanan Kabiliyetler
+1. **Global Master Barcode Modeli & Tohum Verisi (`GlobalProductPool`):**
+   - Türkiye genelinde sık tüketilen bisküvi, meşrubat, süt ürünleri, temizlik ve temel gıdalar (Ülker, Eti, Sütaş, Pınar, Çaykur, Yudum, Fairy, Domestos vb. 50+ ürün) EAN-13 barkodları, yasal KDV oranları ve tavsiye edilen raf fiyatlarıyla `seed_global_pool` komutu ile hazırlandı.
+2. **Kasada Akıllı Eşleşme & Anında Stoğa Katma Modalı (`#poolProductModal`):**
+   - Kasada dükkanda henüz olmayan bir barkod okutulduğunda `search_barcode` API havuzdan ürünü yakalar (`pool_found: true`).
+   - Ekranda dokunmatik `#poolProductModal` açılır; kasiyer dükkan satış fiyatını onaylar/değiştirir ve tek tıkla (`/api/product/create-from-pool/`) ürünü mağaza kataloğuna kaydedip müşterinin sepetine atar. Kasa akışı hiç duraksamaz.
+3. **Excel & CSV Toplu İçe Aktarma Sihirbazı (`/management/products/import/`):**
+   - Sürükle-bırak destekli dosya yükleme, UTF-8 BOM, noktalı virgül (;) ve virgül (,) otomatik tespiti.
+   - "Mevcut Ürünleri Güncelle" seçeneği ile fiyat ve stokları toplu revize etme.
+   - `urun_aktarim_sablonu.csv` örnek şablon indirme butonu (`/management/products/import/sample-csv/`).
+   - İşlem sonrasında detaylı rapor kartı (yeni eklenen, güncellenen, atlanan, hatalı satırlar).
+4. **Yönetim Paneli Ortak Barkod Havuzu Arama Ekranı (`/management/products/pool/`):**
+   - Kategori ve arama filtreli, sayfalama destekli arayüz.
+   - Mağazada zaten mevcut olan ürünleri yeşil `[✓ Mağazanızda Var]` rozetiyle, olmayanları ise tek tıkla fiyata göre ekleme modalı ile listeler.
+5. **Birim Testleri & Kalite Güvencesi:**
+   - 6 yeni birim testi yazıldı (`GlobalProductPoolTestSuite`), toplam **136 test eksiksiz geçti (%100 Yeşil)**.
 
 ---
 

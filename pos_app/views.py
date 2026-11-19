@@ -30,7 +30,7 @@ from .models import (
     Product, ProductVariant, Category, CashRegister, Shift, Sale, SaleItem,
     Supplier, SupplierTransaction, StockEntry, StockEntryItem, SystemLog, log_action,
     CompanySetting, Customer, CustomerTransaction, StockTake, StockTakeItem,
-    Company, UserProfile, get_user_company, Subscription
+    Company, UserProfile, get_user_company, Subscription, GlobalProductPool
 )
 from .printer_service import silent_print_receipt, trigger_cash_drawer_only, silent_print_collection_receipt
 from .fiscal_service import calculate_vat_breakdown, apply_fiscal_data_to_sale, get_company_fiscal_profile
@@ -692,7 +692,152 @@ def search_barcode(request):
                 'is_weighted_barcode': False
             })
 
+    # 4. Faz 15: Ortak Hazır Ürün Havuzu (GlobalProductPool) Kontrolü
+    # Mağazada kayıtlı değil ancak Türkiye ortak ürün havuzunda mevcutsa kasiyere hızlı ekleme önerisi sun
+    pool_product = GlobalProductPool.objects.filter(barcode=barcode).first()
+    if pool_product:
+        return JsonResponse({
+            'success': False,
+            'pool_found': True,
+            'message': f"Bu ürün dükkanınızda kayıtlı değil ancak Ortak Havuzda bulundu: {pool_product.name}",
+            'barcode': barcode,
+            'pool_product': {
+                'id': pool_product.id,
+                'barcode': pool_product.barcode,
+                'name': pool_product.name,
+                'brand': pool_product.brand,
+                'category_name': pool_product.category_name,
+                'vat_rate': float(pool_product.vat_rate),
+                'recommended_price': float(pool_product.recommended_price),
+                'unit': pool_product.unit,
+                'is_weighted': pool_product.is_weighted,
+            }
+        })
+
     return JsonResponse({'success': False, 'message': 'Barkodlu ürün bulunamadı!', 'barcode': barcode}, status=404)
+
+
+@require_POST
+def create_product_from_pool_api(request):
+    """
+    Faz 15: Ortak Hazır Ürün Havuzundan (GlobalProductPool) Mağazaya Hızlı Ürün Ekleme API
+    Kasiyerin veya yöneticinin tek tıkla havuzdaki ürünü mağaza stoğuna almasını sağlar.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': 'Oturum açmanız gerekmektedir.'}, status=401)
+
+    user_company = get_user_company(request.user)
+    
+    try:
+        # JSON veya POST verisi
+        if request.content_type == 'application/json':
+            data = json.loads(request.body.decode('utf-8'))
+        else:
+            data = request.POST
+
+        barcode = str(data.get('barcode', '')).strip()
+        if not barcode:
+            return JsonResponse({'success': False, 'message': 'Barkod bilgisi eksik.'}, status=400)
+
+        # 1. Zaten mağazada var mı?
+        existing_product = Product.objects.filter(company=user_company, barcode=barcode).first()
+        if existing_product:
+            if not existing_product.is_active:
+                existing_product.is_active = True
+                existing_product.save(update_fields=['is_active'])
+            return JsonResponse({
+                'success': True,
+                'already_exists': True,
+                'message': f"'{existing_product.name}' dükkanınızda zaten mevcut.",
+                'product': {
+                    'id': existing_product.id,
+                    'name': existing_product.name,
+                    'barcode': existing_product.barcode,
+                    'sell_price': float(existing_product.sell_price),
+                    'vat_rate': float(existing_product.vat_rate),
+                    'unit': existing_product.unit,
+                    'is_weighted': existing_product.is_weighted,
+                    'stock_quantity': float(existing_product.stock_quantity),
+                    'variant_id': None,
+                    'variant_info': '',
+                }
+            })
+
+        # 2. Havuzdan bul
+        pool_item = GlobalProductPool.objects.filter(barcode=barcode).first()
+        if not pool_item:
+            return JsonResponse({'success': False, 'message': 'Ürün global havuzda bulunamadı.'}, status=404)
+
+        # 3. Fiyat ve Stok Ayarları
+        sell_price_raw = data.get('sell_price')
+        if sell_price_raw is not None and str(sell_price_raw).strip() != '':
+            sell_price = Decimal(str(sell_price_raw).replace(',', '.'))
+        else:
+            sell_price = pool_item.recommended_price
+
+        purchase_price_raw = data.get('purchase_price')
+        if purchase_price_raw is not None and str(purchase_price_raw).strip() != '':
+            purchase_price = Decimal(str(purchase_price_raw).replace(',', '.'))
+        else:
+            purchase_price = Decimal('0.00')
+
+        stock_qty_raw = data.get('stock_quantity')
+        if stock_qty_raw is not None and str(stock_qty_raw).strip() != '':
+            stock_qty = Decimal(str(stock_qty_raw).replace(',', '.'))
+        else:
+            stock_qty = Decimal('10.00')
+
+        # 4. Kategori oluştur veya bağla
+        category_name = str(data.get('category_name') or pool_item.category_name or 'Genel Gıda').strip()
+        category, _ = Category.objects.get_or_create(
+            company=user_company,
+            name=category_name
+        )
+
+        product_name = str(data.get('name') or pool_item.name).strip()
+
+        # 5. Ürünü Oluştur
+        product = Product.objects.create(
+            company=user_company,
+            category=category,
+            name=product_name,
+            barcode=pool_item.barcode,
+            sell_price=sell_price,
+            buy_price=purchase_price,
+            stock_quantity=stock_qty,
+            vat_rate=pool_item.vat_rate,
+            unit=pool_item.unit,
+            is_weighted=pool_item.is_weighted,
+            is_active=True
+        )
+
+        # Log kaydı
+        log_action(
+            module="PRODUCT",
+            action="POOL_IMPORT",
+            message=f"Global Havuzdan Ürün Eklendi: {product.name} ({product.barcode}) - Satış: {product.sell_price} TL",
+            user=request.user,
+            company=user_company
+        )
+
+        return JsonResponse({
+            'success': True,
+            'message': f"'{product.name}' başarıyla dükkanınıza eklendi!",
+            'product': {
+                'id': product.id,
+                'name': product.name,
+                'barcode': product.barcode,
+                'sell_price': float(product.sell_price),
+                'vat_rate': float(product.vat_rate),
+                'unit': product.unit,
+                'is_weighted': product.is_weighted,
+                'stock_quantity': float(product.stock_quantity),
+                'variant_id': None,
+                'variant_info': '',
+            }
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': f"Ürün eklenirken hata: {str(e)}"}, status=500)
 
 
 def product_search_api(request):
@@ -4825,6 +4970,345 @@ def export_products_csv(request):
     ]
     log_action('PRODUCT', 'Katalog CSV Dışa Aktarıldı', f"{len(rows)} ürün indirildi.", user=request.user)
     return _csv_response(f"urun_katalogu_{timezone.localdate().isoformat()}.csv", headers, rows)
+
+
+@staff_required
+def download_product_import_sample_csv(request):
+    """
+    Faz 15: Excel ve CSV Toplu Ürün Aktarımı için Örnek Şablon Dosyası
+    """
+    headers = [
+        'Barkod', 'Ürün Adı', 'Kategori', 'Satış Fiyatı', 'Alış Fiyatı',
+        'Stok Miktarı', 'KDV Oranı', 'Birim', 'Kritik Stok'
+    ]
+    rows = [
+        ['8690504012345', 'Ülker Çikolatalı Gofret 35g', 'Bisküvi & Atıştırmalık', '15.00', '11.50', '50', '1', 'Adet', '10'],
+        ['5449000000996', 'Coca-Cola 1 Litre', 'İçecek & Meşrubat', '35.00', '28.00', '30', '10', 'Adet', '5'],
+        ['8690520001019', 'Sütaş Tam Yağlı Süt 1L', 'Süt & Kahvaltılık', '38.50', '32.00', '25', '1', 'Adet', '5'],
+        ['8001841750012', 'Fairy Bulaşık Deterjanı 650ml', 'Temizlik & Hijyen', '65.00', '52.00', '20', '20', 'Adet', '4'],
+    ]
+    return _csv_response('urun_aktarim_sablonu.csv', headers, rows)
+
+
+@staff_required
+def product_import_view(request):
+    """
+    Faz 15: Excel / CSV Toplu Ürün ve Stok İçe Aktarma Sihirbazı (Multi-Tenancy)
+    Marketlerin binlerce ürünü tek tek girmek yerine Excel/CSV ile saniyeler içinde içeri aktarmasını sağlar.
+    """
+    user_company = get_user_company(request.user)
+    categories = Category.objects.filter(company_scope_q(user_company), is_active=True).order_by('name')
+
+    result_summary = None
+
+    if request.method == 'POST' and request.FILES.get('csv_file'):
+        csv_file = request.FILES['csv_file']
+        update_existing = request.POST.get('update_existing') == 'on'
+        default_category_id = request.POST.get('default_category')
+        default_vat = request.POST.get('default_vat', '1.00')
+
+        default_category = None
+        if default_category_id and default_category_id.isdigit():
+            default_category = Category.objects.filter(company_scope_q(user_company), id=int(default_category_id)).first()
+
+        try:
+            # 1. Dosya içeriğini güvenle oku ve encoding çöz
+            raw_data = csv_file.read()
+            text = None
+            for enc in ['utf-8-sig', 'utf-8', 'windows-1254', 'iso-8859-9', 'latin-1']:
+                try:
+                    text = raw_data.decode(enc)
+                    break
+                except UnicodeDecodeError:
+                    continue
+
+            if not text:
+                messages.error(request, "Dosya karakter kodlaması okunamadı. Lütfen UTF-8 veya Türkçe Excel CSV formatında yükleyiniz.")
+                return redirect('product_import_view')
+
+            # 2. Ayırıcıyı belirle (; veya , veya \t)
+            sample_lines = text[:2048]
+            delimiter = ';'
+            if ';' in sample_lines:
+                delimiter = ';'
+            elif ',' in sample_lines:
+                delimiter = ','
+            elif '\t' in sample_lines:
+                delimiter = '\t'
+
+            reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+            rows = list(reader)
+
+            if not rows:
+                messages.error(request, "Yüklenen dosya boş.")
+                return redirect('product_import_view')
+
+            # Başlık satırını oku
+            header_row = [c.strip().lower() for c in rows[0]]
+            data_rows = rows[1:]
+
+            # Kolon indexlerini tespit et
+            col_map = {}
+            for idx, col in enumerate(header_row):
+                if 'barkod' in col or 'barcode' in col:
+                    col_map['barcode'] = idx
+                elif 'ad' in col or 'name' in col or 'ürün' in col or 'urun' in col:
+                    col_map['name'] = idx
+                elif 'kategori' in col or 'category' in col:
+                    col_map['category'] = idx
+                elif 'satış' in col or 'satis' in col or 'sell' in col or 'fiyat' in col:
+                    if 'satış' in col or 'satis' in col or 'sell' in col or 'sell_price' in col:
+                        col_map['sell_price'] = idx
+                elif 'alış' in col or 'alis' in col or 'buy' in col or 'maliyet' in col or 'cost' in col:
+                    col_map['buy_price'] = idx
+                elif 'stok' in col or 'miktar' in col or 'adet' in col or 'qty' in col or 'quantity' in col:
+                    if 'kritik' not in col:
+                        col_map['stock_quantity'] = idx
+                elif 'kdv' in col or 'vat' in col or 'vergi' in col:
+                    col_map['vat_rate'] = idx
+                elif 'birim' in col or 'unit' in col:
+                    col_map['unit'] = idx
+                elif 'kritik' in col or 'min' in col or 'alarm' in col:
+                    col_map['min_stock_level'] = idx
+
+            # Fallback: Eğer header tespit edilemediyse standart sütun sırasını varsay
+            if 'barcode' not in col_map:
+                col_map['barcode'] = 0
+            if 'name' not in col_map:
+                col_map['name'] = 1
+            if 'category' not in col_map and len(header_row) > 2:
+                col_map['category'] = 2
+            if 'sell_price' not in col_map and len(header_row) > 3:
+                col_map['sell_price'] = 3
+            if 'buy_price' not in col_map and len(header_row) > 4:
+                col_map['buy_price'] = 4
+            if 'stock_quantity' not in col_map and len(header_row) > 5:
+                col_map['stock_quantity'] = 5
+
+            created_count = 0
+            updated_count = 0
+            skipped_count = 0
+            errors = []
+
+            with transaction.atomic():
+                for row_idx, row in enumerate(data_rows, start=2):
+                    if not row or not any(row):
+                        continue
+
+                    def get_val(key, default=''):
+                        idx = col_map.get(key)
+                        if idx is not None and idx < len(row):
+                            return row[idx].strip()
+                        return default
+
+                    barcode = get_val('barcode')
+                    name = get_val('name')
+
+                    if not barcode or not name:
+                        errors.append(f"Satır {row_idx}: Barkod veya Ürün Adı boş bırakılamaz.")
+                        continue
+
+                    def parse_dec(val, fallback):
+                        try:
+                            clean = str(val).replace('TL', '').replace('₺', '').replace(' ', '').replace(',', '.')
+                            return Decimal(clean)
+                        except (InvalidOperation, ValueError):
+                            return fallback
+
+                    sell_price = parse_dec(get_val('sell_price'), Decimal('0.00'))
+                    buy_price = parse_dec(get_val('buy_price'), Decimal('0.00'))
+                    stock_qty = parse_dec(get_val('stock_quantity'), Decimal('0.000'))
+                    vat_rate = parse_dec(get_val('vat_rate'), Decimal(str(default_vat)))
+                    min_stock = parse_dec(get_val('min_stock_level'), Decimal('5.000'))
+                    unit = get_val('unit', 'Adet') or 'Adet'
+
+                    category_name = get_val('category')
+                    if category_name:
+                        category, _ = Category.objects.get_or_create(
+                            company=user_company,
+                            name=category_name
+                        )
+                    else:
+                        category = default_category
+
+                    existing = Product.objects.filter(company=user_company, barcode=barcode).first()
+                    if existing:
+                        if update_existing:
+                            existing.name = name
+                            if category:
+                                existing.category = category
+                            existing.sell_price = sell_price
+                            if buy_price > 0:
+                                existing.buy_price = buy_price
+                            existing.stock_quantity = stock_qty
+                            existing.vat_rate = vat_rate
+                            existing.unit = unit
+                            existing.min_stock_level = min_stock
+                            existing.is_active = True
+                            existing.save()
+                            updated_count += 1
+                        else:
+                            skipped_count += 1
+                    else:
+                        Product.objects.create(
+                            company=user_company,
+                            barcode=barcode,
+                            name=name,
+                            category=category,
+                            sell_price=sell_price,
+                            buy_price=buy_price,
+                            stock_quantity=stock_qty,
+                            vat_rate=vat_rate,
+                            unit=unit,
+                            min_stock_level=min_stock,
+                            is_active=True
+                        )
+                        created_count += 1
+
+            result_summary = {
+                'created_count': created_count,
+                'updated_count': updated_count,
+                'skipped_count': skipped_count,
+                'total_processed': created_count + updated_count + skipped_count,
+                'errors': errors[:20],
+                'has_errors': len(errors) > 0,
+                'total_errors': len(errors),
+            }
+
+            log_action(
+                module="PRODUCT",
+                action="CSV_IMPORT",
+                message=f"Toplu CSV İçe Aktarım: {created_count} yeni, {updated_count} güncellendi, {skipped_count} atlandı.",
+                user=request.user,
+                company=user_company
+            )
+            messages.success(request, f"İçe aktarma tamamlandı! {created_count} yeni ürün eklendi, {updated_count} ürün güncellendi.")
+
+        except Exception as e:
+            messages.error(request, f"İçe aktarma sırasında beklenmeyen hata oluştu: {str(e)}")
+
+    context = {
+        'categories': categories,
+        'result_summary': result_summary,
+    }
+    return render(request, 'admin/product_import.html', context)
+
+
+@staff_required
+def global_product_pool_view(request):
+    """
+    Faz 15: Ortak Hazır Ürün Havuzu (Global Master Barcode Catalog) Arama & Mağazaya Aktarma Ekranı
+    Market sahiplerinin binlerce ürünü tek tek girmek yerine havuzdan tek tıkla dükkanına eklemesini sağlar.
+    """
+    user_company = get_user_company(request.user)
+
+    search_q = request.GET.get('search_q', '').strip()
+    category_filter = request.GET.get('category', '').strip()
+
+    qs = GlobalProductPool.objects.all()
+
+    if search_q:
+        qs = qs.filter(
+            Q(barcode__icontains=search_q) |
+            Q(name__icontains=search_q) |
+            Q(brand__icontains=search_q)
+        )
+
+    if category_filter:
+        qs = qs.filter(category_name__iexact=category_filter)
+
+    categories_list = list(GlobalProductPool.objects.values_list('category_name', flat=True).distinct().order_by('category_name'))
+
+    existing_barcodes = set(
+        Product.objects.filter(company_scope_q(user_company)).values_list('barcode', flat=True)
+    )
+
+    paginator = Paginator(qs, 30)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    pool_items = []
+    for item in page_obj.object_list:
+        pool_items.append({
+            'pool': item,
+            'in_store': item.barcode in existing_barcodes
+        })
+
+    query_params = request.GET.copy()
+    query_params.pop('page', None)
+    query_string = query_params.urlencode()
+
+    context = {
+        'page_obj': page_obj,
+        'pool_items': pool_items,
+        'categories_list': categories_list,
+        'search_q': search_q,
+        'category_filter': category_filter,
+        'total_pool_count': GlobalProductPool.objects.count(),
+        'query_string': query_string,
+    }
+    return render(request, 'admin/global_pool.html', context)
+
+
+@staff_required
+@require_POST
+def add_pool_product_to_store_action(request):
+    """
+    Faz 15: Havuzdaki ürünü veya ürünleri mağazanın stoğuna kopyalama aksiyonu
+    """
+    user_company = get_user_company(request.user)
+    barcode = request.POST.get('barcode', '').strip()
+    sell_price_raw = request.POST.get('sell_price', '').strip()
+    stock_qty_raw = request.POST.get('stock_quantity', '10').strip()
+
+    if not barcode:
+        messages.error(request, "Barkod bilgisi eksik.")
+        return redirect('global_product_pool_view')
+
+    pool_item = GlobalProductPool.objects.filter(barcode=barcode).first()
+    if not pool_item:
+        messages.error(request, "Seçilen ürün global havuzda bulunamadı.")
+        return redirect('global_product_pool_view')
+
+    existing = Product.objects.filter(company=user_company, barcode=barcode).first()
+    if existing:
+        messages.info(request, f"'{existing.name}' zaten mağazanızda mevcut.")
+        return redirect('global_product_pool_view')
+
+    try:
+        sell_price = Decimal(sell_price_raw.replace(',', '.')) if sell_price_raw else pool_item.recommended_price
+        stock_qty = Decimal(stock_qty_raw.replace(',', '.')) if stock_qty_raw else Decimal('10.000')
+
+        category, _ = Category.objects.get_or_create(
+            company=user_company,
+            name=pool_item.category_name or 'Genel Gıda'
+        )
+
+        product = Product.objects.create(
+            company=user_company,
+            category=category,
+            name=pool_item.name,
+            barcode=pool_item.barcode,
+            sell_price=sell_price,
+            buy_price=Decimal('0.00'),
+            stock_quantity=stock_qty,
+            vat_rate=pool_item.vat_rate,
+            unit=pool_item.unit,
+            is_weighted=pool_item.is_weighted,
+            is_active=True
+        )
+
+        log_action(
+            module="PRODUCT",
+            action="POOL_STORE_ADD",
+            message=f"Ortak Havuzdan Eklendi: {product.name} ({product.barcode})",
+            user=request.user,
+            company=user_company
+        )
+        messages.success(request, f"'{product.name}' başarıyla mağazanıza eklendi! Satış Fiyatı: {product.sell_price} TL")
+    except Exception as e:
+        messages.error(request, f"Ürün eklenirken hata: {str(e)}")
+
+    return redirect(request.META.get('HTTP_REFERER') or 'global_product_pool_view')
 
 
 @staff_required

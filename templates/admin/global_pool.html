@@ -1,0 +1,244 @@
+{% extends "admin/base_site.html" %}
+{% load static l10n %}
+
+{% block content %}
+<div class="container-fluid px-3 py-3">
+    <!-- ÜST BAŞLIK VE AKSİYON ÇUBUĞU -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-1 fs-8">
+                    <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}" class="text-decoration-none">Yönetim</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'product_catalog_view' %}" class="text-decoration-none">Ürün Kataloğu</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Ortak Barkod Havuzu</li>
+                </ol>
+            </nav>
+            <h1 class="h4 mb-0 fw-bold text-dark d-flex align-items-center gap-2">
+                <i class="bi bi-clouds-fill text-warning"></i> Ortak Hazır Ürün Havuzu (Global Barkod Kataloğu)
+            </h1>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 fs-7 px-3 py-2">
+                <i class="bi bi-database me-1"></i> Havuzda Toplam <strong>{{ total_pool_count }}</strong> Ürün
+            </span>
+            <a href="{% url 'product_catalog_view' %}" class="btn btn-outline-secondary btn-sm fw-semibold shadow-xs">
+                <i class="bi bi-arrow-left"></i> Ürün Kataloğuma Dön
+            </a>
+        </div>
+    </div>
+
+    <!-- BİLGİ & UYARI MESAJLARI -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show mb-3 rounded-2 shadow-xs py-2 px-3 fs-7" role="alert">
+                <i class="bi bi-info-circle-fill me-1"></i> {{ message }}
+                <button type="button" class="btn-close py-2" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- FİLTRE VE ARAMA PANELİ -->
+    <div class="card border-0 shadow-sm rounded-3 mb-3">
+        <div class="card-body p-2.5">
+            <form method="GET" class="row g-2 align-items-center">
+                <div class="col-md-5">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-light border-end-0"><i class="bi bi-search text-muted"></i></span>
+                        <input type="text" name="search_q" value="{{ search_q }}" class="form-control border-start-0" placeholder="Barkod, Ürün Adı veya Marka (Örn: Ülker, 8690504...)">
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <select name="category" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">Tüm Kategoriler ({{ categories_list|length }} Kategori)</option>
+                        {% for cat in categories_list %}
+                            <option value="{{ cat }}" {% if category_filter == cat %}selected{% endif %}>{{ cat }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm fw-bold w-100 shadow-xs">
+                        <i class="bi bi-funnel"></i> Filtrele
+                    </button>
+                    {% if search_q or category_filter %}
+                        <a href="{% url 'global_product_pool_view' %}" class="btn btn-outline-secondary btn-sm" title="Filtreleri Temizle">
+                            <i class="bi bi-x-circle"></i>
+                        </a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ÜRÜN HAVUZU LİSTESİ -->
+    <div class="card border-0 shadow-sm rounded-3 overflow-hidden">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 fs-8">
+                <thead class="table-light text-secondary">
+                    <tr>
+                        <th style="width: 140px;">Barkod</th>
+                        <th>Ürün Adı</th>
+                        <th>Marka</th>
+                        <th>Kategori</th>
+                        <th>KDV</th>
+                        <th>Tavsiye Satış Fiyatı</th>
+                        <th class="text-end pe-3" style="width: 180px;">Mağaza Durumu</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in pool_items %}
+                        <tr>
+                            <td>
+                                <span class="badge bg-light text-dark border font-monospace fs-8">
+                                    {{ item.pool.barcode }}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="fw-bold text-dark">{{ item.pool.name }}</div>
+                                <span class="badge bg-secondary bg-opacity-10 text-secondary fs-9">{{ item.pool.unit }}</span>
+                            </td>
+                            <td>
+                                {% if item.pool.brand %}
+                                    <span class="badge bg-info bg-opacity-10 text-info fw-semibold">{{ item.pool.brand }}</span>
+                                {% else %}
+                                    <span class="text-muted fs-9">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary bg-opacity-10 text-dark">{{ item.pool.category_name }}</span>
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-secondary border">%{ item.pool.vat_rate|floatformat:0 }}</span>
+                            </td>
+                            <td>
+                                <div class="fw-bold text-success fs-7">
+                                    {{ item.pool.recommended_price|floatformat:2 }} ₺
+                                </div>
+                            </td>
+                            <td class="text-end pe-3">
+                                {% if item.in_store %}
+                                    <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2.5 py-1.5 fw-bold">
+                                        <i class="bi bi-check-circle-fill me-1"></i> Mağazanızda Var
+                                    </span>
+                                {% else %}
+                                    <button type="button" 
+                                            class="btn btn-sm btn-success fw-bold px-2.5 py-1 shadow-xs d-inline-flex align-items-center gap-1"
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#addStoreModal"
+                                            data-barcode="{{ item.pool.barcode }}"
+                                            data-name="{{ item.pool.name }}"
+                                            data-brand="{{ item.pool.brand }}"
+                                            data-category="{{ item.pool.category_name }}"
+                                            data-price="{{ item.pool.recommended_price|unlocalize }}">
+                                        <i class="bi bi-plus-lg"></i> Mağazama Ekle
+                                    </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center py-4 text-muted">
+                                <i class="bi bi-search fs-2 d-block mb-2 text-secondary"></i>
+                                Aradığınız kriterlere uygun ürün bulunamadı.
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- SAYFALAMA (PAGINATION) -->
+        {% if page_obj.has_other_pages %}
+            <div class="card-footer bg-white border-top py-2 px-3 d-flex justify-content-between align-items-center fs-8">
+                <span class="text-muted">
+                    Toplam {{ page_obj.paginator.count }} üründen {{ page_obj.start_index }}-{{ page_obj.end_index }} arası gösteriliyor
+                </span>
+                <ul class="pagination pagination-sm mb-0">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if query_string %}&{{ query_string }}{% endif %}">Önceki</a>
+                        </li>
+                    {% endif %}
+                    <li class="page-item active">
+                        <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+                    </li>
+                    {% if page_obj.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if query_string %}&{{ query_string }}{% endif %}">Sonraki</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- MAĞAZAYA EKLE HIZLI MODAL -->
+<div class="modal fade" id="addStoreModal" tabindex="-1" aria-labelledby="addStoreModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <form method="POST" action="{% url 'add_pool_product_to_store_action' %}">
+                {% csrf_token %}
+                <input type="hidden" name="barcode" id="modalBarcode">
+
+                <div class="modal-header bg-success text-white py-2.5 px-3">
+                    <h5 class="modal-title fs-6 fw-bold" id="addStoreModalLabel">
+                        <i class="bi bi-box-arrow-in-down me-1"></i> Ürünü Mağaza Stoğunuza Katın
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-3">
+                    <div class="p-2.5 rounded-2 bg-light border mb-3">
+                        <div class="fw-bold text-dark fs-7" id="modalProductName">Ürün Adı</div>
+                        <div class="d-flex align-items-center gap-2 mt-1">
+                            <span class="badge bg-secondary font-monospace" id="modalBarcodeBadge">869...</span>
+                            <span class="text-muted fs-8" id="modalCategoryBadge">Kategori</span>
+                        </div>
+                    </div>
+
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label class="form-label fs-8 fw-bold text-secondary mb-1">Dükkan Satış Fiyatı (TL) *</label>
+                            <div class="input-group input-group-sm">
+                                <input type="number" step="0.01" name="sell_price" id="modalSellPrice" class="form-control fw-bold text-success fs-6" required>
+                                <span class="input-group-text">₺</span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fs-8 fw-bold text-secondary mb-1">Başlangıç Stok Miktarı</label>
+                            <input type="number" step="1" name="stock_quantity" id="modalStockQuantity" value="10" class="form-control form-control-sm" required>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light py-2 px-3">
+                    <button type="button" class="btn btn-secondary btn-sm fw-semibold" data-bs-dismiss="modal">İptal</button>
+                    <button type="submit" class="btn btn-success btn-sm fw-bold px-3 shadow-xs">
+                        <i class="bi bi-check-lg"></i> Stoğuma Ekle
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const addStoreModal = document.getElementById('addStoreModal');
+        if (addStoreModal) {
+            addStoreModal.addEventListener('show.bs.modal', function (event) {
+                const button = event.relatedTarget;
+                const barcode = button.getAttribute('data-barcode');
+                const name = button.getAttribute('data-name');
+                const brand = button.getAttribute('data-brand');
+                const category = button.getAttribute('data-category');
+                const price = button.getAttribute('data-price');
+
+                document.getElementById('modalBarcode').value = barcode;
+                document.getElementById('modalProductName').textContent = name + (brand ? ` (${brand})` : '');
+                document.getElementById('modalBarcodeBadge').textContent = barcode;
+                document.getElementById('modalCategoryBadge').textContent = category;
+                document.getElementById('modalSellPrice').value = price;
+            });
+        }
+    });
+</script>
+{% endblock %}

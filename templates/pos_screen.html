@@ -2660,6 +2660,58 @@
     </div>
 </dialog>
 
+<!-- 15. Faz 15: Ortak Barkod Havuzu Ürün Ekleme Modalı (#poolProductModal) -->
+<dialog id="poolProductModal" class="pos-dialog" closedby="any" aria-labelledby="poolModalTitle">
+    <div class="pos-dialog-head bg-warning bg-opacity-10 border-bottom border-warning border-opacity-25">
+        <h2 id="poolModalTitle" class="pos-dialog-title text-dark">
+            <i class="bi bi-clouds-fill text-warning me-1"></i> GLOBAL HAVUZDA BULUNDU
+        </h2>
+        <form method="dialog">
+            <button type="submit" value="cancel" class="pos-dialog-close" aria-label="Kapat">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </form>
+    </div>
+    <div class="pos-dialog-body">
+        <div class="alert alert-warning py-2 px-3 mb-2 small rounded-2">
+            <i class="bi bi-info-circle-fill me-1"></i> Bu ürün dükkanınızda kayıtlı değil, ancak Türkiye Ortak Barkod Havuzunda tanındı.
+        </div>
+        <div class="p-2.5 rounded-2 border bg-light mb-2.5">
+            <div class="fw-bold fs-6 text-dark" id="poolProdNameDisplay">Ürün Adı</div>
+            <div class="d-flex flex-wrap gap-1.5 mt-1 small">
+                <span class="badge bg-secondary font-monospace" id="poolBarcodeDisplay">869...</span>
+                <span class="badge bg-info bg-opacity-10 text-info fw-semibold" id="poolBrandDisplay">Marka</span>
+                <span class="badge bg-secondary bg-opacity-10 text-dark" id="poolCategoryDisplay">Kategori</span>
+                <span class="badge bg-light text-secondary border" id="poolVatDisplay">%1 KDV</span>
+            </div>
+        </div>
+        <input type="hidden" id="poolHiddenBarcode">
+        <div class="row g-2">
+            <div class="col-7">
+                <label for="poolSellPriceInput" class="form-label small fw-bold mb-1">
+                    Dükkan Satış Fiyatı (TL) <span class="text-danger">*</span>
+                </label>
+                <div class="input-group">
+                    <input type="number" step="0.01" min="0" id="poolSellPriceInput" class="form-control form-control-lg mono fw-bold text-success" autofocus>
+                    <span class="input-group-text fw-bold">₺</span>
+                </div>
+                <div class="form-text small text-muted" id="poolRecommendedHint">Önerilen: 0.00 TL</div>
+            </div>
+            <div class="col-5">
+                <label for="poolStockInput" class="form-label small fw-bold mb-1">Başlangıç Stok</label>
+                <input type="number" step="1" min="0" id="poolStockInput" class="form-control form-control-lg mono" value="10">
+                <div class="form-text small text-muted">Mevcut raf adedi</div>
+            </div>
+        </div>
+    </div>
+    <div class="pos-dialog-foot">
+        <button type="button" class="btn btn-light border fw-bold" onclick="closeDialog('poolProductModal')">Vazgeç</button>
+        <button type="button" class="btn btn-success fw-bold px-3 d-flex align-items-center gap-1.5" id="poolSaveAndAddBtn" onclick="submitPoolProductToStore()">
+            <i class="bi bi-check-circle-fill"></i> Kataloğuma Ekle & Sepete At
+        </button>
+    </div>
+</dialog>
+
 <div id="posToastRegion" class="pos-toast-region" aria-live="polite"></div>
 <div id="printFrameContainer" style="display: none;"></div>
 {% endblock %}
@@ -2679,6 +2731,7 @@
     const URL_VERIFY_SUPERVISOR = "{% url 'verify_supervisor_pin_api' %}";
     const URL_SCALE_READ = "{% url 'scale_read_api' %}";
     const URL_QUICK_CREATE = "{% url 'quick_create_product_api' %}";
+    const URL_CREATE_FROM_POOL = "{% url 'create_product_from_pool_api' %}";
 
     // Uygulama Durumu
     let cart = [];
@@ -3128,6 +3181,15 @@
                 return { ok: true, product: data.product, quantity: finalQty };
             }
 
+            // Faz 15: Ortak Barkod Havuzunda Bulunduysa Modalı Aç
+            if (data.pool_found && data.pool_product) {
+                if (!fromCamera) barcodeInput.value = '';
+                scannerStatusEl.textContent = `Global Havuz: ${data.pool_product.name}`;
+                playBeep(660, 0.12);
+                openPoolProductModal(data.pool_product, qty);
+                return { ok: true, pool_found: true, product: data.pool_product };
+            }
+
             playBeep(260, 0.16);
             if (!fromCamera) barcodeInput.value = '';
             if (!fromCamera && openLookupOnMiss && query.length >= 2 && !/^\d{6,}$/.test(query)) {
@@ -3383,6 +3445,106 @@
         document.getElementById('variantSelectModal').close();
         focusBarcodeInput();
     }
+
+    /* ============================================================
+       FAZ 15: ORTAK BARKOD HAVUZU MODALI VE HIZLI MAĞAZAYA EKLEME
+       ============================================================ */
+    let pendingPoolQty = 1.0;
+
+    function openPoolProductModal(poolProduct, qty = 1.0) {
+        pendingPoolQty = qty;
+        document.getElementById('poolHiddenBarcode').value = poolProduct.barcode || '';
+        document.getElementById('poolProdNameDisplay').textContent = poolProduct.name || '';
+        document.getElementById('poolBarcodeDisplay').textContent = poolProduct.barcode || '';
+        document.getElementById('poolBrandDisplay').textContent = poolProduct.brand || 'Marka Belirtilmemiş';
+        document.getElementById('poolCategoryDisplay').textContent = poolProduct.category_name || 'Genel Gıda';
+        document.getElementById('poolVatDisplay').textContent = `%${Number(poolProduct.vat_rate || 1)} KDV`;
+        
+        const priceInput = document.getElementById('poolSellPriceInput');
+        priceInput.value = Number(poolProduct.recommended_price || 0).toFixed(2);
+        document.getElementById('poolRecommendedHint').textContent = `Önerilen Satış Fiyatı: ${Number(poolProduct.recommended_price || 0).toFixed(2)} TL`;
+        document.getElementById('poolStockInput').value = '10';
+
+        openDialog('poolProductModal');
+        setTimeout(() => {
+            priceInput.focus();
+            priceInput.select();
+        }, 60);
+    }
+
+    async function submitPoolProductToStore() {
+        const barcode = document.getElementById('poolHiddenBarcode').value.trim();
+        const sellPrice = document.getElementById('poolSellPriceInput').value.trim();
+        const stockQty = document.getElementById('poolStockInput').value.trim();
+        const saveBtn = document.getElementById('poolSaveAndAddBtn');
+
+        if (!sellPrice || parseFloat(sellPrice) <= 0) {
+            showPosToast('Lütfen geçerli bir satış fiyatı giriniz.', 'error');
+            document.getElementById('poolSellPriceInput').focus();
+            return;
+        }
+
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Ekleniyor...';
+
+        try {
+            const formData = new FormData();
+            formData.append('barcode', barcode);
+            formData.append('sell_price', sellPrice);
+            formData.append('stock_quantity', stockQty || '10');
+
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '{{ csrf_token }}';
+
+            const resp = await fetch(URL_CREATE_FROM_POOL, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken
+                },
+                body: formData
+            });
+
+            const resData = await resp.json();
+
+            if (resp.ok && resData.success && resData.product) {
+                closeDialog('poolProductModal');
+                addToCart(resData.product, pendingPoolQty || 1.0);
+                playBeep(880, 0.08);
+                scannerStatusEl.textContent = `Eklendi: ${resData.product.name}`;
+                showPosToast(`${resData.product.name} dükkanınıza kaydedildi ve sepete eklendi!`, 'success');
+                focusBarcodeInput();
+            } else {
+                showPosToast(resData.message || 'Ürün eklenirken hata oluştu.', 'error');
+            }
+        } catch (err) {
+            console.error('Pool product save error:', err);
+            showPosToast('Sunucu bağlantı hatası oluştu.', 'error');
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> Kataloğuma Ekle & Sepete At';
+        }
+    }
+
+    // Modal açıldığında Enter ile hızlı onaylama
+    document.addEventListener('DOMContentLoaded', function () {
+        const priceInput = document.getElementById('poolSellPriceInput');
+        const stockInput = document.getElementById('poolStockInput');
+        if (priceInput) {
+            priceInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitPoolProductToStore();
+                }
+            });
+        }
+        if (stockInput) {
+            stockInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitPoolProductToStore();
+                }
+            });
+        }
+    });
 
     function addToCart(product, quantity) {
         let qty = Number(quantity) || 1;

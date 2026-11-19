@@ -217,6 +217,33 @@ class Category(models.Model):
 
 
 
+class GlobalProductPool(models.Model):
+    """
+    Faz 15: Ortak Hazır Ürün Havuzu (Global Master Barcode Catalog)
+    Tüm market ve kiracıların ortak faydalandığı Türkiye genelindeki 
+    standart FMCG (hızlı tüketim ürünleri) barkod, ad, marka, kategori ve KDV havuzu.
+    """
+    barcode = models.CharField(max_length=50, unique=True, db_index=True, verbose_name="Barkod (EAN-13 / GS1)")
+    name = models.CharField(max_length=255, db_index=True, verbose_name="Ürün Adı")
+    brand = models.CharField(max_length=100, blank=True, default='', db_index=True, verbose_name="Marka (Ülker, Eti, Sütaş vb.)")
+    category_name = models.CharField(max_length=100, blank=True, default='Genel Gıda', verbose_name="Önerilen Kategori")
+    vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('1.00'), verbose_name="Yasal KDV Oranı (%)")
+    recommended_price = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'), verbose_name="Tavsiye Edilen Satış Fiyatı (TL)")
+    unit = models.CharField(max_length=20, default='Adet', verbose_name="Birim")
+    is_weighted = models.BooleanField(default=False, verbose_name="Tartılı Ürün mü?")
+    image_url = models.URLField(max_length=500, blank=True, default='', verbose_name="Ürün Görsel URL")
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_verified = models.BooleanField(default=True, verbose_name="Onaylı Global Veri")
+
+    class Meta:
+        verbose_name = "Global Ürün Havuzu"
+        verbose_name_plural = "Global Ürün Havuzu"
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.name} ({self.barcode})"
+
+
 class Product(models.Model):
     UNIT_CHOICES = [
         ('Adet', 'Adet'),

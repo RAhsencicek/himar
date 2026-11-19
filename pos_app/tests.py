@@ -2,17 +2,19 @@ from django.test import TestCase, Client
 from django.contrib.auth.models import User
 from django.urls import reverse
 from django.core.management import call_command
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.conf import settings
 from django.db.models import F
 from django.utils import timezone
 import datetime
+import io
 from decimal import Decimal
 from pathlib import Path
 import json
 from .models import (
     Product, ProductVariant, Category, CashRegister, Shift, Sale, SaleItem, Supplier, SupplierTransaction,
     CompanySetting, Customer, CustomerTransaction, StockTake, StockTakeItem, StockEntry, StockEntryItem,
-    SystemLog, Company, UserProfile, Subscription
+    SystemLog, Company, UserProfile, Subscription, GlobalProductPool
 )
 
 
@@ -3909,6 +3911,167 @@ class OfflineKasaAndPwaTestSuite(TestCase):
         manifest_data = json.loads(res_manifest.content.decode('utf-8'))
         self.assertEqual(manifest_data['short_name'], 'HiMarket POS')
         self.assertEqual(manifest_data['display'], 'standalone')
+
+
+class GlobalProductPoolTestSuite(TestCase):
+    """
+    Faz 15: Ortak Hazır Ürün Havuzu (GlobalProductPool) ve Toplu CSV İçe Aktarma Testleri
+    """
+    def setUp(self):
+        self.company = Company.objects.create(
+            name="Test Market Şubesi",
+            code="test-pool-market",
+            is_active=True
+        )
+        self.user = User.objects.create_user(
+            username="pool_admin",
+            password="poolpassword123",
+            is_staff=True
+        )
+        UserProfile.objects.create(
+            user=self.user,
+            company=self.company
+        )
+        self.category = Category.objects.create(
+            company=self.company,
+            name="Temel Gıda",
+            is_active=True
+        )
+        self.local_product = Product.objects.create(
+            company=self.company,
+            category=self.category,
+            barcode="8690000000001",
+            name="Yerel Dükkan Ürünü",
+            sell_price=Decimal("20.00"),
+            stock_quantity=Decimal("50.000"),
+            is_active=True
+        )
+        # Global Havuz Ürünü
+        self.pool_item = GlobalProductPool.objects.create(
+            barcode="8690504012345",
+            name="Ülker Çikolatalı Gofret 35g",
+            brand="Ülker",
+            category_name="Bisküvi & Atıştırmalık",
+            vat_rate=Decimal("1.00"),
+            recommended_price=Decimal("15.00"),
+            unit="Adet",
+            is_verified=True
+        )
+        self.client.login(username="pool_admin", password="poolpassword123")
+
+    def test_seed_global_pool_command(self):
+        """seed_global_pool komutu veritabanına hazır ürünleri hatasız yüklemeli ve idempotent olmalıdır."""
+        out = io.StringIO()
+        call_command('seed_global_pool', stdout=out)
+        self.assertIn("Global Barkod Havuzu Başarıyla Tohumlandı!", out.getvalue())
+        self.assertGreaterEqual(GlobalProductPool.objects.count(), 50)
+
+    def test_search_barcode_with_global_pool_fallback(self):
+        """Dükkanda olmayan ama havuzda olan ürün sorgulandığında pool_found=True ve pool_product dönmelidir."""
+        # 1. Dükkanda olan ürün
+        res_local = self.client.get(reverse('search_barcode'), {'barcode': '8690000000001'})
+        self.assertEqual(res_local.status_code, 200)
+        self.assertTrue(res_local.json()['success'])
+        self.assertEqual(res_local.json()['product']['name'], "Yerel Dükkan Ürünü")
+
+        # 2. Dükkanda yok ama global havuzda var
+        res_pool = self.client.get(reverse('search_barcode'), {'barcode': '8690504012345'})
+        self.assertEqual(res_pool.status_code, 200)
+        data_pool = res_pool.json()
+        self.assertFalse(data_pool['success'])
+        self.assertTrue(data_pool['pool_found'])
+        self.assertEqual(data_pool['pool_product']['name'], "Ülker Çikolatalı Gofret 35g")
+        self.assertEqual(data_pool['pool_product']['brand'], "Ülker")
+
+        # 3. Ne dükkanda ne havuzda olan ürün -> 404
+        res_none = self.client.get(reverse('search_barcode'), {'barcode': '9999999999999'})
+        self.assertEqual(res_none.status_code, 404)
+
+    def test_create_product_from_pool_api(self):
+        """Kasadan tek tıkla havuzdaki ürün mağaza stoğuna aktarılabilmelidir."""
+        url = reverse('create_product_from_pool_api')
+        payload = {
+            'barcode': '8690504012345',
+            'sell_price': '16.50',
+            'stock_quantity': '24'
+        }
+        res = self.client.post(url, data=payload)
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['product']['sell_price'], 16.50)
+
+        # Veritabanında dükkana özel ürün oluştuğunu doğrula
+        created_prod = Product.objects.get(company=self.company, barcode='8690504012345')
+        self.assertEqual(created_prod.name, "Ülker Çikolatalı Gofret 35g")
+        self.assertEqual(created_prod.sell_price, Decimal("16.50"))
+        self.assertEqual(created_prod.stock_quantity, Decimal("24.000"))
+        self.assertEqual(created_prod.category.name, "Bisküvi & Atıştırmalık")
+
+        # Mükerrer çağrıldığında hata vermek yerine already_exists=True ile mevcut ürünü dönmelidir
+        res_dup = self.client.post(url, data=payload)
+        self.assertEqual(res_dup.status_code, 200)
+        self.assertTrue(res_dup.json().get('already_exists'))
+
+    def test_product_import_sample_csv_download(self):
+        """Örnek CSV şablonu indirme uç noktası HTTP 200 ve UTF-8 BOM CSV dönmelidir."""
+        res = self.client.get(reverse('download_product_import_sample_csv'))
+        self.assertEqual(res.status_code, 200)
+        self.assertIn('text/csv', res['Content-Type'])
+        self.assertIn('attachment; filename="urun_aktarim_sablonu.csv"', res['Content-Disposition'])
+        content = res.content.decode('utf-8')
+        self.assertIn('Barkod;Ürün Adı;Kategori;Satış Fiyatı', content)
+
+    def test_product_import_view_csv_upload(self):
+        """CSV dosyası yüklendiğinde yeni ürünler oluşturulmalı ve var olanlar seçeneğe göre güncellenmelidir."""
+        csv_content = (
+            "Barkod;Ürün Adı;Kategori;Satış Fiyatı;Alış Fiyatı;Stok Miktarı;KDV Oranı;Birim;Kritik Stok\n"
+            "8690000000001;Yerel Dükkan Ürünü Güncel;Temel Gıda;25.00;18.00;60;1;Adet;5\n"
+            "8690111222333;Yeni İçecek 1L;İçecekler;30.00;22.00;40;10;Adet;10\n"
+        )
+        csv_file = SimpleUploadedFile("urunler.csv", csv_content.encode('utf-8-sig'), content_type="text/csv")
+
+        url = reverse('product_import_view')
+        res = self.client.post(url, {
+            'csv_file': csv_file,
+            'update_existing': 'on'
+        })
+        self.assertEqual(res.status_code, 200)
+        self.assertIn('result_summary', res.context)
+        summary = res.context['result_summary']
+        self.assertEqual(summary['created_count'], 1)
+        self.assertEqual(summary['updated_count'], 1)
+
+        # Güncellenen ürünü doğrula
+        self.local_product.refresh_from_db()
+        self.assertEqual(self.local_product.name, "Yerel Dükkan Ürünü Güncel")
+        self.assertEqual(self.local_product.sell_price, Decimal("25.00"))
+        self.assertEqual(self.local_product.stock_quantity, Decimal("60.000"))
+
+        # Yeni eklenen ürünü doğrula
+        new_prod = Product.objects.get(company=self.company, barcode="8690111222333")
+        self.assertEqual(new_prod.name, "Yeni İçecek 1L")
+        self.assertEqual(new_prod.sell_price, Decimal("30.00"))
+
+    def test_global_product_pool_view_and_add_action(self):
+        """Yönetim paneli havuz ekranı açılmalı ve 'Mağazaya Ekle' aksiyonu dükkan stoğuna katmalıdır."""
+        url = reverse('global_product_pool_view')
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "Ülker Çikolatalı Gofret 35g")
+
+        # Havuzdan mağazaya ekle aksiyonu
+        add_url = reverse('add_pool_product_to_store_action')
+        res_add = self.client.post(add_url, {
+            'barcode': '8690504012345',
+            'sell_price': '15.50',
+            'stock_quantity': '15'
+        })
+        self.assertEqual(res_add.status_code, 302)
+
+        added = Product.objects.get(company=self.company, barcode='8690504012345')
+        self.assertEqual(added.sell_price, Decimal("15.50"))
+        self.assertEqual(added.stock_quantity, Decimal("15.000"))
 
 
 
