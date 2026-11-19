@@ -44,7 +44,7 @@
 flowchart LR
     F13["✅ Faz 13: Sektörel Modülerlik"] --> F14["✅ Faz 14: Çevrimdışı Kasa (Offline)"]
     F14 --> F15["✅ Faz 15: Ortak Barkod Havuzu"]
-    F15 --> F16["Faz 16: SKT Takibi & Mobil Patron Kokpiti"]
+    F15 --> F16["✅ Faz 16: SKT Takibi & Mobil Patron Kokpiti"]
     F16 --> F17["Faz 17: Müşteri Sadakati (Puan & Kart)"]
     F17 --> F18["Faz 18: Çoklu Şube, Depo & E-Belge / ÖKC"]
 ```
@@ -96,19 +96,28 @@ flowchart LR
 
 ---
 
-### 🟡 FAZ 16: SKT & PARTİ (LOT) TAKİBİ VE MOBİL PATRON KOKPİTİ
-*Hedef: Gıda ürünlerinde son kullanma tarihi yaklaşanları uyararak zayiatı önlemek; işletme sahibinin telefonundan canlı mağazasını yönetmesini sağlamak.*
+### 🟢 FAZ 16: SKT & PARTİ (LOT) TAKİBİ VE MOBİL PATRON KOKPİTİ — TAMAMLANDI ✅
+*Hedef: Gıda ürünlerinde son kullanma tarihi yaklaşanları uyararak zayiatı önlemek; işletme sahibinin telefonundan canlı ciroyu, brüt/net kâr marjını ve iptal edilen şüpheli fişleri izlemesini sağlamak.*
 
-#### A. İşlevsel Kapsam
-1. **SKT & Parti Numarası Takibi:**
-   - Mal kabulünde son kullanma tarihi (SKT) girişi.
-   - Kritik SKT Raporu: *3 gün kalanlar, 7 gün kalanlar* uyarı göstergesi. Otomatik indirim/kampanya önerisi.
-2. **Mobil Patron Ekranı (Mobile Boss Dashboard PWA):**
-   - Telefon ekranına tam oturan, sadeleştirilmiş KPI kartları:
-     - Anlık Kasa Toplamı (Nakit / Kart / Açık Hesap)
-     - Günlük Net Kâr Marjı
-     - İptal Edilen Fişler & Şüpheli Kasa Hareketleri
-     - Kasa açık mı, hangi kasiyer çalışıyor?
+#### A. Tamamlanan ve Doğrulanan Kabiliyetler
+1. **Ürün Kartında ve Mal Kabulünde SKT & Parti (Lot) Modeli:**
+   - `Product` ve `StockEntryItem` modellerine `track_expiration`, `expiration_date` ve `lot_number` alanları eklendi (Migrasyon: `0017`).
+   - `Product.days_to_expiration` ve `Product.expiration_status` dinamik property'leri ile durum sınıflandırması: `EXPIRED` (Tarihi Geçmiş), `CRITICAL` (0-3 gün), `WARNING` (4-7 gün), `UPCOMING` (8-30 gün) ve `OK`.
+2. **Kasa Ekranında Sesli ve Görsel SKT / Gıda Güvenliği Alarmı:**
+   - Kasiyer barkod okuttuğunda ürünün SKT'si geçmişse kalın ikaz sesi (`playBeep(260, 0.25)`) ve kırmızı uyarı tost bildirimi (`⚠️ DİKKAT: SKT'si Geçmiştir! Raftan kaldırınız`) tetiklenir. Tarihi yaklaşmış ürünlerde sarı bilgilendirme verilir.
+3. **SKT Takip & Zayiat Önleme Paneli (`/management/expiration/`):**
+   - Günü geçen ürünler (Kırmızı Alarm), 0-3 gün kalanlar (Acil Tüketim/İndirim), 4-7 gün ve 8-30 gün kalanlar için renkli KPI kartları ve potansiyel zayiat maliyet hesaplaması.
+   - Excel uyumlu CSV dışa aktarımı (`/management/expiration/export/`).
+4. **Mobil Patron Kokpiti (Mobile Boss Cockpit PWA — `/boss/` veya `/management/boss/`):**
+   - Telefon ekranına tam oturan (Mobile-First) şık, koyu degrade başlıklı patron paneli.
+   - **Canlı Ciro:** Bugünkü Net Satış Cirosu, Nakit / Kredi Kartı / Veresiye dağılım çubuğu.
+   - **Gerçek Kâr Analizi:** Satılan kalemlerin anlık maliyeti üzerinden Tahmini Brüt Kâr (₺) ve Net Kâr Marjı Yüzdesi (%..).
+   - **Kasa Güvenliği & Şüpheli İşlem Alarmı:** Gün içinde kasiyerlerin iptal ettiği fişler, iptal tutarı, saati ve iptal gerekçeleri.
+   - **Açık Kasa & Vardiya Durumu:** Hangi kasa açık, hangi kasiyer nöbette, çekmecedeki güncel nakit tutarı.
+   - **Canlı Yenileme:** Sayfayı yenilemeden 30 saniyede bir otomatik ve manuel tek dokunuşla `/api/boss/live-metrics/` üzerinden animasyonlu canlı veri güncelleme.
+   - Dönem filtreleri: [Bugün], [Dün], [Bu Hafta], [Bu Ay].
+5. **Birim Testleri & Kalite Güvencesi:**
+   - 4 yeni kapsamlı birim testi yazıldı (`ExpirationAndBossCockpitTestSuite`), toplam **140 test eksiksiz geçti (%100 Yeşil)**.
 
 ---
 

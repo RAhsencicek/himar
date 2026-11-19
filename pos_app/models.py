@@ -275,6 +275,12 @@ class Product(models.Model):
     
     supplier = models.ForeignKey('Supplier', on_delete=models.SET_NULL, null=True, blank=True, related_name="products", verbose_name="Varsayılan Toptancı")
     has_variants = models.BooleanField(default=False, verbose_name="Varyantlı Ürün mü? (Beden/Renk)")
+    
+    # Faz 16: Son Kullanma Tarihi (SKT) & Parti (Lot) Takibi
+    track_expiration = models.BooleanField(default=False, verbose_name="SKT Takibi Yapılsın mı?")
+    expiration_date = models.DateField(null=True, blank=True, db_index=True, verbose_name="Son Kullanma Tarihi (SKT)")
+    lot_number = models.CharField(max_length=50, blank=True, default='', verbose_name="Parti / Lot Numarası")
+
     is_active = models.BooleanField(default=True, verbose_name="Satışta mı?")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -298,6 +304,37 @@ class Product(models.Model):
     @property
     def is_low_stock(self):
         return self.stock_quantity <= self.min_stock_level
+
+    @property
+    def days_to_expiration(self):
+        """Son kullanma tarihine kaç gün kaldığını hesaplar. Geçmişse negatif döner."""
+        if not self.expiration_date:
+            return None
+        today = timezone.localdate()
+        return (self.expiration_date - today).days
+
+    @property
+    def expiration_status(self):
+        """
+        'NONE': SKT tanımlanmamış
+        'EXPIRED': Tarihi geçmiş (Acil raftan çekilmeli!)
+        'CRITICAL': 0-3 gün kalmış (Acil tükenmeli / Kampanya yapılmalı)
+        'WARNING': 4-7 gün kalmış
+        'UPCOMING': 8-30 gün kalmış
+        'OK': 30 günden fazla var
+        """
+        days = self.days_to_expiration
+        if days is None:
+            return 'NONE'
+        if days < 0:
+            return 'EXPIRED'
+        if days <= 3:
+            return 'CRITICAL'
+        if days <= 7:
+            return 'WARNING'
+        if days <= 30:
+            return 'UPCOMING'
+        return 'OK'
 
     @property
     def profit_amount(self):
@@ -609,6 +646,9 @@ class SaleItem(models.Model):
     vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('10.00'), verbose_name="KDV Oranı (%)")
     vat_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'), verbose_name="KDV Tutarı")
     total_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Satır Toplamı")
+    
+    # Faz 16: Satış anındaki birim alış maliyeti (Patron Kokpiti Net Kâr Marjı Hesabı İçin)
+    buy_price = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'), verbose_name="Satış Anındaki Birim Maliyet (TL)")
 
     class Meta:
         verbose_name = "Fiş Kalemi"
@@ -616,6 +656,16 @@ class SaleItem(models.Model):
 
     def __str__(self):
         return f"{self.product_name} x {self.quantity} = {self.total_price} TL"
+
+    @property
+    def total_cost(self):
+        """Satır Toplam Maliyeti"""
+        return (self.buy_price * self.quantity).quantize(Decimal('0.01'))
+
+    @property
+    def profit_amount(self):
+        """Satır Brüt Kâr Tutarı (TL)"""
+        return self.total_price - self.total_cost
 
 
 class Supplier(models.Model):
@@ -743,6 +793,10 @@ class StockEntryItem(models.Model):
     vat_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('20.00'), verbose_name="KDV Oranı (%)")
     buy_price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Hesaplanan Alış Maliyeti (TL)")
     total_price = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="Satır Toplamı (TL)")
+    
+    # Faz 16: Mal Kabulünde SKT ve Parti No
+    expiration_date = models.DateField(null=True, blank=True, verbose_name="Son Kullanma Tarihi (SKT)")
+    lot_number = models.CharField(max_length=50, blank=True, default='', verbose_name="Parti / Lot Numarası")
 
     class Meta:
         verbose_name = "Stok Giriş Kalemi"

@@ -497,6 +497,36 @@ def pos_screen(request):
     return response
 
 
+def _format_pos_product(product, override_price=None, variant=None):
+    """Kasa ekranı için ürün JSON serileştirici - Faz 16 SKT ve Parti desteği dahil"""
+    final_price = float(override_price if override_price is not None else product.sell_price)
+    variant_desc = f"{variant.size} · {variant.color}".strip(' · ') if variant else ''
+    display_name = f"{product.name} ({variant_desc})" if variant_desc else product.name
+    item_barcode = variant.barcode if (variant and variant.barcode) else product.barcode
+
+    return {
+        'id': product.id,
+        'name': display_name,
+        'barcode': item_barcode,
+        'sell_price': final_price,
+        'vat_rate': float(product.vat_rate),
+        'unit': product.unit,
+        'is_weighted': product.is_weighted,
+        'stock_quantity': float(variant.stock_quantity if variant else product.stock_quantity),
+        'variant_id': variant.id if variant else None,
+        'variant_info': variant_desc,
+        'size': variant.size if variant else None,
+        'color': variant.color if variant else None,
+        # Faz 16: SKT ve Parti Bilgileri
+        'expiration_date': product.expiration_date.strftime('%d.%m.%Y') if product.expiration_date else None,
+        'days_to_expiration': product.days_to_expiration,
+        'expiration_status': product.expiration_status,
+        'is_expired': product.expiration_status == 'EXPIRED',
+        'is_expiring_soon': product.expiration_status in ('CRITICAL', 'WARNING'),
+        'lot_number': product.lot_number or '',
+    }
+
+
 def search_barcode(request):
     """
     Barkod ve Terazi/Tartılı Ürün Çözümleme API
@@ -516,26 +546,11 @@ def search_barcode(request):
     ).select_related('product').first()
     if variant and variant.product.is_active:
         prod = variant.product
-        variant_desc = f"{variant.size} · {variant.color}".strip(' · ')
-        display_name = f"{prod.name} ({variant_desc})" if variant_desc else prod.name
         final_price = float(variant.price_override if variant.price_override is not None else prod.sell_price)
         return JsonResponse({
             'success': True,
             'has_variants': False,
-            'product': {
-                'id': prod.id,
-                'name': display_name,
-                'barcode': variant.barcode,
-                'sell_price': final_price,
-                'vat_rate': float(prod.vat_rate),
-                'unit': prod.unit,
-                'is_weighted': False,
-                'stock_quantity': float(variant.stock_quantity),
-                'variant_id': variant.id,
-                'variant_info': variant_desc,
-                'size': variant.size,
-                'color': variant.color,
-            },
+            'product': _format_pos_product(prod, override_price=final_price, variant=variant),
             'quantity': 1.0,
             'is_weighted_barcode': False
         })
@@ -563,16 +578,7 @@ def search_barcode(request):
             return JsonResponse({
                 'success': True,
                 'has_variants': True,
-                'product': {
-                    'id': product.id,
-                    'name': product.name,
-                    'barcode': product.barcode,
-                    'sell_price': float(product.sell_price),
-                    'vat_rate': float(product.vat_rate),
-                    'unit': product.unit,
-                    'is_weighted': product.is_weighted,
-                    'stock_quantity': float(product.stock_quantity),
-                },
+                'product': _format_pos_product(product),
                 'variants': variants_data,
                 'quantity': 1.0,
                 'is_weighted_barcode': False
@@ -581,18 +587,7 @@ def search_barcode(request):
         return JsonResponse({
             'success': True,
             'has_variants': False,
-            'product': {
-                'id': product.id,
-                'name': product.name,
-                'barcode': product.barcode,
-                'sell_price': float(product.sell_price),
-                'vat_rate': float(product.vat_rate),
-                'unit': product.unit,
-                'is_weighted': product.is_weighted,
-                'stock_quantity': float(product.stock_quantity),
-                'variant_id': None,
-                'variant_info': '',
-            },
+            'product': _format_pos_product(product),
             'quantity': 1.0,
             'is_weighted_barcode': False
         })
@@ -607,11 +602,9 @@ def search_barcode(request):
         if weighted_product:
             try:
                 if prefix == '27':
-                    # 27: Ağırlık formatı (son 5 hane gram cinsinden gramajdır, örn: 01450 -> 1.450 kg)
                     calculated_quantity = round(Decimal(raw_val) / Decimal('1000.0'), 3)
                     final_sell_price = float(weighted_product.sell_price)
                 else:
-                    # 28: Tutar/Fiyat formatı (son 5 hane kuruş cinsinden toplam satış tutarıdır, örn: 01550 -> 15.50 TL)
                     total_price_tl = Decimal(raw_val) / Decimal('100.0')
                     if weighted_product.sell_price > Decimal('0.00'):
                         calculated_quantity = round(total_price_tl / weighted_product.sell_price, 3)
@@ -623,16 +616,7 @@ def search_barcode(request):
                 return JsonResponse({
                     'success': True,
                     'has_variants': False,
-                    'product': {
-                        'id': weighted_product.id,
-                        'name': weighted_product.name,
-                        'barcode': weighted_product.barcode,
-                        'sell_price': final_sell_price,
-                        'vat_rate': float(weighted_product.vat_rate),
-                        'unit': weighted_product.unit,
-                        'is_weighted': True,
-                        'stock_quantity': float(weighted_product.stock_quantity),
-                    },
+                    'product': _format_pos_product(weighted_product, override_price=final_sell_price),
                     'quantity': float(calculated_quantity),
                     'is_weighted_barcode': True
                 })
@@ -660,16 +644,7 @@ def search_barcode(request):
                 return JsonResponse({
                     'success': True,
                     'has_variants': True,
-                    'product': {
-                        'id': name_matched_product.id,
-                        'name': name_matched_product.name,
-                        'barcode': name_matched_product.barcode,
-                        'sell_price': float(name_matched_product.sell_price),
-                        'vat_rate': float(name_matched_product.vat_rate),
-                        'unit': name_matched_product.unit,
-                        'is_weighted': name_matched_product.is_weighted,
-                        'stock_quantity': float(name_matched_product.stock_quantity),
-                    },
+                    'product': _format_pos_product(name_matched_product),
                     'variants': variants_data,
                     'quantity': 1.0,
                     'is_weighted_barcode': False
@@ -678,16 +653,7 @@ def search_barcode(request):
             return JsonResponse({
                 'success': True,
                 'has_variants': False,
-                'product': {
-                    'id': name_matched_product.id,
-                    'name': name_matched_product.name,
-                    'barcode': name_matched_product.barcode,
-                    'sell_price': float(name_matched_product.sell_price),
-                    'vat_rate': float(name_matched_product.vat_rate),
-                    'unit': name_matched_product.unit,
-                    'is_weighted': name_matched_product.is_weighted,
-                    'stock_quantity': float(name_matched_product.stock_quantity),
-                },
+                'product': _format_pos_product(name_matched_product),
                 'quantity': 1.0,
                 'is_weighted_barcode': False
             })
@@ -1232,6 +1198,7 @@ def process_sale(request):
                     barcode=item_barcode,
                     quantity=qty,
                     unit_price=unit_price,
+                    buy_price=product.buy_price if product else Decimal('0.00'),
                     vat_rate=product.vat_rate,
                     vat_amount=line_vat,
                     total_price=line_total
@@ -2919,6 +2886,10 @@ def product_create_edit_view(request, product_id=None):
         is_quick_button = request.POST.get('is_quick_button') == 'on'
         is_active = request.POST.get('is_active') == 'on'
         has_variants = request.POST.get('has_variants') == 'on'
+        track_expiration = request.POST.get('track_expiration') == 'on'
+        lot_number = request.POST.get('lot_number', '').strip()
+        expiration_date_raw = request.POST.get('expiration_date', '').strip()
+        expiration_date = _parse_iso_date(expiration_date_raw) if expiration_date_raw else None
 
         posted_data = {
             'barcode': barcode,
@@ -2937,6 +2908,9 @@ def product_create_edit_view(request, product_id=None):
             'is_quick_button': is_quick_button,
             'is_active': is_active,
             'has_variants': has_variants,
+            'track_expiration': track_expiration,
+            'lot_number': lot_number,
+            'expiration_date': expiration_date_raw,
         }
 
         if not barcode or not name:
@@ -2996,6 +2970,9 @@ def product_create_edit_view(request, product_id=None):
                 product.quick_button_order = quick_button_order
                 product.is_active = is_active
                 product.has_variants = has_variants
+                product.track_expiration = track_expiration
+                product.expiration_date = expiration_date
+                product.lot_number = lot_number
 
                 if 'image' in request.FILES:
                     product.image = request.FILES['image']
@@ -3022,6 +2999,9 @@ def product_create_edit_view(request, product_id=None):
                     quick_button_order=quick_button_order,
                     is_active=is_active,
                     has_variants=has_variants,
+                    track_expiration=track_expiration,
+                    expiration_date=expiration_date,
+                    lot_number=lot_number,
                     image=request.FILES.get('image')
                 )
                 log_action('PRODUCT', 'Yeni Ürün Eklendi', f"{product.name} ({product.barcode}) eklendi.", user=request.user)
@@ -5342,6 +5322,326 @@ def export_critical_orders_csv(request):
 
 
 @staff_required
+def expiration_tracking_view(request):
+    """
+    Faz 16: SKT & Parti (Lot) Takibi ve Zayiat Önleme Paneli (Multi-Tenancy)
+    Süt ürünleri, şarküteri ve raf ömrü kısa gıdalar için acil indirim/kampanya ve zayiat alarm ekranı.
+    """
+    user_company = get_user_company(request.user)
+    today = timezone.localdate()
+
+    status_filter = request.GET.get('status', 'ALL').strip().upper()
+    search_q = request.GET.get('search_q', '').strip()
+    category_id = request.GET.get('category_id', '').strip()
+
+    base_qs = Product.objects.filter(
+        company_scope_q(user_company),
+        is_active=True,
+        expiration_date__isnull=False
+    ).select_related('category', 'supplier')
+
+    if search_q:
+        base_qs = base_qs.filter(
+            Q(name__icontains=search_q) |
+            Q(barcode__icontains=search_q) |
+            Q(lot_number__icontains=search_q)
+        )
+
+    if category_id.isdigit():
+        base_qs = base_qs.filter(category_id=int(category_id))
+
+    all_exp_products = list(Product.objects.filter(company_scope_q(user_company), is_active=True, expiration_date__isnull=False))
+    
+    expired_count = 0
+    expired_loss_value = Decimal('0.00')
+    critical_count = 0
+    warning_count = 0
+    upcoming_count = 0
+    safe_count = 0
+
+    for p in all_exp_products:
+        days = p.days_to_expiration
+        if days is not None:
+            if days < 0:
+                expired_count += 1
+                if p.stock_quantity > 0:
+                    expired_loss_value += p.stock_quantity * p.buy_price
+            elif days <= 3:
+                critical_count += 1
+            elif days <= 7:
+                warning_count += 1
+            elif days <= 30:
+                upcoming_count += 1
+            else:
+                safe_count += 1
+
+    if status_filter == 'EXPIRED':
+        base_qs = base_qs.filter(expiration_date__lt=today)
+    elif status_filter == 'CRITICAL':
+        base_qs = base_qs.filter(expiration_date__gte=today, expiration_date__lte=today + timedelta(days=3))
+    elif status_filter == 'WARNING':
+        base_qs = base_qs.filter(expiration_date__gt=today + timedelta(days=3), expiration_date__lte=today + timedelta(days=7))
+    elif status_filter == 'UPCOMING':
+        base_qs = base_qs.filter(expiration_date__gt=today + timedelta(days=7), expiration_date__lte=today + timedelta(days=30))
+
+    base_qs = base_qs.order_by('expiration_date', 'name')
+    categories = Category.objects.filter(company_scope_q(user_company), is_active=True).order_by('name')
+
+    paginator = Paginator(base_qs, 40)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    query_params = request.GET.copy()
+    query_params.pop('page', None)
+    query_string = query_params.urlencode()
+
+    context = {
+        'page_obj': page_obj,
+        'products': page_obj.object_list,
+        'categories': categories,
+        'search_q': search_q,
+        'category_id': category_id,
+        'status_filter': status_filter,
+        'query_string': query_string,
+        'today': today,
+        'total_tracked_count': len(all_exp_products),
+        'expired_count': expired_count,
+        'expired_loss_value': expired_loss_value,
+        'critical_count': critical_count,
+        'warning_count': warning_count,
+        'upcoming_count': upcoming_count,
+        'safe_count': safe_count,
+    }
+    return render(request, 'admin/expiration_tracking.html', context)
+
+
+@staff_required
+def export_expirations_csv(request):
+    """SKT ve son kullanma tarihi yaklaşan ürünlerin listesini CSV olarak indirir (Multi-Tenancy)."""
+    user_company = get_user_company(request.user)
+    today = timezone.localdate()
+    products = Product.objects.filter(
+        company_scope_q(user_company),
+        is_active=True,
+        expiration_date__isnull=False
+    ).select_related('category').order_by('expiration_date')
+
+    headers = [
+        'Barkod', 'Ürün Adı', 'Kategori', 'Parti / Lot No',
+        'Son Kullanma Tarihi', 'Kalan Gün', 'Durum',
+        'Mevcut Stok', 'Birim', 'Alış Fiyatı (TL)', 'Satış Fiyatı (TL)', 'Risk Tutarı (TL)'
+    ]
+    rows = []
+    for p in products:
+        days = p.days_to_expiration
+        status_text = "GEÇMİŞ" if days < 0 else f"{days} Gün Kaldı"
+        risk_val = (p.stock_quantity * p.buy_price) if p.stock_quantity > 0 else Decimal('0.00')
+        rows.append([
+            p.barcode,
+            p.name,
+            p.category.name if p.category else '',
+            p.lot_number or '',
+            p.expiration_date.strftime('%d.%m.%Y') if p.expiration_date else '',
+            days,
+            status_text,
+            f"{p.stock_quantity:.3f}",
+            p.unit,
+            f"{p.buy_price:.2f}",
+            f"{p.sell_price:.2f}",
+            f"{risk_val:.2f}",
+        ])
+    return _csv_response(f"skt_takip_raporu_{today.isoformat()}.csv", headers, rows)
+
+
+def _calculate_boss_metrics(user_company, period='TODAY'):
+    """
+    Patron Kokpiti için gerçek zamanlı finansal metrikler ve kâr analizi (Multi-Tenancy)
+    """
+    today = timezone.localdate()
+    now = timezone.localtime()
+
+    if period == 'YESTERDAY':
+        start_date = today - timedelta(days=1)
+        end_date = start_date
+    elif period == 'WEEK':
+        start_date = today - timedelta(days=today.weekday())
+        end_date = today
+    elif period == 'MONTH':
+        start_date = today.replace(day=1)
+        end_date = today
+    else:  # TODAY
+        start_date = today
+        end_date = today
+
+    sales_qs = Sale.objects.filter(
+        company_scope_q(user_company),
+        created_at__date__gte=start_date,
+        created_at__date__lte=end_date,
+        is_cancelled=False
+    ).select_related('cashier')
+
+    cancelled_sales_qs = Sale.objects.filter(
+        company_scope_q(user_company),
+        created_at__date__gte=start_date,
+        created_at__date__lte=end_date,
+        is_cancelled=True
+    ).select_related('cashier').order_by('-created_at')
+
+    normal_sales = sales_qs.filter(is_return=False)
+    return_sales = sales_qs.filter(is_return=True)
+
+    total_gross_revenue = normal_sales.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
+    total_return_amount = return_sales.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
+    net_revenue = total_gross_revenue - total_return_amount
+
+    cash_sales = sales_qs.filter(payment_type__in=['NAKIT', 'PARCALI']).aggregate(s=Sum('cash_paid'))['s'] or Decimal('0.00')
+    card_sales = sales_qs.filter(payment_type__in=['KART', 'PARCALI']).aggregate(s=Sum('card_paid'))['s'] or Decimal('0.00')
+    veresiye_sales = sales_qs.filter(payment_type='VERESIYE').aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
+
+    total_receipt_count = normal_sales.count()
+    avg_basket = (net_revenue / total_receipt_count) if total_receipt_count > 0 else Decimal('0.00')
+
+    sale_items = SaleItem.objects.filter(sale__in=normal_sales).select_related('product')
+    total_cost = Decimal('0.00')
+    for item in sale_items:
+        cost_unit = item.buy_price if (item.buy_price and item.buy_price > 0) else (item.product.buy_price if item.product else Decimal('0.00'))
+        total_cost += cost_unit * item.quantity
+
+    return_items = SaleItem.objects.filter(sale__in=return_sales).select_related('product')
+    for item in return_items:
+        cost_unit = item.buy_price if (item.buy_price and item.buy_price > 0) else (item.product.buy_price if item.product else Decimal('0.00'))
+        total_cost -= cost_unit * item.quantity
+
+    total_cost = max(Decimal('0.00'), total_cost)
+    gross_profit = net_revenue - total_cost
+    profit_margin_percent = ((gross_profit / net_revenue) * Decimal('100.00')) if net_revenue > Decimal('0.00') else Decimal('0.00')
+
+    cancelled_count = cancelled_sales_qs.count()
+    cancelled_total = cancelled_sales_qs.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
+
+    open_shifts = Shift.objects.filter(
+        company_scope_q(user_company),
+        is_closed=False
+    ).select_related('cashier', 'cash_register').order_by('-opened_at')
+
+    critical_stock_count = Product.objects.filter(
+        company_scope_q(user_company),
+        is_active=True,
+        stock_quantity__lte=F('min_stock_level')
+    ).count()
+
+    expired_skt_count = Product.objects.filter(
+        company_scope_q(user_company),
+        is_active=True,
+        expiration_date__lt=today
+    ).count()
+
+    urgent_skt_count = Product.objects.filter(
+        company_scope_q(user_company),
+        is_active=True,
+        expiration_date__gte=today,
+        expiration_date__lte=today + timedelta(days=3)
+    ).count()
+
+    return {
+        'period': period,
+        'start_date': start_date,
+        'end_date': end_date,
+        'now': now,
+        'net_revenue': net_revenue,
+        'total_gross_revenue': total_gross_revenue,
+        'total_return_amount': total_return_amount,
+        'cash_sales': cash_sales,
+        'card_sales': card_sales,
+        'veresiye_sales': veresiye_sales,
+        'total_receipt_count': total_receipt_count,
+        'avg_basket': avg_basket,
+        'total_cost': total_cost,
+        'gross_profit': gross_profit,
+        'profit_margin_percent': profit_margin_percent,
+        'cancelled_count': cancelled_count,
+        'cancelled_total': cancelled_total,
+        'cancelled_sales': list(cancelled_sales_qs[:10]),
+        'open_shifts': open_shifts,
+        'critical_stock_count': critical_stock_count,
+        'expired_skt_count': expired_skt_count,
+        'urgent_skt_count': urgent_skt_count,
+    }
+
+
+@staff_required
+def mobile_boss_dashboard_view(request):
+    """
+    Faz 16: Mobil Patron Kokpiti (Mobile Boss Cockpit PWA)
+    İşletme sahibinin cep telefonundan anlık ciroyu, kâr marjını, açık kasaları ve iptal fişlerini izleme ekranı.
+    """
+    user_company = get_user_company(request.user)
+    period = request.GET.get('period', 'TODAY').strip().upper()
+    metrics = _calculate_boss_metrics(user_company, period=period)
+
+    context = {
+        'm': metrics,
+        'company': user_company,
+    }
+    return render(request, 'admin/boss_dashboard.html', context)
+
+
+@staff_required
+def boss_live_metrics_api(request):
+    """
+    Faz 16: Mobil Patron Kokpiti Canlı Veri API (Saniyede bir veya butona basınca canlı güncelleme)
+    """
+    user_company = get_user_company(request.user)
+    period = request.GET.get('period', 'TODAY').strip().upper()
+    m = _calculate_boss_metrics(user_company, period=period)
+
+    cancelled_list = [
+        {
+            'id': s.id,
+            'receipt_number': s.receipt_number,
+            'time': timezone.localtime(s.created_at).strftime('%H:%M'),
+            'total': float(s.total_amount),
+            'cashier': s.cashier.username if s.cashier else 'Bilinmiyor',
+            'reason': s.cancellation_reason or 'Gerekçe belirtilmedi'
+        }
+        for s in m['cancelled_sales']
+    ]
+
+    shifts_list = [
+        {
+            'id': sh.id,
+            'register_name': sh.cash_register.name,
+            'cashier': sh.cashier.username if sh.cashier else 'Atanmadı',
+            'opened_at': timezone.localtime(sh.opened_at).strftime('%H:%M'),
+            'cash_sales': float(sh.total_cash_sales),
+            'expected_cash': float(sh.expected_cash)
+        }
+        for sh in m['open_shifts']
+    ]
+
+    return JsonResponse({
+        'success': True,
+        'timestamp': timezone.localtime().strftime('%H:%M:%S'),
+        'metrics': {
+            'net_revenue': float(m['net_revenue']),
+            'gross_profit': float(m['gross_profit']),
+            'profit_margin_percent': float(m['profit_margin_percent']),
+            'cash_sales': float(m['cash_sales']),
+            'card_sales': float(m['card_sales']),
+            'veresiye_sales': float(m['veresiye_sales']),
+            'total_receipt_count': m['total_receipt_count'],
+            'avg_basket': float(m['avg_basket']),
+            'cancelled_count': m['cancelled_count'],
+            'cancelled_total': float(m['cancelled_total']),
+            'critical_stock_count': m['critical_stock_count'],
+            'expired_skt_count': m['expired_skt_count'],
+            'urgent_skt_count': m['urgent_skt_count'],
+        },
+        'cancelled_sales': cancelled_list,
+        'open_shifts': shifts_list,
+    })
+
+
+@staff_required
 def export_customers_csv(request):
     """Veresiye ve müşteri listesini Excel uyumlu CSV olarak indirir (Multi-Tenancy)."""
     user_company = get_user_company(request.user)
@@ -6956,6 +7256,7 @@ def offline_sale_sync_api(request):
                         barcode=item_barcode,
                         quantity=item['quantity'],
                         unit_price=unit_price,
+                        buy_price=product.buy_price if product else Decimal('0.00'),
                         vat_rate=product.vat_rate,
                         vat_amount=line_vat,
                         total_price=line_total

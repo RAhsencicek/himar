@@ -3178,6 +3178,15 @@
                 if (!fromCamera) barcodeInput.value = '';
                 scannerStatusEl.textContent = `Eklendi: ${data.product.name}`;
                 playBeep(880, 0.08);
+
+                // Faz 16: SKT ve Gıda Güvenliği Alarmı
+                if (data.product.is_expired) {
+                    playBeep(260, 0.25);
+                    showPosToast(`⚠️ DİKKAT: "${data.product.name}" ürününün SKT'si GEÇMİŞTİR (${data.product.expiration_date})!`, 'error');
+                } else if (data.product.is_expiring_soon) {
+                    showPosToast(`ℹ️ BİLGİ: "${data.product.name}" SKT Yaklaşıyor: ${data.product.expiration_date} (${data.product.days_to_expiration} gün kaldı)`, 'warning');
+                }
+
                 return { ok: true, product: data.product, quantity: finalQty };
             }
 

@@ -1392,6 +1392,11 @@
         </button>
     </div>
     <div class="sidebar-section-title">GENEL PANEL</div>
+    <a href="{% url 'mobile_boss_dashboard_view' %}" class="himarket-nav-item {% if '/management/boss/' in request.path or '/boss/' in request.path %}active{% endif %}">
+        <i class="bi bi-phone-fill text-primary"></i>
+        <span>Mobil Patron Kokpiti</span>
+        <span class="badge bg-danger text-white fs-9 ms-auto">CANLI</span>
+    </a>
     <a href="{% url 'admin_dashboard' %}" class="himarket-nav-item {% if request.path == '/management/dashboard/' or request.path == '/admin/' %}active{% endif %}">
         <i class="bi bi-speedometer2"></i>
         <span>Gösterge Paneli</span>
@@ -1406,6 +1411,19 @@
     <a href="{% url 'product_catalog_view' %}" class="himarket-nav-item {% if request.path == '/management/products/' %}active{% endif %}">
         <i class="bi bi-grid-3x3-gap-fill"></i>
         <span>Ürün Kataloğu</span>
+    </a>
+    <a href="{% url 'expiration_tracking_view' %}" class="himarket-nav-item {% if '/management/expiration/' in request.path %}active{% endif %}">
+        <i class="bi bi-calendar-event-fill text-warning"></i>
+        <span>SKT & Zayiat Takibi</span>
+        <span class="badge bg-warning text-dark fs-9 ms-auto">Gıda</span>
+    </a>
+    <a href="{% url 'global_product_pool_view' %}" class="himarket-nav-item {% if '/management/products/pool/' in request.path %}active{% endif %}">
+        <i class="bi bi-clouds-fill text-warning"></i>
+        <span>Ortak Barkod Havuzu</span>
+    </a>
+    <a href="{% url 'product_import_view' %}" class="himarket-nav-item {% if '/management/products/import/' in request.path %}active{% endif %}">
+        <i class="bi bi-file-earmark-arrow-up text-primary"></i>
+        <span>Excel / CSV Yükle</span>
     </a>
     <a href="{% url 'product_create_view' %}" class="himarket-nav-item {% if request.path == '/management/products/create/' %}active{% endif %}">
         <i class="bi bi-plus-circle-fill"></i>

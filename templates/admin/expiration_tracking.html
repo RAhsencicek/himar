@@ -1,0 +1,247 @@
+{% extends "admin/base_site.html" %}
+{% load static l10n %}
+
+{% block content %}
+<div class="container-fluid px-3 py-3">
+    <!-- ÜST BAŞLIK VE AKSİYON ÇUBUĞU -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-1 fs-8">
+                    <li class="breadcrumb-item"><a href="{% url 'admin_dashboard' %}" class="text-decoration-none">Yönetim</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'product_catalog_view' %}" class="text-decoration-none">Ürün Kataloğu</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">SKT & Zayiat Takibi</li>
+                </ol>
+            </nav>
+            <h1 class="h4 mb-0 fw-bold text-dark d-flex align-items-center gap-2">
+                <i class="bi bi-calendar-event-fill text-warning"></i> Son Kullanma Tarihi (SKT) & Zayiat Önleme Paneli
+            </h1>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <a href="{% url 'export_expirations_csv' %}" class="btn btn-outline-secondary btn-sm fw-bold shadow-xs d-flex align-items-center gap-1.5" title="SKT listesini Excel uyumlu CSV olarak indir">
+                <i class="bi bi-file-earmark-spreadsheet"></i> CSV İndir
+            </a>
+            <a href="{% url 'product_catalog_view' %}" class="btn btn-outline-secondary btn-sm fw-semibold shadow-xs">
+                <i class="bi bi-arrow-left"></i> Ürün Kataloğuna Dön
+            </a>
+        </div>
+    </div>
+
+    <!-- BİLGİ & UYARI MESAJLARI -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show mb-3 rounded-2 shadow-xs py-2 px-3 fs-7" role="alert">
+                <i class="bi bi-info-circle-fill me-1"></i> {{ message }}
+                <button type="button" class="btn-close py-2" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- KPI ALARM ÖZET KARTLARI -->
+    <div class="row g-2 mb-3 text-center">
+        <!-- 1. Günü Geçenler (Zayiat / İmha) -->
+        <div class="col-6 col-md-3">
+            <a href="?status=EXPIRED" class="text-decoration-none">
+                <div class="p-3 rounded-3 {% if status_filter == 'EXPIRED' %}border border-2 border-danger shadow-sm{% else %}border{% endif %} bg-danger bg-opacity-10 h-100">
+                    <div class="text-danger fs-3 fw-bold">{{ expired_count }}</div>
+                    <div class="fs-8 fw-bold text-danger text-uppercase">Tarihi Geçen Ürün</div>
+                    <div class="fs-9 text-muted mt-1">Zayiat Riski: <strong>{{ expired_loss_value|floatformat:2 }} ₺</strong></div>
+                </div>
+            </a>
+        </div>
+        <!-- 2. 0-3 Gün Kalanlar (Acil Kampanya) -->
+        <div class="col-6 col-md-3">
+            <a href="?status=CRITICAL" class="text-decoration-none">
+                <div class="p-3 rounded-3 {% if status_filter == 'CRITICAL' %}border border-2 border-warning shadow-sm{% else %}border{% endif %} bg-warning bg-opacity-10 h-100">
+                    <div class="text-warning text-dark fs-3 fw-bold">{{ critical_count }}</div>
+                    <div class="fs-8 fw-bold text-dark text-uppercase">0 - 3 Gün Kalanlar</div>
+                    <div class="fs-9 text-muted mt-1">Acil İndirim / Tüketim</div>
+                </div>
+            </a>
+        </div>
+        <!-- 3. 4-7 Gün Kalanlar -->
+        <div class="col-6 col-md-3">
+            <a href="?status=WARNING" class="text-decoration-none">
+                <div class="p-3 rounded-3 {% if status_filter == 'WARNING' %}border border-2 border-info shadow-sm{% else %}border{% endif %} bg-info bg-opacity-10 h-100">
+                    <div class="text-info fs-3 fw-bold">{{ warning_count }}</div>
+                    <div class="fs-8 fw-bold text-info text-uppercase">4 - 7 Gün Kalanlar</div>
+                    <div class="fs-9 text-muted mt-1">Yaklaşan Raf Stokları</div>
+                </div>
+            </a>
+        </div>
+        <!-- 4. Toplam Takip Edilen -->
+        <div class="col-6 col-md-3">
+            <a href="?status=ALL" class="text-decoration-none">
+                <div class="p-3 rounded-3 {% if status_filter == 'ALL' %}border border-2 border-primary shadow-sm{% else %}border{% endif %} bg-light h-100">
+                    <div class="text-dark fs-3 fw-bold">{{ total_tracked_count }}</div>
+                    <div class="fs-8 fw-bold text-secondary text-uppercase">Toplam SKT Takipli</div>
+                    <div class="fs-9 text-muted mt-1">Güvenli Stok: {{ safe_count }}</div>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <!-- FİLTRE VE ARAMA PANELİ -->
+    <div class="card border-0 shadow-sm rounded-3 mb-3">
+        <div class="card-body p-2.5">
+            <form method="GET" class="row g-2 align-items-center">
+                <input type="hidden" name="status" value="{{ status_filter }}">
+                <div class="col-md-5">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-light border-end-0"><i class="bi bi-search text-muted"></i></span>
+                        <input type="text" name="search_q" value="{{ search_q }}" class="form-control border-start-0" placeholder="Barkod, Ürün Adı veya Parti No ile ara...">
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <select name="category_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <option value="">Tüm Kategoriler</option>
+                        {% for cat in categories %}
+                            <option value="{{ cat.id }}" {% if category_id == cat.id|stringformat:"s" %}selected{% endif %}>{{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm fw-bold w-100 shadow-xs">
+                        <i class="bi bi-funnel"></i> Filtrele
+                    </button>
+                    {% if search_q or category_id or status_filter != 'ALL' %}
+                        <a href="{% url 'expiration_tracking_view' %}" class="btn btn-outline-secondary btn-sm" title="Filtreleri Temizle">
+                            <i class="bi bi-x-circle"></i>
+                        </a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ÜRÜN LİSTESİ TABLOSU -->
+    <div class="card border-0 shadow-sm rounded-3 overflow-hidden">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 fs-8">
+                <thead class="table-light text-secondary">
+                    <tr>
+                        <th style="width: 140px;">Barkod</th>
+                        <th>Ürün Adı</th>
+                        <th>Kategori</th>
+                        <th>Parti / Lot</th>
+                        <th>Son Kullanma Tarihi (SKT)</th>
+                        <th>Kalan Süre & Durum</th>
+                        <th class="text-end">Mevcut Stok</th>
+                        <th class="text-end">Alış Maliyeti</th>
+                        <th class="text-end">Zayiat / Risk Değeri</th>
+                        <th class="text-center" style="width: 100px;">İşlem</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in products %}
+                        <tr class="{% if p.days_to_expiration < 0 %}table-danger table-opacity-10{% elif p.days_to_expiration <= 3 %}table-warning table-opacity-10{% endif %}">
+                            <td>
+                                <span class="badge bg-light text-dark border font-monospace fs-8">
+                                    {{ p.barcode }}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="fw-bold text-dark">{{ p.name }}</div>
+                            </td>
+                            <td>
+                                {% if p.category %}
+                                    <span class="badge bg-secondary bg-opacity-10 text-dark">{{ p.category.name }}</span>
+                                {% else %}
+                                    <span class="text-muted fs-9">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if p.lot_number %}
+                                    <span class="badge bg-light text-dark border font-monospace fs-9">{{ p.lot_number }}</span>
+                                {% else %}
+                                    <span class="text-muted fs-9">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="fw-bold text-dark fs-8">
+                                    <i class="bi bi-calendar me-1 text-secondary"></i> {{ p.expiration_date|date:"d.m.Y" }}
+                                </div>
+                            </td>
+                            <td>
+                                {% if p.days_to_expiration < 0 %}
+                                    <span class="badge bg-danger px-2.5 py-1.5 fw-bold">
+                                        <i class="bi bi-exclamation-octagon-fill me-1"></i> GEÇMİŞ ({{ p.days_to_expiration|stringformat:"s"|slice:"1:" }} gün önce)
+                                    </span>
+                                {% elif p.days_to_expiration == 0 %}
+                                    <span class="badge bg-danger px-2.5 py-1.5 fw-bold animate-pulse">
+                                        <i class="bi bi-exclamation-triangle-fill me-1"></i> BUGÜN BİTİYOR!
+                                    </span>
+                                {% elif p.days_to_expiration <= 3 %}
+                                    <span class="badge bg-warning text-dark px-2.5 py-1.5 fw-bold">
+                                        <i class="bi bi-fire me-1"></i> {{ p.days_to_expiration }} Gün Kaldı (Acil)
+                                    </span>
+                                {% elif p.days_to_expiration <= 7 %}
+                                    <span class="badge bg-info text-dark px-2.5 py-1.5 fw-semibold">
+                                        <i class="bi bi-clock-history me-1"></i> {{ p.days_to_expiration }} Gün Kaldı
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 px-2.5 py-1 fw-semibold">
+                                        <i class="bi bi-check-circle me-1"></i> {{ p.days_to_expiration }} Gün Kaldı
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end fw-bold">
+                                {{ p.stock_quantity|floatformat:2 }} <small class="text-muted">{{ p.unit }}</small>
+                            </td>
+                            <td class="text-end">
+                                {{ p.buy_price|floatformat:2 }} ₺
+                            </td>
+                            <td class="text-end fw-bold {% if p.days_to_expiration < 0 %}text-danger{% elif p.days_to_expiration <= 3 %}text-warning text-dark{% else %}text-secondary{% endif %}">
+                                {% widthratio p.stock_quantity 1 p.buy_price as approx_loss %}
+                                {{ approx_loss|floatformat:2 }} ₺
+                            </td>
+                            <td class="text-center">
+                                <a href="{% url 'product_edit_view' p.id %}" class="btn btn-sm btn-outline-primary py-0.5 px-2" title="Ürünü Düzenle">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="10" class="text-center py-4 text-muted">
+                                <i class="bi bi-check2-circle fs-2 d-block mb-2 text-success"></i>
+                                {% if status_filter == 'EXPIRED' %}
+                                    Harika! Son kullanma tarihi geçmiş hiçbir ürün bulunmuyor.
+                                {% elif status_filter == 'CRITICAL' %}
+                                    Önümüzdeki 3 gün içinde süresi dolacak kritik ürün bulunmuyor.
+                                {% else %}
+                                    Kayıtlı kriterlere uygun SKT takipli ürün bulunamadı.
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- SAYFALAMA -->
+        {% if page_obj.has_other_pages %}
+            <div class="card-footer bg-white border-top py-2 px-3 d-flex justify-content-between align-items-center fs-8">
+                <span class="text-muted">
+                    Toplam {{ page_obj.paginator.count }} üründen {{ page_obj.start_index }}-{{ page_obj.end_index }} arası
+                </span>
+                <ul class="pagination pagination-sm mb-0">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if query_string %}&{{ query_string }}{% endif %}">Önceki</a>
+                        </li>
+                    {% endif %}
+                    <li class="page-item active">
+                        <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+                    </li>
+                    {% if page_obj.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if query_string %}&{{ query_string }}{% endif %}">Sonraki</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

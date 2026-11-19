@@ -38,6 +38,11 @@ urlpatterns = [
     path('management/dashboard/home/', views.admin_dashboard_view, name='admin_dashboard'),
     path('yonetim/', views.admin_dashboard_view, name='yonetim_alias'),
 
+    # Faz 16: Mobil Patron Kokpiti (Mobile Boss Dashboard PWA)
+    path('management/boss/', views.mobile_boss_dashboard_view, name='mobile_boss_dashboard_view'),
+    path('boss/', views.mobile_boss_dashboard_view, name='boss_dashboard_alias'),
+    path('api/boss/live-metrics/', views.boss_live_metrics_api, name='boss_live_metrics_api'),
+
     # Veritabanı Yedek İndirme (Admin Tek Tıkla Yedek İndir)
     path('management/backup/download/', views.download_backup_view, name='download_backup_view'),
 
@@ -81,6 +86,10 @@ urlpatterns = [
     path('management/products/<int:product_id>/edit/', views.product_create_edit_view, name='product_edit_view'),
     path('management/products/<int:product_id>/toggle-active/', views.product_toggle_active_action, name='product_toggle_active_action'),
     path('management/products/<int:product_id>/delete/', views.product_delete_action, name='product_delete_action'),
+
+    # Faz 16: Son Kullanma Tarihi (SKT) & Zayiat Önleme
+    path('management/expiration/', views.expiration_tracking_view, name='expiration_tracking_view'),
+    path('management/expiration/export/', views.export_expirations_csv, name='export_expirations_csv'),
 
     # Kategori Yönetimi, Satış Fişleri & Kasa Vardiyaları (Özel Admin Ekranları - Faz 4)
     path('management/categories/', views.category_list_view, name='category_list_view'),

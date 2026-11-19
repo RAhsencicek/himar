@@ -1,0 +1,296 @@
+{% extends "admin/base_site.html" %}
+{% load static l10n %}
+
+{% block content %}
+<style>
+    /* MOBİL PATRON KOKPİTİ STİLLERİ (MOBILE FIRST) */
+    .boss-metric-card {
+        border-radius: 14px;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .boss-metric-card:active {
+        transform: scale(0.98);
+    }
+    .boss-period-pill {
+        border-radius: 20px;
+        font-weight: 700;
+        font-size: 0.8rem;
+        padding: 6px 14px;
+        transition: all 0.2s ease;
+    }
+    .boss-badge-pill {
+        border-radius: 12px;
+        padding: 4px 10px;
+        font-weight: 700;
+    }
+</style>
+
+<div class="container-fluid px-2 px-md-3 py-3" style="max-width: 900px; margin: 0 auto;">
+    <!-- ÜST BAŞLIK VE CANLI YENİLE ÇUBUĞU -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <div class="d-flex align-items-center gap-1.5">
+                <span class="badge bg-danger text-white fs-9 px-2 py-1 text-uppercase fw-bold">
+                    <i class="bi bi-broadcast me-1"></i> CANLI
+                </span>
+                <span class="text-muted fs-8" id="liveTimeBadge">Son Güncelleme: {{ m.now|date:"H:i:s" }}</span>
+            </div>
+            <h1 class="h4 mb-0 fw-bold text-dark d-flex align-items-center gap-2 mt-1">
+                <i class="bi bi-phone-fill text-primary"></i> Mobil Patron Kokpiti
+            </h1>
+        </div>
+        <button type="button" class="btn btn-outline-primary btn-sm rounded-pill fw-bold shadow-xs px-3 py-1.5 d-flex align-items-center gap-1.5" id="btnRefreshMetrics" onclick="refreshBossMetrics()">
+            <i class="bi bi-arrow-clockwise fs-6" id="refreshIcon"></i>
+            <span class="d-none d-sm-inline">Yenile</span>
+        </button>
+    </div>
+
+    <!-- DÖNEM SEÇİCİ PİLL'LER (BUGÜN / DÜN / BU HAFTA / BU AY) -->
+    <div class="d-flex gap-1.5 mb-3 overflow-x-auto pb-1">
+        <a href="?period=TODAY" class="btn btn-sm {% if m.period == 'TODAY' %}btn-primary text-white shadow-xs{% else %}btn-light border text-secondary{% endif %} boss-period-pill text-nowrap">
+            Bugün
+        </a>
+        <a href="?period=YESTERDAY" class="btn btn-sm {% if m.period == 'YESTERDAY' %}btn-primary text-white shadow-xs{% else %}btn-light border text-secondary{% endif %} boss-period-pill text-nowrap">
+            Dün
+        </a>
+        <a href="?period=WEEK" class="btn btn-sm {% if m.period == 'WEEK' %}btn-primary text-white shadow-xs{% else %}btn-light border text-secondary{% endif %} boss-period-pill text-nowrap">
+            Bu Hafta
+        </a>
+        <a href="?period=MONTH" class="btn btn-sm {% if m.period == 'MONTH' %}btn-primary text-white shadow-xs{% else %}btn-light border text-secondary{% endif %} boss-period-pill text-nowrap">
+            Bu Ay
+        </a>
+    </div>
+
+    <!-- 1. BÜYÜK CİRO VE NET KÂR KARTI -->
+    <div class="card border-0 shadow-sm rounded-4 mb-3 overflow-hidden bg-gradient" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
+        <div class="card-body p-3 p-md-4 text-white">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+                <span class="text-slate-300 fs-8 fw-semibold text-uppercase tracking-wider">
+                    <i class="bi bi-wallet2 text-info me-1"></i> Net Satış Cirosu
+                </span>
+                <span class="badge bg-success bg-opacity-25 text-success border border-success border-opacity-25 fs-8">
+                    {{ m.total_receipt_count }} Satış Fişi
+                </span>
+            </div>
+            
+            <div class="d-flex align-items-baseline gap-2 mb-3">
+                <div class="fs-1 fw-bold text-white tracking-tight" id="displayNetRevenue">
+                    {{ m.net_revenue|floatformat:2 }}
+                </div>
+                <span class="fs-4 text-slate-300 fw-semibold">₺</span>
+            </div>
+
+            <!-- NET KÂR VE MARJ ŞERİDİ -->
+            <div class="p-2.5 rounded-3 bg-white bg-opacity-10 border border-white border-opacity-10 d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <div class="fs-9 text-slate-300 text-uppercase fw-bold">Tahmini Brüt Kâr</div>
+                    <div class="fs-5 fw-bold text-success" id="displayGrossProfit">
+                        +{{ m.gross_profit|floatformat:2 }} ₺
+                    </div>
+                </div>
+                <div class="text-end">
+                    <div class="fs-9 text-slate-300 text-uppercase fw-bold">Kâr Marjı</div>
+                    <div class="badge bg-success text-white fs-7 fw-bold px-2.5 py-1" id="displayProfitMargin">
+                        %{{ m.profit_margin_percent|floatformat:1 }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- ÖDEME YÖNTEMLERİ BAR KIRIILIMI -->
+            <div>
+                <div class="d-flex justify-content-between fs-8 text-slate-300 mb-1.5 fw-semibold">
+                    <span>Nakit: <strong class="text-white" id="displayCashSales">{{ m.cash_sales|floatformat:2 }} ₺</strong></span>
+                    <span>Kart: <strong class="text-white" id="displayCardSales">{{ m.card_sales|floatformat:2 }} ₺</strong></span>
+                    <span>Veresiye: <strong class="text-white" id="displayVeresiyeSales">{{ m.veresiye_sales|floatformat:2 }} ₺</strong></span>
+                </div>
+                <div class="progress" style="height: 8px; border-radius: 6px; background-color: rgba(255,255,255,0.15);">
+                    <div class="progress-bar bg-success" role="progressbar" style="width: {% if m.net_revenue > 0 %}{% widthratio m.cash_sales m.net_revenue 100 %}{% else %}0{% endif %}%;" title="Nakit"></div>
+                    <div class="progress-bar bg-info" role="progressbar" style="width: {% if m.net_revenue > 0 %}{% widthratio m.card_sales m.net_revenue 100 %}{% else %}0{% endif %}%;" title="Kredi Kartı"></div>
+                    <div class="progress-bar bg-warning" role="progressbar" style="width: {% if m.net_revenue > 0 %}{% widthratio m.veresiye_sales m.net_revenue 100 %}{% else %}0{% endif %}%;" title="Veresiye"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. HIZLI METRİK KARTLARI (2x2 GRID) -->
+    <div class="row g-2 mb-3">
+        <!-- Ortalama Sepet -->
+        <div class="col-6">
+            <div class="card border-0 shadow-sm p-3 boss-metric-card bg-white h-100">
+                <div class="text-muted fs-8 fw-semibold text-uppercase">
+                    <i class="bi bi-cart3 text-primary me-1"></i> Ortalama Sepet
+                </div>
+                <div class="fs-4 fw-bold text-dark mt-1" id="displayAvgBasket">
+                    {{ m.avg_basket|floatformat:2 }} ₺
+                </div>
+                <div class="fs-9 text-muted mt-1">Fiş başına ciro</div>
+            </div>
+        </div>
+
+        <!-- İptal Alarmı -->
+        <div class="col-6">
+            <div class="card border-0 shadow-sm p-3 boss-metric-card {% if m.cancelled_count > 0 %}bg-danger bg-opacity-10 border border-danger border-opacity-25{% else %}bg-white{% endif %} h-100">
+                <div class="{% if m.cancelled_count > 0 %}text-danger{% else %}text-muted{% endif %} fs-8 fw-bold text-uppercase">
+                    <i class="bi bi-shield-exclamation me-1"></i> İptal Edilen Fiş
+                </div>
+                <div class="fs-4 fw-bold {% if m.cancelled_count > 0 %}text-danger{% else %}text-dark{% endif %} mt-1" id="displayCancelledCount">
+                    {{ m.cancelled_count }} <span class="fs-7 fw-normal text-muted">({{ m.cancelled_total|floatformat:2 }} ₺)</span>
+                </div>
+                <div class="fs-9 text-muted mt-1">Kasa güvenlik takibi</div>
+            </div>
+        </div>
+
+        <!-- SKT Alarmı -->
+        <div class="col-6">
+            <a href="{% url 'expiration_tracking_view' %}?status=EXPIRED" class="text-decoration-none">
+                <div class="card border-0 shadow-sm p-3 boss-metric-card {% if m.expired_skt_count > 0 %}bg-danger bg-opacity-10 border border-danger border-opacity-25{% else %}bg-white{% endif %} h-100">
+                    <div class="{% if m.expired_skt_count > 0 %}text-danger{% else %}text-muted{% endif %} fs-8 fw-bold text-uppercase">
+                        <i class="bi bi-calendar-x me-1"></i> SKT Geçen Ürün
+                    </div>
+                    <div class="fs-4 fw-bold {% if m.expired_skt_count > 0 %}text-danger{% else %}text-dark{% endif %} mt-1" id="displayExpiredCount">
+                        {{ m.expired_skt_count }} <small class="fs-8 fw-normal">Adet</small>
+                    </div>
+                    <div class="fs-9 text-muted mt-1">3 gün kalan: {{ m.urgent_skt_count }} ürün</div>
+                </div>
+            </a>
+        </div>
+
+        <!-- Kritik Stok Alarmı -->
+        <div class="col-6">
+            <a href="{% url 'product_catalog_view' %}?stock_status=low" class="text-decoration-none">
+                <div class="card border-0 shadow-sm p-3 boss-metric-card {% if m.critical_stock_count > 0 %}bg-warning bg-opacity-10 border border-warning border-opacity-25{% else %}bg-white{% endif %} h-100">
+                    <div class="{% if m.critical_stock_count > 0 %}text-warning text-dark{% else %}text-muted{% endif %} fs-8 fw-bold text-uppercase">
+                        <i class="bi bi-box-seam me-1"></i> Kritik Stok
+                    </div>
+                    <div class="fs-4 fw-bold text-dark mt-1" id="displayCriticalStock">
+                        {{ m.critical_stock_count }} <small class="fs-8 fw-normal">Ürün</small>
+                    </div>
+                    <div class="fs-9 text-muted mt-1">Tükenmek üzere olanlar</div>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <!-- 3. AÇIK KASALAR VE ÇEKMECE NAKİT DURUMU -->
+    <div class="card border-0 shadow-sm rounded-3 mb-3">
+        <div class="card-header bg-white py-2.5 px-3 border-bottom d-flex justify-content-between align-items-center">
+            <span class="fw-bold fs-7 text-dark">
+                <i class="bi bi-cash-stack text-success me-1"></i> Açık Kasa Vardiyaları
+            </span>
+            <span class="badge bg-success bg-opacity-10 text-success fw-bold">{{ m.open_shifts|length }} Kasa Açık</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="list-group list-group-flush" id="openShiftsList">
+                {% for sh in m.open_shifts %}
+                    <div class="list-group-item p-3 d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-bold text-dark fs-7">
+                                {{ sh.cash_register.name }}
+                                <span class="badge bg-light text-secondary border font-monospace ms-1">{{ sh.cash_register.register_code }}</span>
+                            </div>
+                            <div class="text-muted fs-8 mt-0.5">
+                                <i class="bi bi-person me-1"></i> {{ sh.cashier.username }} &middot; Açılış: {{ sh.opened_at|date:"H:i" }}
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <div class="fs-6 fw-bold text-success">{{ sh.total_cash_sales|floatformat:2 }} ₺</div>
+                            <div class="fs-9 text-muted">Çekmecedeki Nakit</div>
+                        </div>
+                    </div>
+                {% empty %}
+                    <div class="p-3 text-center text-muted fs-8">
+                        Şu anda açık kasa vardiyası bulunmuyor.
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. KASA GÜVENLİK ALARMI: İPTAL EDİLEN FİŞLER LİSTESİ -->
+    <div class="card border-0 shadow-sm rounded-3 mb-3">
+        <div class="card-header bg-white py-2.5 px-3 border-bottom d-flex justify-content-between align-items-center">
+            <span class="fw-bold fs-7 text-dark">
+                <i class="bi bi-shield-exclamation text-danger me-1"></i> İptal Edilen Fişler (Kasa Denetimi)
+            </span>
+            <span class="badge bg-danger bg-opacity-10 text-danger fw-bold">{{ m.cancelled_count }} İptal</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="list-group list-group-flush" id="cancelledSalesList">
+                {% for sale in m.cancelled_sales %}
+                    <div class="list-group-item p-3">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <span class="badge bg-danger font-monospace fs-8">{{ sale.receipt_number }}</span>
+                                <span class="text-muted fs-8 ms-1">{{ sale.created_at|date:"H:i" }}</span>
+                                <div class="text-dark fs-8 fw-semibold mt-1">
+                                    <i class="bi bi-person me-1 text-secondary"></i> {{ sale.cashier.username|default:"Kasiyer" }}
+                                </div>
+                            </div>
+                            <div class="text-end">
+                                <div class="fs-7 fw-bold text-danger">{{ sale.total_amount|floatformat:2 }} ₺</div>
+                                <span class="badge bg-secondary bg-opacity-10 text-secondary fs-9">İptal Edildi</span>
+                            </div>
+                        </div>
+                        {% if sale.cancellation_reason %}
+                            <div class="p-2 rounded bg-light border mt-2 fs-8 text-secondary">
+                                <i class="bi bi-chat-left-text me-1"></i> {{ sale.cancellation_reason }}
+                            </div>
+                        {% endif %}
+                    </div>
+                {% empty %}
+                    <div class="p-3 text-center text-muted fs-8">
+                        <i class="bi bi-check-circle text-success me-1"></i> Bu dönemde iptal edilen herhangi bir fiş bulunmuyor.
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    async function refreshBossMetrics() {
+        const btn = document.getElementById('btnRefreshMetrics');
+        const icon = document.getElementById('refreshIcon');
+        btn.disabled = true;
+        icon.classList.add('spin-animation');
+
+        try {
+            const period = "{{ m.period|default:'TODAY' }}";
+            const resp = await fetch(`{% url 'boss_live_metrics_api' %}?period=${period}`);
+            const data = await resp.json();
+
+            if (resp.ok && data.success) {
+                const met = data.metrics;
+                document.getElementById('liveTimeBadge').textContent = `Son Güncelleme: ${data.timestamp}`;
+                document.getElementById('displayNetRevenue').textContent = met.net_revenue.toFixed(2);
+                document.getElementById('displayGrossProfit').textContent = `+${met.gross_profit.toFixed(2)} ₺`;
+                document.getElementById('displayProfitMargin').textContent = `%${met.profit_margin_percent.toFixed(1)}`;
+                document.getElementById('displayCashSales').textContent = `${met.cash_sales.toFixed(2)} ₺`;
+                document.getElementById('displayCardSales').textContent = `${met.card_sales.toFixed(2)} ₺`;
+                document.getElementById('displayVeresiyeSales').textContent = `${met.veresiye_sales.toFixed(2)} ₺`;
+                document.getElementById('displayAvgBasket').textContent = `${met.avg_basket.toFixed(2)} ₺`;
+                document.getElementById('displayCancelledCount').innerHTML = `${met.cancelled_count} <span class="fs-7 fw-normal text-muted">(${met.cancelled_total.toFixed(2)} ₺)</span>`;
+                document.getElementById('displayExpiredCount').innerHTML = `${met.expired_skt_count} <small class="fs-8 fw-normal">Adet</small>`;
+                document.getElementById('displayCriticalStock').innerHTML = `${met.critical_stock_count} <small class="fs-8 fw-normal">Ürün</small>`;
+            }
+        } catch (e) {
+            console.error('Boss refresh error:', e);
+        } finally {
+            btn.disabled = false;
+            icon.classList.remove('spin-animation');
+        }
+    }
+
+    // 30 saniyede bir otomatik sessiz veri yenileme
+    setInterval(refreshBossMetrics, 30000);
+</script>
+
+<style>
+    .spin-animation {
+        animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+        100% { transform: rotate(360deg); }
+    }
+</style>
+{% endblock %}

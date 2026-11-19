@@ -7,6 +7,7 @@ from django.conf import settings
 from django.db.models import F
 from django.utils import timezone
 import datetime
+from datetime import timedelta
 import io
 from decimal import Decimal
 from pathlib import Path
@@ -4072,6 +4073,209 @@ class GlobalProductPoolTestSuite(TestCase):
         added = Product.objects.get(company=self.company, barcode='8690504012345')
         self.assertEqual(added.sell_price, Decimal("15.50"))
         self.assertEqual(added.stock_quantity, Decimal("15.000"))
+
+
+class ExpirationAndBossCockpitTestSuite(TestCase):
+    """
+    Faz 16: SKT & Parti (Lot) Takibi ve Mobil Patron Kokpiti Birim Testleri
+    """
+    def setUp(self):
+        self.company = Company.objects.create(
+            name="Test Süpermarket Şubesi",
+            code="test-boss-market",
+            is_active=True
+        )
+        self.user = User.objects.create_user(
+            username="boss_user",
+            password="bosspassword123",
+            is_staff=True
+        )
+        UserProfile.objects.create(
+            user=self.user,
+            company=self.company
+        )
+        self.category = Category.objects.create(
+            company=self.company,
+            name="Süt & Şarküteri",
+            is_active=True
+        )
+
+        today = timezone.localdate()
+
+        # 1. Tarihi Geçmiş Ürün (Zayiat)
+        self.prod_expired = Product.objects.create(
+            company=self.company,
+            category=self.category,
+            barcode="869052000001",
+            name="Tarihi Geçmiş Yoğurt 500g",
+            buy_price=Decimal("20.00"),
+            sell_price=Decimal("30.00"),
+            stock_quantity=Decimal("10.000"),
+            track_expiration=True,
+            expiration_date=today - timedelta(days=2),
+            lot_number="LOT-EXP-01",
+            is_active=True
+        )
+
+        # 2. 2 Gün Kalan Kritik Ürün
+        self.prod_critical = Product.objects.create(
+            company=self.company,
+            category=self.category,
+            barcode="869052000002",
+            name="Sütaş Taze Süt 1L",
+            buy_price=Decimal("25.00"),
+            sell_price=Decimal("35.00"),
+            stock_quantity=Decimal("15.000"),
+            track_expiration=True,
+            expiration_date=today + timedelta(days=2),
+            lot_number="LOT-CRT-02",
+            is_active=True
+        )
+
+        # 3. Güvenli Normal Ürün
+        self.prod_safe = Product.objects.create(
+            company=self.company,
+            category=self.category,
+            barcode="869052000003",
+            name="Kaşar Peyniri 400g",
+            buy_price=Decimal("100.00"),
+            sell_price=Decimal("150.00"),
+            stock_quantity=Decimal("20.000"),
+            track_expiration=True,
+            expiration_date=today + timedelta(days=45),
+            lot_number="LOT-SAFE-03",
+            is_active=True
+        )
+
+        self.register = CashRegister.objects.create(
+            company=self.company,
+            name="Ana Kasa 1",
+            register_code="KASA-01",
+            is_active=True
+        )
+        self.shift = Shift.objects.create(
+            company=self.company,
+            cash_register=self.register,
+            cashier=self.user,
+            total_cash_sales=Decimal("500.00"),
+            is_closed=False
+        )
+
+        self.client.login(username="boss_user", password="bosspassword123")
+
+    def test_product_expiration_properties(self):
+        """Ürünlerin kalan gün ve SKT alarm durumları matematiksel olarak doğru hesaplanmalıdır."""
+        # Geçmiş
+        self.assertEqual(self.prod_expired.days_to_expiration, -2)
+        self.assertEqual(self.prod_expired.expiration_status, 'EXPIRED')
+
+        # 2 gün kalmış (Kritik)
+        self.assertEqual(self.prod_critical.days_to_expiration, 2)
+        self.assertEqual(self.prod_critical.expiration_status, 'CRITICAL')
+
+        # 45 gün kalmış (Güvenli)
+        self.assertEqual(self.prod_safe.days_to_expiration, 45)
+        self.assertEqual(self.prod_safe.expiration_status, 'OK')
+
+    def test_search_barcode_expiration_alerts(self):
+        """Kasada okutulan ürünün SKT alarm bayrakları JSON çıktısına eksiksiz yansımalıdır."""
+        # Geçmiş ürün sorgusu
+        res_exp = self.client.get(reverse('search_barcode'), {'barcode': '869052000001'})
+        self.assertEqual(res_exp.status_code, 200)
+        data_exp = res_exp.json()
+        self.assertTrue(data_exp['success'])
+        self.assertTrue(data_exp['product']['is_expired'])
+        self.assertEqual(data_exp['product']['expiration_status'], 'EXPIRED')
+        self.assertEqual(data_exp['product']['lot_number'], 'LOT-EXP-01')
+
+        # Kritik ürün sorgusu
+        res_crt = self.client.get(reverse('search_barcode'), {'barcode': '869052000002'})
+        self.assertEqual(res_crt.status_code, 200)
+        data_crt = res_crt.json()
+        self.assertTrue(data_crt['success'])
+        self.assertFalse(data_crt['product']['is_expired'])
+        self.assertTrue(data_crt['product']['is_expiring_soon'])
+        self.assertEqual(data_crt['product']['expiration_status'], 'CRITICAL')
+
+    def test_expiration_tracking_view_and_export(self):
+        """SKT takip paneli ve CSV indirme uç noktası doğru listeleme ve filtreleme yapmalıdır."""
+        url = reverse('expiration_tracking_view')
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.context['expired_count'], 1)
+        self.assertEqual(res.context['critical_count'], 1)
+        self.assertEqual(res.context['total_tracked_count'], 3)
+
+        # Filtre testi: Sadece geçmişler
+        res_filtered = self.client.get(url, {'status': 'EXPIRED'})
+        self.assertEqual(res_filtered.status_code, 200)
+        self.assertEqual(len(res_filtered.context['products']), 1)
+        self.assertEqual(res_filtered.context['products'][0].barcode, "869052000001")
+
+        # CSV İndirme
+        res_csv = self.client.get(reverse('export_expirations_csv'))
+        self.assertEqual(res_csv.status_code, 200)
+        self.assertIn('text/csv', res_csv['Content-Type'])
+        content = res_csv.content.decode('utf-8')
+        self.assertIn('Tarihi Geçmiş Yoğurt 500g', content)
+        self.assertIn('GEÇMİŞ', content)
+
+    def test_mobile_boss_dashboard_and_live_metrics_api(self):
+        """Mobil Patron Kokpiti ve canlı API uç noktası ciro, kâr marjı ve iptalleri doğru hesaplamalıdır."""
+        # 1. Başarılı Satış Fişi Oluştur (Ciro: 150 TL, Maliyet: 100 TL -> Net Kâr: 50 TL)
+        sale = Sale.objects.create(
+            company=self.company,
+            shift=self.shift,
+            cashier=self.user,
+            receipt_number="TEST-BOSS-001",
+            payment_type="NAKIT",
+            cash_paid=Decimal("150.00"),
+            total_amount=Decimal("150.00"),
+            is_cancelled=False
+        )
+        SaleItem.objects.create(
+            sale=sale,
+            product=self.prod_safe,
+            product_name=self.prod_safe.name,
+            barcode=self.prod_safe.barcode,
+            quantity=Decimal("1.000"),
+            unit_price=Decimal("150.00"),
+            buy_price=Decimal("100.00"),
+            total_price=Decimal("150.00")
+        )
+
+        # 2. İptal Edilen Şüpheli Satış Fişi Oluştur
+        Sale.objects.create(
+            company=self.company,
+            shift=self.shift,
+            cashier=self.user,
+            receipt_number="TEST-CANCEL-002",
+            payment_type="NAKIT",
+            total_amount=Decimal("80.00"),
+            is_cancelled=True,
+            cancellation_reason="Müşteri vazgeçti"
+        )
+
+        # Web Arayüzü Testi
+        url_web = reverse('mobile_boss_dashboard_view')
+        res_web = self.client.get(url_web)
+        self.assertEqual(res_web.status_code, 200)
+        self.assertContains(res_web, "Mobil Patron Kokpiti")
+        self.assertEqual(res_web.context['m']['net_revenue'], Decimal("150.00"))
+        self.assertEqual(res_web.context['m']['gross_profit'], Decimal("50.00"))
+        self.assertEqual(res_web.context['m']['cancelled_count'], 1)
+
+        # Canlı JSON API Testi
+        url_api = reverse('boss_live_metrics_api')
+        res_api = self.client.get(url_api)
+        self.assertEqual(res_api.status_code, 200)
+        data = res_api.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['metrics']['net_revenue'], 150.00)
+        self.assertEqual(data['metrics']['gross_profit'], 50.00)
+        self.assertEqual(data['metrics']['cancelled_count'], 1)
+        self.assertEqual(data['metrics']['cancelled_total'], 80.00)
+        self.assertEqual(len(data['open_shifts']), 1)
 
 
 
