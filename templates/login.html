@@ -75,10 +75,12 @@
         }
 
         .login-body {
-            padding: 10px 14px 12px 14px;
+            padding: 10px 14px 10px 14px;
             overflow-y: auto;
             flex: 1 1 auto;
             scrollbar-width: none;
+            display: flex;
+            flex-direction: column;
         }
         .login-body::-webkit-scrollbar {
             display: none;
@@ -96,7 +98,7 @@
             box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.16);
         }
 
-        /* Dokunmatik PIN Pad Stilleri - Kompakt ve Ortalı */
+        /* SABİT VE KORUNAKLI NUMPAD IZGARASI */
         .pin-display {
             letter-spacing: 0.45rem;
             font-size: 1.35rem;
@@ -111,7 +113,8 @@
 
         .pin-pad-container {
             max-width: 250px;
-            margin: 6px auto;
+            margin: 4px auto 0 auto;
+            flex-shrink: 0;
         }
 
         .pin-pad-grid {
@@ -182,6 +185,69 @@
             gap: 6px;
         }
 
+        /* AYRI UYARI / LOG IZGARASI (NUMPAD'İN ALTINDA SABİTLENEN DOCK) */
+        .login-alert-dock {
+            min-height: 40px;
+            max-width: 280px;
+            width: 100%;
+            margin: 8px auto 2px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .login-toast-msg {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 7px 12px;
+            border-radius: 8px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            line-height: 1.25;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+            animation: toastPop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: opacity 0.35s ease, transform 0.35s ease;
+            width: 100%;
+        }
+
+        .login-toast-msg--danger {
+            background: #fef2f2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+
+        .login-toast-msg--success {
+            background: #f0fdf4;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+
+        .login-toast-msg--warning {
+            background: #fffbeb;
+            color: #92400e;
+            border: 1px solid #fde68a;
+        }
+
+        .login-toast-msg--info {
+            background: #f0f9ff;
+            color: #0369a1;
+            border: 1px solid #bae6fd;
+        }
+
+        .login-toast-msg.toast-fadeout {
+            opacity: 0 !important;
+            transform: translateY(6px) scale(0.96) !important;
+            pointer-events: none;
+        }
+
+        @keyframes toastPop {
+            from { opacity: 0; transform: translateY(-6px) scale(0.96); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
         /* Çok Küçük Dikey Ekranlar İçin (iPhone SE vb. height < 640px) */
         @media (max-height: 640px) {
             body {
@@ -191,7 +257,7 @@
                 padding: 6px 10px;
             }
             .login-body {
-                padding: 6px 10px 8px 10px;
+                padding: 6px 10px 6px 10px;
             }
             .pin-display {
                 height: 38px;
@@ -203,7 +269,7 @@
                 font-size: 1.15rem;
             }
             .pin-pad-container {
-                margin: 4px auto;
+                margin: 2px auto 0 auto;
             }
             .btn-login-submit {
                 height: 38px;
@@ -213,6 +279,10 @@
                 height: 28px;
                 font-size: 0.74rem;
                 padding: 3px 6px;
+            }
+            .login-alert-dock {
+                min-height: 34px;
+                margin-top: 4px;
             }
         }
     </style>
@@ -231,27 +301,10 @@
             <div class="fw-bold small text-white tracking-wide" style="letter-spacing: 0.04em;">KASA GİRİŞ TERMİNALİ</div>
         </div>
 
-        <!-- FORM ALANI -->
+        <!-- FORM VE SABİT NUMPAD ALANI -->
         <div class="login-body">
-            <!-- FLASH MESAJLARI -->
-            {% if messages %}
-                {% for message in messages %}
-                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show py-1.5 px-2.5 small rounded-2 shadow-xs mb-2" role="alert">
-                        <div class="d-flex align-items-center gap-1.5">
-                            {% if message.tags == 'danger' or message.tags == 'error' %}
-                                <i class="bi bi-exclamation-triangle-fill text-danger fs-7"></i>
-                            {% else %}
-                                <i class="bi bi-check-circle-fill text-success fs-7"></i>
-                            {% endif %}
-                            <span style="font-size: 0.78rem;">{{ message }}</span>
-                        </div>
-                        <button type="button" class="btn-close py-1" data-bs-dismiss="alert" aria-label="Close" style="font-size: 0.65rem;"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-
             <!-- GİRİŞ MODU SEÇİCİ SEKMELER (PIN PAD vs KULLANICI ADI/ŞİFRE) -->
-            <div class="row g-1 mb-2 bg-light p-1 rounded-2 border">
+            <div class="row g-1 mb-2 bg-light p-1 rounded-2 border flex-shrink-0">
                 <div class="col-6">
                     <button type="button" id="tabPinBtn" class="btn btn-primary w-100 mode-tab-btn shadow-xs" onclick="switchLoginMode('pin')">
                         <i class="bi bi-grid-3x3-gap-fill"></i> Hızlı PIN
@@ -265,7 +318,7 @@
             </div>
 
             <!-- KASA TERMİNALİ SEÇİMİ (KASA-01 / KASA-02) -->
-            <div class="mb-2">
+            <div class="mb-2 flex-shrink-0">
                 <div class="d-flex justify-content-between align-items-center mb-1">
                     <span class="fw-bold text-secondary" style="font-size: 0.74rem;">
                         <i class="bi bi-pc-display text-primary me-0.5"></i> Terminal:
@@ -284,7 +337,7 @@
                 </div>
             </div>
 
-            <!-- 1. SEÇENEK: DOKUNMATİK HIZLI PIN PAD FORMU -->
+            <!-- 1. SEÇENEK: KORUMALI SABİT NUMPAD FORMU (MESAJLARLA ASLA SIKIŞMAZ) -->
             <form method="post" action="{% url 'login_view' %}" id="pinLoginForm">
                 {% csrf_token %}
                 <input type="hidden" name="login_mode" value="pin">
@@ -303,7 +356,7 @@
                     <input type="password" name="pin_code" id="pinCodeInput" class="form-control pin-display"
                            placeholder="••••" maxlength="12" inputmode="numeric" autocomplete="off" required>
 
-                    <!-- KOMPAKT NUMPAD (ÖLÇÜLÜ & ORTALI) -->
+                    <!-- KOMPAKT SABİT NUMPAD (ÖLÇÜLÜ & ORTALI) -->
                     <div class="pin-pad-grid my-2">
                         <button type="button" class="btn-pin-key" onclick="appendPin('1')">1</button>
                         <button type="button" class="btn-pin-key" onclick="appendPin('2')">2</button>
@@ -375,6 +428,28 @@
                     </button>
                 </div>
             </form>
+
+            <!-- AYRI IZGARA: NUMPAD'İN ALTINDA YER ALAN, BELİRLİ SÜRE SONRA OTOMATİK KAYBOLAN UYARI ALANI -->
+            <div class="login-alert-dock" id="loginAlertDock">
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="login-toast-msg {% if message.tags == 'danger' or message.tags == 'error' %}login-toast-msg--danger{% elif message.tags == 'success' %}login-toast-msg--success{% elif message.tags == 'warning' %}login-toast-msg--warning{% else %}login-toast-msg--info{% endif %}"
+                             role="alert">
+                            <div class="d-flex align-items-center gap-1.5 text-truncate">
+                                {% if message.tags == 'danger' or message.tags == 'error' %}
+                                    <i class="bi bi-exclamation-triangle-fill fs-7 flex-shrink-0"></i>
+                                {% elif message.tags == 'success' %}
+                                    <i class="bi bi-check-circle-fill fs-7 flex-shrink-0"></i>
+                                {% else %}
+                                    <i class="bi bi-info-circle-fill fs-7 flex-shrink-0"></i>
+                                {% endif %}
+                                <span class="text-truncate">{{ message }}</span>
+                            </div>
+                            <button type="button" class="btn-close p-0 m-0 ms-1" style="font-size: 0.65rem;" onclick="dismissToast(this)" aria-label="Kapat"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
         </div>
     </div>
 
@@ -440,6 +515,27 @@
                 icon.className = 'bi bi-eye-fill text-slate-500';
             }
         }
+
+        function dismissToast(btn) {
+            const toast = btn.closest('.login-toast-msg');
+            if (toast) {
+                toast.classList.add('toast-fadeout');
+                setTimeout(() => toast.remove(), 350);
+            }
+        }
+
+        // Belli bir süre (3.5 saniye) sonra otomatik kaybolma (Auto-fade dismiss)
+        document.addEventListener('DOMContentLoaded', () => {
+            const toasts = document.querySelectorAll('.login-toast-msg');
+            toasts.forEach((t) => {
+                setTimeout(() => {
+                    t.classList.add('toast-fadeout');
+                    setTimeout(() => {
+                        if (t.parentNode) t.remove();
+                    }, 400);
+                }, 3500);
+            });
+        });
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
