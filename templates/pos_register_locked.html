@@ -55,10 +55,16 @@
 
             <!-- EYLEMLER -->
             <div class="d-flex flex-column gap-2.5">
+                {% if is_supervisor %}
+                <a href="?takeover=1" class="btn btn-success fw-bold py-2.5 shadow-xs d-flex align-items-center justify-content-center gap-2 fs-6 text-decoration-none">
+                    <i class="bi bi-shield-check fs-5"></i> Yönetici Yetkisiyle Vardiyayı Kapat ve Kasayı Aç
+                </a>
+                {% else %}
                 <button type="button" class="btn btn-warning fw-bold py-2.5 shadow-xs d-flex align-items-center justify-content-center gap-2"
                         data-bs-toggle="modal" data-bs-target="#supervisorForceCloseModal">
                     <i class="bi bi-key-fill"></i> Süpervizör PIN ile Vardiyayı Kapat / Devral
                 </button>
+                {% endif %}
                 <div class="row g-2">
                     <div class="col-6">
                         <form method="post" action="{% url 'unpair_terminal_action' %}">

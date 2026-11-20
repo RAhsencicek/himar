@@ -2,8 +2,8 @@
 <html lang="tr" data-bs-theme="light">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Giriş Yap | Hİ MARKET POS & Yönetim</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Giriş Yap | Hİ MARKET POS</title>
     <link rel="manifest" href="{% url 'pwa_manifest' %}">
     <meta name="theme-color" content="#0f172a">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -28,102 +28,111 @@
             -webkit-tap-highlight-color: transparent;
         }
 
-        body {
+        html, body {
+            height: 100dvh;
+            max-height: 100dvh;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            background: radial-gradient(circle at 50% 15%, #1e293b 0%, #0f172a 100%);
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
-            min-height: 100vh;
+            color: #0f172a;
+        }
+
+        body {
             display: flex;
             align-items: center;
             justify-content: center;
-            margin: 0;
-            padding: 16px;
-            color: #0f172a;
+            padding: 8px;
         }
 
         .login-card {
             background: #ffffff;
             border-radius: 16px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
             width: 100%;
-            max-width: 480px;
+            max-width: 360px;
+            max-height: calc(100dvh - 16px);
             overflow: hidden;
-            border: 1px solid rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            display: flex;
+            flex-direction: column;
+            animation: fadeInCard 0.2s ease-out;
+        }
+
+        @keyframes fadeInCard {
+            from { opacity: 0; transform: translateY(8px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
         }
 
         .login-header {
             background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-            padding: 22px 24px 18px 24px;
+            padding: 10px 14px;
             text-align: center;
             color: #ffffff;
-            border-bottom: 3px solid #2563eb;
+            border-bottom: 2px solid #2563eb;
+            flex-shrink: 0;
         }
 
         .login-body {
-            padding: 22px 24px 26px 24px;
+            padding: 10px 14px 12px 14px;
+            overflow-y: auto;
+            flex: 1 1 auto;
+            scrollbar-width: none;
+        }
+        .login-body::-webkit-scrollbar {
+            display: none;
         }
 
         .form-control {
-            min-height: 48px;
-            font-size: 0.95rem;
+            min-height: 40px;
+            font-size: 0.9rem;
             border: 1.5px solid #cbd5e1;
-            border-radius: 10px;
+            border-radius: 8px;
         }
 
         .form-control:focus {
             border-color: #1d4ed8;
-            box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.18);
+            box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.16);
         }
 
-        .btn-login {
-            min-height: 50px;
-            font-size: 1.05rem;
-            font-weight: 700;
-            background: #1d4ed8;
-            border: none;
-            border-radius: 10px;
-            color: #ffffff;
-            transition: all 0.15s ease;
-        }
-
-        .btn-login:hover {
-            background: #1e40af;
-            color: #ffffff;
-        }
-
-        .btn-login:active {
-            transform: scale(0.98);
-        }
-
-        /* Dokunmatik PIN Pad Stilleri */
+        /* Dokunmatik PIN Pad Stilleri - Kompakt ve Ortalı */
         .pin-display {
-            letter-spacing: 0.5rem;
-            font-size: 1.65rem;
+            letter-spacing: 0.45rem;
+            font-size: 1.35rem;
             font-weight: 800;
             text-align: center;
             background: #f8fafc;
             border: 2px solid #94a3b8;
-            border-radius: 12px;
-            height: 56px;
+            border-radius: 10px;
+            height: 42px;
+            min-height: 42px;
+        }
+
+        .pin-pad-container {
+            max-width: 250px;
+            margin: 6px auto;
         }
 
         .pin-pad-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
+            gap: 6px;
         }
 
         .btn-pin-key {
-            height: 54px;
-            font-size: 1.35rem;
-            font-weight: 800;
-            border-radius: 12px;
+            height: 42px;
+            font-size: 1.25rem;
+            font-weight: 700;
+            border-radius: 9px;
             border: 1.5px solid #cbd5e1;
             background: #f8fafc;
             color: #0f172a;
-            transition: all 0.1s ease;
+            transition: all 0.08s ease;
             display: flex;
             align-items: center;
             justify-content: center;
+            user-select: none;
         }
 
         .btn-pin-key:hover {
@@ -132,16 +141,79 @@
         }
 
         .btn-pin-key:active {
-            transform: scale(0.95);
+            transform: scale(0.92);
             background: #1d4ed8;
             color: #ffffff;
+            border-color: #1d4ed8;
+        }
+
+        .btn-pin-key--util {
+            font-size: 0.85rem;
+            font-weight: 800;
         }
 
         .mode-tab-btn {
             font-weight: 700;
-            font-size: 0.88rem;
-            border-radius: 10px;
-            padding: 10px 12px;
+            font-size: 0.8rem;
+            border-radius: 8px;
+            padding: 6px 8px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+
+        .reg-pill-btn {
+            font-size: 0.78rem;
+            font-weight: 700;
+            padding: 5px 8px;
+            height: 32px;
+        }
+
+        .btn-login-submit {
+            height: 42px;
+            font-size: 0.92rem;
+            font-weight: 700;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        /* Çok Küçük Dikey Ekranlar İçin (iPhone SE vb. height < 640px) */
+        @media (max-height: 640px) {
+            body {
+                padding: 4px;
+            }
+            .login-header {
+                padding: 6px 10px;
+            }
+            .login-body {
+                padding: 6px 10px 8px 10px;
+            }
+            .pin-display {
+                height: 38px;
+                min-height: 38px;
+                font-size: 1.2rem;
+            }
+            .btn-pin-key {
+                height: 36px;
+                font-size: 1.15rem;
+            }
+            .pin-pad-container {
+                margin: 4px auto;
+            }
+            .btn-login-submit {
+                height: 38px;
+                font-size: 0.86rem;
+            }
+            .mode-tab-btn, .reg-pill-btn {
+                height: 28px;
+                font-size: 0.74rem;
+                padding: 3px 6px;
+            }
         }
     </style>
 </head>
@@ -150,11 +222,13 @@
     <div class="login-card">
         <!-- BAŞLIK & MARKA LOGO -->
         <div class="login-header">
-            <span class="badge bg-primary text-white fs-6 px-3 py-1.5 rounded-3 mb-2 shadow-xs d-inline-flex align-items-center gap-2">
-                <i class="bi bi-cart4 fs-5"></i> Hİ MARKET
-            </span>
-            <h1 class="h5 fw-bold mb-1">KASA VE YÖNETİM SİSTEMİ</h1>
-            <p class="text-white-50 small mb-0">Hızlı Dokunmatik PIN Kodu veya Kullanıcı Adı ile Giriş</p>
+            <div class="d-flex align-items-center justify-content-center gap-2 mb-1">
+                <span class="badge bg-primary text-white fs-7 px-2.5 py-1 rounded-2 shadow-xs d-inline-flex align-items-center gap-1.5 fw-bold">
+                    <i class="bi bi-cart4"></i> Hİ MARKET
+                </span>
+                <span class="text-white-50 small font-monospace">v2.10</span>
+            </div>
+            <div class="fw-bold small text-white tracking-wide" style="letter-spacing: 0.04em;">KASA GİRİŞ TERMİNALİ</div>
         </div>
 
         <!-- FORM ALANI -->
@@ -162,48 +236,50 @@
             <!-- FLASH MESAJLARI -->
             {% if messages %}
                 {% for message in messages %}
-                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show py-2 px-3 small rounded-3 shadow-xs mb-3" role="alert">
-                        <div class="d-flex align-items-center gap-2">
+                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show py-1.5 px-2.5 small rounded-2 shadow-xs mb-2" role="alert">
+                        <div class="d-flex align-items-center gap-1.5">
                             {% if message.tags == 'danger' or message.tags == 'error' %}
-                                <i class="bi bi-exclamation-triangle-fill text-danger fs-6"></i>
+                                <i class="bi bi-exclamation-triangle-fill text-danger fs-7"></i>
                             {% else %}
-                                <i class="bi bi-check-circle-fill text-success fs-6"></i>
+                                <i class="bi bi-check-circle-fill text-success fs-7"></i>
                             {% endif %}
-                            <span>{{ message }}</span>
+                            <span style="font-size: 0.78rem;">{{ message }}</span>
                         </div>
-                        <button type="button" class="btn-close py-2" data-bs-dismiss="alert" aria-label="Close"></button>
+                        <button type="button" class="btn-close py-1" data-bs-dismiss="alert" aria-label="Close" style="font-size: 0.65rem;"></button>
                     </div>
                 {% endfor %}
             {% endif %}
 
             <!-- GİRİŞ MODU SEÇİCİ SEKMELER (PIN PAD vs KULLANICI ADI/ŞİFRE) -->
-            <div class="row g-2 mb-3 bg-light p-1.5 rounded-3 border">
+            <div class="row g-1 mb-2 bg-light p-1 rounded-2 border">
                 <div class="col-6">
                     <button type="button" id="tabPinBtn" class="btn btn-primary w-100 mode-tab-btn shadow-xs" onclick="switchLoginMode('pin')">
-                        <i class="bi bi-grid-3x3-gap-fill me-1"></i> Hızlı PIN Girişi
+                        <i class="bi bi-grid-3x3-gap-fill"></i> Hızlı PIN
                     </button>
                 </div>
                 <div class="col-6">
-                    <button type="button" id="tabStdBtn" class="btn btn-light w-100 mode-tab-btn text-secondary" onclick="switchLoginMode('standard')">
-                        <i class="bi bi-person-lock me-1"></i> Kullanıcı / Şifre
+                    <button type="button" id="tabStdBtn" class="btn btn-light w-100 mode-tab-btn text-secondary border-0" onclick="switchLoginMode('standard')">
+                        <i class="bi bi-person-lock"></i> Kullanıcı Adı
                     </button>
                 </div>
             </div>
 
             <!-- KASA TERMİNALİ SEÇİMİ (KASA-01 / KASA-02) -->
-            <div class="mb-3">
-                <label class="form-label fw-bold text-secondary small mb-1 d-flex justify-content-between">
-                    <span><i class="bi bi-pc-display-horizontal text-primary me-1"></i> Aktif Kasa Terminali Seçimi</span>
-                    <span class="text-muted" style="font-size: 11px;">Oturum açılacak kasa</span>
-                </label>
+            <div class="mb-2">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="fw-bold text-secondary" style="font-size: 0.74rem;">
+                        <i class="bi bi-pc-display text-primary me-0.5"></i> Terminal:
+                    </span>
+                    <span class="text-muted" style="font-size: 0.72rem;">Aktif Satış Kasası</span>
+                </div>
                 <div class="btn-group w-100" role="group">
                     <input type="radio" class="btn-check" name="reg_selector" id="regKasa1" value="KASA-01" checked onchange="setRegisterChoice('KASA-01')">
-                    <label class="btn btn-outline-primary fw-bold py-2" for="regKasa1">
-                        <i class="bi bi-1-circle-fill me-1"></i> KASA-01 (Ana Kasa)
+                    <label class="btn btn-outline-primary fw-bold reg-pill-btn d-flex align-items-center justify-content-center gap-1" for="regKasa1">
+                        <i class="bi bi-1-circle-fill"></i> KASA-01 (Ana)
                     </label>
                     <input type="radio" class="btn-check" name="reg_selector" id="regKasa2" value="KASA-02" onchange="setRegisterChoice('KASA-02')">
-                    <label class="btn btn-outline-primary fw-bold py-2" for="regKasa2">
-                        <i class="bi bi-2-circle-fill me-1"></i> KASA-02 (Ek Kasa)
+                    <label class="btn btn-outline-primary fw-bold reg-pill-btn d-flex align-items-center justify-content-center gap-1" for="regKasa2">
+                        <i class="bi bi-2-circle-fill"></i> KASA-02 (Ek)
                     </label>
                 </div>
             </div>
@@ -217,37 +293,37 @@
                     <input type="hidden" name="next" value="{{ request.GET.next }}">
                 {% endif %}
 
-                <div class="mb-2">
+                <div class="pin-pad-container">
                     <div class="d-flex justify-content-between align-items-center mb-1">
-                        <label class="form-label fw-bold small mb-0">
-                            <i class="bi bi-key-fill text-primary me-1"></i> Kasiyer PIN Kodu
+                        <label class="form-label fw-bold mb-0 text-slate-700" style="font-size: 0.74rem;">
+                            <i class="bi bi-key-fill text-primary me-0.5"></i> Kasiyer PIN Kodu
                         </label>
-                        <span class="badge bg-info-subtle text-primary border border-primary-subtle">Varsayılan PIN: 1234</span>
+                        <span class="text-muted font-monospace" style="font-size: 0.7rem;">Varsayılan: 1234</span>
                     </div>
                     <input type="password" name="pin_code" id="pinCodeInput" class="form-control pin-display"
                            placeholder="••••" maxlength="12" inputmode="numeric" autocomplete="off" required>
-                </div>
 
-                <!-- DOKUNMATİK NUMPAD TUŞ TAKIMI -->
-                <div class="pin-pad-grid my-3">
-                    <button type="button" class="btn-pin-key" onclick="appendPin('1')">1</button>
-                    <button type="button" class="btn-pin-key" onclick="appendPin('2')">2</button>
-                    <button type="button" class="btn-pin-key" onclick="appendPin('3')">3</button>
-                    <button type="button" class="btn-pin-key" onclick="appendPin('4')">4</button>
-                    <button type="button" class="btn-pin-key" onclick="appendPin('5')">5</button>
-                    <button type="button" class="btn-pin-key" onclick="appendPin('6')">6</button>
-                    <button type="button" class="btn-pin-key" onclick="appendPin('7')">7</button>
-                    <button type="button" class="btn-pin-key" onclick="appendPin('8')">8</button>
-                    <button type="button" class="btn-pin-key" onclick="appendPin('9')">9</button>
-                    <button type="button" class="btn-pin-key text-danger fs-6" onclick="clearPin()">TEMİZLE</button>
-                    <button type="button" class="btn-pin-key" onclick="appendPin('0')">0</button>
-                    <button type="button" class="btn-pin-key text-secondary" onclick="backspacePin()"><i class="bi bi-backspace-fill"></i></button>
-                </div>
+                    <!-- KOMPAKT NUMPAD (ÖLÇÜLÜ & ORTALI) -->
+                    <div class="pin-pad-grid my-2">
+                        <button type="button" class="btn-pin-key" onclick="appendPin('1')">1</button>
+                        <button type="button" class="btn-pin-key" onclick="appendPin('2')">2</button>
+                        <button type="button" class="btn-pin-key" onclick="appendPin('3')">3</button>
+                        <button type="button" class="btn-pin-key" onclick="appendPin('4')">4</button>
+                        <button type="button" class="btn-pin-key" onclick="appendPin('5')">5</button>
+                        <button type="button" class="btn-pin-key" onclick="appendPin('6')">6</button>
+                        <button type="button" class="btn-pin-key" onclick="appendPin('7')">7</button>
+                        <button type="button" class="btn-pin-key" onclick="appendPin('8')">8</button>
+                        <button type="button" class="btn-pin-key" onclick="appendPin('9')">9</button>
+                        <button type="button" class="btn-pin-key btn-pin-key--util text-danger" onclick="clearPin()" title="Temizle">C</button>
+                        <button type="button" class="btn-pin-key" onclick="appendPin('0')">0</button>
+                        <button type="button" class="btn-pin-key btn-pin-key--util text-secondary" onclick="backspacePin()" title="Geri Al"><i class="bi bi-backspace-fill"></i></button>
+                    </div>
 
-                <button type="submit" class="btn btn-success w-100 py-2.5 fw-bold fs-5 rounded-3 shadow-xs d-flex align-items-center justify-content-center gap-2">
-                    <i class="bi bi-unlock-fill"></i>
-                    <span>PIN İLE HIZLI GİRİŞ YAP</span>
-                </button>
+                    <button type="submit" class="btn btn-success w-100 btn-login-submit shadow-xs">
+                        <i class="bi bi-unlock-fill"></i>
+                        <span>GİRİŞ YAP</span>
+                    </button>
+                </div>
             </form>
 
             <!-- 2. SEÇENEK: STANDART KULLANICI ADI & ŞİFRE FORMU -->
@@ -259,43 +335,45 @@
                     <input type="hidden" name="next" value="{{ request.GET.next }}">
                 {% endif %}
 
-                <!-- KULLANICI ADI -->
-                <div class="mb-3">
-                    <label class="form-label fw-bold text-slate-800 small mb-1">
-                        <i class="bi bi-person-fill text-primary me-1"></i> Kullanıcı Adı
-                    </label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-light border-end-0 text-slate-500">
-                            <i class="bi bi-person-badge fs-5"></i>
-                        </span>
-                        <input type="text" name="username" id="usernameInput" class="form-control border-start-0 ps-0 fw-semibold"
-                               placeholder="Kullanıcı adınızı giriniz (örn: admin)..." required autocomplete="username"
-                               value="{{ request.POST.username|default:'' }}">
+                <div class="pin-pad-container pt-1">
+                    <!-- KULLANICI ADI -->
+                    <div class="mb-2">
+                        <label class="form-label fw-bold text-slate-800 mb-1" style="font-size: 0.74rem;">
+                            <i class="bi bi-person-fill text-primary me-0.5"></i> Kullanıcı Adı
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0 text-slate-500 py-1 px-2">
+                                <i class="bi bi-person-badge"></i>
+                            </span>
+                            <input type="text" name="username" id="usernameInput" class="form-control border-start-0 ps-1 fw-semibold"
+                                   placeholder="Kullanıcı adı..." required autocomplete="username"
+                                   value="{{ request.POST.username|default:'' }}">
+                        </div>
                     </div>
-                </div>
 
-                <!-- ŞİFRE -->
-                <div class="mb-3">
-                    <label class="form-label fw-bold text-slate-800 small mb-1">
-                        <i class="bi bi-shield-lock-fill text-primary me-1"></i> Parola / Şifre
-                    </label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-light border-end-0 text-slate-500">
-                            <i class="bi bi-key-fill fs-5"></i>
-                        </span>
-                        <input type="password" name="password" id="passwordInput" class="form-control border-start-0 border-end-0 ps-0 fw-bold"
-                               placeholder="Parolanızı giriniz..." required autocomplete="current-password">
-                        <button class="btn btn-outline-secondary border-start-0 bg-white" type="button" onclick="togglePasswordVisibility()" title="Şifreyi Göster/Gizle">
-                            <i class="bi bi-eye-fill text-slate-500" id="passwordToggleIcon"></i>
-                        </button>
+                    <!-- ŞİFRE -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-slate-800 mb-1" style="font-size: 0.74rem;">
+                            <i class="bi bi-shield-lock-fill text-primary me-0.5"></i> Parola / Şifre
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-end-0 text-slate-500 py-1 px-2">
+                                <i class="bi bi-key-fill"></i>
+                            </span>
+                            <input type="password" name="password" id="passwordInput" class="form-control border-start-0 border-end-0 ps-1 fw-bold"
+                                   placeholder="Parola..." required autocomplete="current-password">
+                            <button class="btn btn-outline-secondary border-start-0 bg-white px-2.5" type="button" onclick="togglePasswordVisibility()" title="Şifreyi Göster/Gizle">
+                                <i class="bi bi-eye-fill text-slate-500" id="passwordToggleIcon"></i>
+                            </button>
+                        </div>
                     </div>
-                </div>
 
-                <!-- GİRİŞ BUTONU -->
-                <button type="submit" class="btn btn-login w-100 shadow-xs d-flex align-items-center justify-content-center gap-2">
-                    <i class="bi bi-box-arrow-in-right fs-5"></i>
-                    <span>SİSTEME GİRİŞ YAP</span>
-                </button>
+                    <!-- GİRİŞ BUTONU -->
+                    <button type="submit" class="btn btn-primary w-100 btn-login-submit shadow-xs">
+                        <i class="bi bi-box-arrow-in-right"></i>
+                        <span>SİSTEME GİRİŞ YAP</span>
+                    </button>
+                </div>
             </form>
         </div>
     </div>
@@ -313,13 +391,13 @@
                 pinForm.style.display = 'block';
                 stdForm.style.display = 'none';
                 tabPin.className = 'btn btn-primary w-100 mode-tab-btn shadow-xs';
-                tabStd.className = 'btn btn-light w-100 mode-tab-btn text-secondary';
+                tabStd.className = 'btn btn-light w-100 mode-tab-btn text-secondary border-0';
                 document.getElementById('pinCodeInput').focus();
             } else {
                 pinForm.style.display = 'none';
                 stdForm.style.display = 'block';
                 tabStd.className = 'btn btn-primary w-100 mode-tab-btn shadow-xs';
-                tabPin.className = 'btn btn-light w-100 mode-tab-btn text-secondary';
+                tabPin.className = 'btn btn-light w-100 mode-tab-btn text-secondary border-0';
                 document.getElementById('usernameInput').focus();
             }
         }
@@ -334,11 +412,17 @@
             if (input.value.length < 12) {
                 input.value += digit;
             }
+            if (window.navigator && window.navigator.vibrate) {
+                try { window.navigator.vibrate(20); } catch (e) {}
+            }
         }
 
         function backspacePin() {
             const input = document.getElementById('pinCodeInput');
             input.value = input.value.slice(0, -1);
+            if (window.navigator && window.navigator.vibrate) {
+                try { window.navigator.vibrate(20); } catch (e) {}
+            }
         }
 
         function clearPin() {

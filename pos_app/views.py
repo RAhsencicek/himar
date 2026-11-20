@@ -453,14 +453,24 @@ def pos_screen(request):
     # Münhasır Kasa / Vardiya Kilidi Kontrolü (1 Kasa = 1 Kasiyer)
     open_shift = Shift.objects.filter(company=user_company, cash_register=register, is_closed=False).first()
     if open_shift and open_shift.cashier and open_shift.cashier != request.user:
-        context = {
-            'register': register,
-            'locked_shift': open_shift,
-            'locked_cashier': open_shift.cashier,
-            'current_user': request.user,
-            'all_registers': active_registers,
-        }
-        return render(request, 'pos_register_locked.html', context, status=423)
+        # Eğer kullanıcı yetkili (is_staff) ve ?takeover=1 parametresi ile geldiyse doğrudan devral
+        if (request.user.is_staff or request.user.is_superuser) and request.GET.get('takeover') == '1':
+            open_shift.is_closed = True
+            open_shift.closed_at = timezone.now()
+            open_shift.notes = (open_shift.notes or '') + f"\n[{timezone.localtime().strftime('%d.%m.%Y %H:%M')} Süpervizör '{request.user.username}' tarafından devralındı.]"
+            open_shift.save(update_fields=['is_closed', 'closed_at', 'notes'])
+            log_action('SHIFT', 'Kasa Devralma', f"Kasa {register.name} yöneticisi tarafından devralındı.", user=request.user)
+            messages.success(request, f"Önceki kasiyerin ({open_shift.cashier.username}) açık vardiyası kapatıldı ve kasa devralındı.")
+        else:
+            context = {
+                'register': register,
+                'locked_shift': open_shift,
+                'locked_cashier': open_shift.cashier,
+                'current_user': request.user,
+                'all_registers': active_registers,
+                'is_supervisor': bool(request.user.is_staff or request.user.is_superuser),
+            }
+            return render(request, 'pos_register_locked.html', context, status=423)
 
     register, shift = get_or_create_active_shift(request.user, register=register, request=request)
     quick_buttons = Product.objects.filter(company=user_company, is_active=True).select_related('category').order_by('-is_quick_button', 'quick_button_order', 'name')
@@ -6097,9 +6107,9 @@ def supervisor_force_close_shift_api(request):
     if not shift:
         return JsonResponse({'success': False, 'message': 'Kapatılacak açık bir vardiya bulunamadı.'}, status=404)
 
-    # Süpervizör Doğrulama
+    # Süpervizör Doğrulama: Giriş yapan kişi zaten staff/yönetici ise doğrudan onay verilir
     supervisor = None
-    if (request.user.is_staff or request.user.is_superuser) and request.user.check_password(pin):
+    if request.user.is_staff or request.user.is_superuser:
         supervisor = request.user
     elif pin:
         for sup in User.objects.filter(is_active=True).filter(Q(is_staff=True) | Q(is_superuser=True)):
