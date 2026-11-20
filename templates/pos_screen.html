@@ -5371,7 +5371,7 @@
         readerEl.innerHTML = '';
         const formatsToSupport = getSupportedBarcodeFormats();
 
-        // 1. Donanımsal BarcodeDetector (iOS Vision & Android Barcode API) desteği constructor'da açılır!
+        // 1. Donanımsal BarcodeDetector (iOS Vision & Android Barcode API) desteği constructor'da açılır
         const config = {
             verbose: false,
             useBarCodeDetectorIfSupported: true,
@@ -5383,55 +5383,51 @@
             config.formatsToSupport = formatsToSupport;
         }
 
-        // 2. HD Çözünürlük ve Sürekli Otomatik Odak Kısıtı (Continuous Autofocus & HD)
-        let primaryConstraint;
-        if (typeof deviceOrConstraint === 'string') {
-            primaryConstraint = {
-                deviceId: { exact: deviceOrConstraint },
-                width: { min: 1280, ideal: 1920 },
-                height: { min: 720, ideal: 1080 }
-            };
-        } else if (deviceOrConstraint && typeof deviceOrConstraint === 'object') {
-            primaryConstraint = {
-                facingMode: 'environment',
-                width: { min: 1280, ideal: 1920 },
-                height: { min: 720, ideal: 1080 },
-                ...deviceOrConstraint
-            };
+        // 2. Kütüphanenin 1. parametresi (cameraIdOrConfig) kuralı:
+        // String deviceId veya SADECE TEK ANAHTARLI { facingMode: 'environment' } olmalıdır!
+        // Fazladan anahtar (width, height vs.) konursa kütüphane "should have exactly 1 key" hatası verir.
+        let cameraIdOrConfig;
+        if (typeof deviceOrConstraint === 'string' && deviceOrConstraint.trim()) {
+            cameraIdOrConfig = deviceOrConstraint.trim();
+        } else if (deviceOrConstraint && typeof deviceOrConstraint === 'object' && deviceOrConstraint.deviceId) {
+            cameraIdOrConfig = { deviceId: deviceOrConstraint.deviceId };
         } else {
-            primaryConstraint = {
-                facingMode: 'environment',
-                width: { min: 1280, ideal: 1920 },
-                height: { min: 720, ideal: 1080 }
-            };
+            cameraIdOrConfig = { facingMode: 'environment' };
         }
 
         // 3. Tarama Yapılandırması:
+        // videoConstraints nesnesi 2. parametreye verilir; min sınırı konmaz, ideal Full HD istenir.
         // qrbox verilmediğinde motor videonun TÜM ALANINI (full-frame) tarar.
-        // Böylece kavisli su şişesi vb. ürünlerde çizgiler dar kutuya sığdırılmak zorunda kalınmaz.
         const scanConfig = {
             fps: 25,
             aspectRatio: 1.777778,
-            disableFlip: false
+            disableFlip: false,
+            videoConstraints: {
+                facingMode: 'environment',
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+            }
         };
 
         try {
             html5QrScanner = new Html5Qrcode('cameraReaderRegion', config);
 
-            // Önce yüksek çözünürlük ile başlatmayı dene
+            // Önce ideal videoConstraints ile başlatmayı dene
             try {
                 await html5QrScanner.start(
-                    primaryConstraint,
+                    cameraIdOrConfig,
                     scanConfig,
                     onCameraScanSuccess,
                     () => {}
                 );
-            } catch (hdErr) {
-                console.warn('[CameraScanner] HD constraint desteklenmedi, standart facingMode ile deneniyor:', hdErr);
-                // Fallback: Standart cihaz kısıtı
+            } catch (firstErr) {
+                console.warn('[CameraScanner] İdeal videoConstraints ile başlatılamadı, sade kısıt ile deneniyor:', firstErr);
+                // State çakışmasını önlemek için instance'ı yenile
+                await stopCameraScanner();
+                html5QrScanner = new Html5Qrcode('cameraReaderRegion', config);
                 await html5QrScanner.start(
-                    deviceOrConstraint || { facingMode: 'environment' },
-                    scanConfig,
+                    cameraIdOrConfig,
+                    { fps: 20, aspectRatio: 1.777778 },
                     onCameraScanSuccess,
                     () => {}
                 );
@@ -5442,10 +5438,24 @@
             setTimeout(checkTorchCapability, 500);
         } catch (err) {
             console.error('[CameraScanner] start error:', err);
-            html5QrScanner = null;
-            isCameraRunning = false;
-            readerEl.innerHTML = '<span class="small text-center px-3">Kamera başlatılamadı veya erişim izni verilmedi.<br>Tarayıcınızın adres çubuğundaki kilit / izin simgesinden kamera izni veriniz ya da aşağıdaki manuel barkod alanını kullanınız.</span>';
-            setCameraStatus('Kamera başlatılamadı. Lütfen tarayıcı ayarlarından kamera iznini onaylayınız.', 'warn');
+            await stopCameraScanner();
+
+            let userErrMsg = 'Kamera başlatılamadı.';
+            const errStr = String(err?.name || err?.message || err || '');
+            if (/NotAllowedError|PermissionDeniedError|permission/i.test(errStr)) {
+                userErrMsg = 'Kamera erişim izni engellendi. Tarayıcı adres çubuğundaki kilit simgesine dokunup kamera iznini "İzin Ver" olarak açınız.';
+            } else if (/NotFoundError|DevicesNotFoundError/i.test(errStr)) {
+                userErrMsg = 'Kullanılabilir arka kamera bulunamadı.';
+            } else if (/NotReadableError|TrackStartError/i.test(errStr)) {
+                userErrMsg = 'Kamera başka bir uygulama veya sekme tarafından kullanılıyor.';
+            } else if (/OverconstrainedError/i.test(errStr)) {
+                userErrMsg = 'Kamera çözünürlüğü cihazınız tarafından desteklenmiyor.';
+            } else {
+                userErrMsg = 'Kamera başlatılamadı: ' + (err?.message || errStr);
+            }
+
+            readerEl.innerHTML = `<span class="small text-center px-3 text-warning">${escapeHtml(userErrMsg)}<br><small class="text-white-50">Dilerseniz aşağıdaki alandan manuel barkod girebilirsiniz.</small></span>`;
+            setCameraStatus(userErrMsg, 'warn');
         }
     }
 
