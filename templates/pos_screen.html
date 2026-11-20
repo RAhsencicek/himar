@@ -1401,35 +1401,111 @@
     }
 
     /* Kamera Barkod Tarayıcı Modalı */
+    .pos-camera-wrapper {
+        position: relative;
+        inline-size: 100%;
+        border-radius: 12px;
+        overflow: hidden;
+        background: #0f172a;
+        border: 2px solid #334155;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    }
+
     .pos-camera-reader {
         background: #0f172a;
-        border: 1.5px solid #cbd5e1;
-        border-radius: 10px;
-        overflow: hidden;
         inline-size: 100%;
-        min-block-size: 240px;
-        max-block-size: 320px;
+        min-block-size: 320px;
+        max-block-size: 420px;
         display: flex;
         align-items: center;
         justify-content: center;
         color: #cbd5e1;
+        overflow: hidden;
+        position: relative;
     }
 
     .pos-camera-reader video {
         inline-size: 100% !important;
-        max-block-size: 320px !important;
+        max-block-size: 420px !important;
         object-fit: cover !important;
-        border-radius: 8px;
+        border-radius: 10px;
+    }
+
+    /* Kılavuz Vizör ve Kırmızı Lazer Overlay */
+    .pos-camera-guide {
+        position: absolute;
+        inset: 18% 7%;
+        border: 2px solid rgba(255, 255, 255, 0.55);
+        border-radius: 12px;
+        box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.45);
+        pointer-events: none;
+        z-index: 50;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: border-color 0.2s ease;
+    }
+
+    .pos-camera-guide.pos-camera-guide--active {
+        border-color: #22c55e;
+    }
+
+    /* Vizör Köşeleri */
+    .pos-camera-corner {
+        position: absolute;
+        inline-size: 20px;
+        block-size: 20px;
+        border-color: #38bdf8;
+        border-style: solid;
+    }
+    .pos-camera-corner.top-left {
+        top: -2px; left: -2px;
+        border-width: 4px 0 0 4px;
+        border-top-left-radius: 10px;
+    }
+    .pos-camera-corner.top-right {
+        top: -2px; right: -2px;
+        border-width: 4px 4px 0 0;
+        border-top-right-radius: 10px;
+    }
+    .pos-camera-corner.bottom-left {
+        bottom: -2px; left: -2px;
+        border-width: 0 0 4px 4px;
+        border-bottom-left-radius: 10px;
+    }
+    .pos-camera-corner.bottom-right {
+        bottom: -2px; right: -2px;
+        border-width: 0 4px 4px 0;
+        border-bottom-right-radius: 10px;
+    }
+
+    /* Kırmızı Lazer Çizgisi */
+    .pos-camera-laser {
+        position: absolute;
+        inline-size: 96%;
+        block-size: 3px;
+        background: #ef4444;
+        box-shadow: 0 0 14px #ef4444, 0 0 6px #f87171;
+        border-radius: 2px;
+        z-index: 55;
+        animation: posLaserScanAnim 2s ease-in-out infinite alternate;
+    }
+
+    @keyframes posLaserScanAnim {
+        0% { transform: translateY(-38px); opacity: 0.85; }
+        50% { opacity: 1; }
+        100% { transform: translateY(38px); opacity: 0.85; }
     }
 
     .pos-camera-status {
         border-radius: 8px;
-        padding: 8px 11px;
-        font-size: 0.84rem;
+        padding: 8px 12px;
+        font-size: 0.85rem;
         font-weight: 700;
         background: #eef2f6;
         border: 1px solid #cbd5e1;
         color: var(--pos-navy);
+        transition: all 0.2s ease;
     }
 
     .pos-camera-status--success {
@@ -5396,12 +5472,17 @@
         }
 
         // 3. Tarama Yapılandırması:
-        // videoConstraints nesnesi 2. parametreye verilir; min sınırı konmaz, ideal Full HD istenir.
-        // qrbox verilmediğinde motor videonun TÜM ALANINI (full-frame) tarar.
+        // qrbox: 1D EAN barkodlar için vizörün orta yatay bölgesini (%90 genişlik) hedefler.
+        // aspectRatio 1.333333 (4:3) mobil kamera sensörlerinin doğal en-boy oranıdır.
         const scanConfig = {
             fps: 25,
-            aspectRatio: 1.777778,
+            aspectRatio: 1.333333,
             disableFlip: false,
+            qrbox: (viewfinderWidth, viewfinderHeight) => {
+                const w = Math.max(250, Math.min(360, Math.floor(viewfinderWidth * 0.90)));
+                const h = Math.max(120, Math.min(220, Math.floor(viewfinderHeight * 0.52)));
+                return { width: w, height: h };
+            },
             videoConstraints: {
                 facingMode: 'environment',
                 width: { ideal: 1920 },
@@ -5427,7 +5508,14 @@
                 html5QrScanner = new Html5Qrcode('cameraReaderRegion', config);
                 await html5QrScanner.start(
                     cameraIdOrConfig,
-                    { fps: 20, aspectRatio: 1.777778 },
+                    {
+                        fps: 20,
+                        aspectRatio: 1.333333,
+                        qrbox: (w, h) => ({
+                            width: Math.max(240, Math.floor(w * 0.88)),
+                            height: Math.max(110, Math.floor(h * 0.48))
+                        })
+                    },
                     onCameraScanSuccess,
                     () => {}
                 );
@@ -5459,6 +5547,29 @@
         }
     }
 
+    function pickOptimalRearCamera(devices) {
+        if (!Array.isArray(devices) || devices.length === 0) return null;
+
+        const isUltra = d => /çift|ultra|dual wide|0\.5/i.test(d.label || '');
+        const isFront = d => /front|ön|selfie|user/i.test(d.label || '');
+        const isBack = d => /back|rear|environment|arka|geniş/i.test(d.label || '') && !isFront(d);
+
+        // 1. Tercih: iPhone'da "Geniş Kamera Arka Yüzü" (1x Ana Arka Kamera - Ultra-wide olmayan)
+        const primary1x = devices.find(d => isBack(d) && !isUltra(d));
+        if (primary1x) return primary1x;
+
+        // 2. Tercih: Çift geniş olmayan herhangi bir kamera (ön kamera hariç)
+        const nonUltra = devices.find(d => !isUltra(d) && !isFront(d));
+        if (nonUltra) return nonUltra;
+
+        // 3. Tercih: Herhangi bir arka kamera
+        const anyBack = devices.find(d => isBack(d));
+        if (anyBack) return anyBack;
+
+        // 4. Fallback: İkinci kamera (iOS'ta 0 genelde ultra-wide, 1 normal kameradır) veya ilk kamera
+        return devices.length > 1 ? devices[1] : devices[0];
+    }
+
     async function openCameraModal() {
         const readerEl = document.getElementById('cameraReaderRegion');
         const deviceSel = document.getElementById('cameraDeviceSelect');
@@ -5482,14 +5593,27 @@
             const devices = await Html5Qrcode.getCameras();
             if (Array.isArray(devices) && devices.length > 0) {
                 if (deviceSel) {
-                    deviceSel.innerHTML = devices.map((d, i) => (
-                        `<option value="${escapeHtml(d.id)}">${escapeHtml(d.label || ('Kamera ' + (i + 1)))}</option>`
-                    )).join('');
-                    const preferred = devices.find(d => /back|rear|environment|arka/i.test(d.label || '')) || devices[0];
-                    deviceSel.value = preferred.id;
-                    selectedCamera = preferred.id;
+                    deviceSel.innerHTML = devices.map((d, i) => {
+                        let raw = d.label || ('Kamera ' + (i + 1));
+                        let badge = '';
+                        if (/çift|ultra|0\.5/i.test(raw)) {
+                            badge = ' (0.5x Ultra Geniş - Odaklamaz)';
+                        } else if (/arka|back|rear/i.test(raw) || !/front|ön/i.test(raw)) {
+                            badge = ' ⭐ (1x Ana Kamera - Tavsiye Edilen)';
+                        }
+                        return `<option value="${escapeHtml(d.id)}">${escapeHtml(raw + badge)}</option>`;
+                    }).join('');
+
+                    const optimal = pickOptimalRearCamera(devices);
+                    if (optimal) {
+                        deviceSel.value = optimal.id;
+                        selectedCamera = optimal.id;
+                    } else {
+                        selectedCamera = devices[0].id;
+                    }
                 } else {
-                    selectedCamera = devices[0].id;
+                    const optimal = pickOptimalRearCamera(devices);
+                    selectedCamera = optimal ? optimal.id : devices[0].id;
                 }
             }
         } catch (enumErr) {
