@@ -4598,6 +4598,15 @@ class MobilePosAndProductVisibilityTestSuite(TestCase):
         self.assertIn('Günlük Süt 1L', content)
         self.assertIn('869000000001', content)
 
+        # Tuş & Ödeme Sekmesi Temizliği: Gereksiz Butonlar Kaldırıldı
+        self.assertNotIn('id="btnEditQty"', content)
+        self.assertNotIn('id="btnRemoveSelected"', content)
+
+        # Modallarda Otomatik Klavye Açılması Önleme ve Doğru Numpad Inputmode
+        self.assertIn('data-autofocus="true"', content)
+        self.assertIn('inputmode="decimal"', content)
+        self.assertIn('inputmode="numeric"', content)
+
     def test_boss_dashboard_renders_top_selling_and_critical_products(self):
         """Mobil Patron Kokpiti kritik stoktaki ve en çok satan ürünleri liste halinde sunmalıdır."""
         res = self.client.get(reverse('mobile_boss_dashboard_view'))

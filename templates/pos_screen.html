@@ -1822,11 +1822,120 @@
 
         body.pos-tab-ops .pos-ops-card {
             display: flex !important;
+            flex-direction: column !important;
             flex: 1 1 auto !important;
             height: calc(100dvb - 110px) !important;
             min-height: 0 !important;
             overflow-y: auto !important;
             -webkit-overflow-scrolling: touch;
+            padding: 6px !important;
+            gap: 7px !important;
+        }
+
+        body.pos-tab-ops .pos-tenders-grid {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 6px !important;
+            flex-shrink: 0 !important;
+            margin: 0 !important;
+        }
+
+        body.pos-tab-ops .pos-tender-btn {
+            min-block-size: 46px !important;
+            padding: 6px 8px !important;
+            gap: 6px !important;
+            border-radius: 8px !important;
+        }
+
+        body.pos-tab-ops .pos-tender-icon {
+            inline-size: 24px !important;
+            block-size: 24px !important;
+            font-size: 0.9rem !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            flex-shrink: 0 !important;
+        }
+
+        body.pos-tab-ops .pos-tender-title {
+            font-size: 0.76rem !important;
+            font-weight: 800 !important;
+            line-height: 1.1 !important;
+        }
+
+        body.pos-tab-ops .pos-tender-hint {
+            font-size: 0.60rem !important;
+            line-height: 1.1 !important;
+            opacity: 0.85 !important;
+        }
+
+        body.pos-tab-ops .pos-numpad-section {
+            flex: none !important;
+            flex-shrink: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            min-block-size: auto !important;
+            padding: 6px !important;
+            gap: 5px !important;
+            background: #f8fafc !important;
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 9px !important;
+            margin: 0 !important;
+        }
+
+        body.pos-tab-ops #numpadDisplay {
+            min-block-size: 32px !important;
+            font-size: 1.25rem !important;
+            font-weight: 800 !important;
+            padding: 2px 8px !important;
+            border-radius: 6px !important;
+            line-height: 1.3 !important;
+        }
+
+        body.pos-tab-ops .pos-numpad-grid {
+            flex: none !important;
+            flex-shrink: 0 !important;
+            display: grid !important;
+            grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+            grid-template-rows: repeat(5, 42px) !important;
+            gap: 5px !important;
+            min-block-size: auto !important;
+            margin: 0 !important;
+        }
+
+        body.pos-tab-ops .pos-pad-key {
+            min-block-size: 42px !important;
+            height: 42px !important;
+            font-size: 1.05rem !important;
+            border-radius: 7px !important;
+        }
+
+        body.pos-tab-ops .pos-pad-key--qty,
+        body.pos-tab-ops .pos-pad-key--disc,
+        body.pos-tab-ops .pos-pad-key--price {
+            font-size: 0.82rem !important;
+        }
+
+        body.pos-tab-ops .pos-pad-key--enter,
+        body.pos-tab-ops .pos-pad-key--quickcash {
+            font-size: 0.86rem !important;
+            font-weight: 800 !important;
+        }
+
+        body.pos-tab-ops .pos-row-modifiers {
+            flex-shrink: 0 !important;
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 6px !important;
+            margin: 0 !important;
+        }
+
+        body.pos-tab-ops .pos-mod-btn {
+            min-block-size: 38px !important;
+            padding: 5px 6px !important;
+            font-size: 0.78rem !important;
+            font-weight: 800 !important;
+            border-radius: 8px !important;
         }
 
         body.pos-tab-ops .pos-bottom-dock {
@@ -1834,6 +1943,14 @@
             flex-shrink: 0 !important;
             padding: 4px !important;
             overflow-x: auto !important;
+            gap: 4px !important;
+        }
+
+        body.pos-tab-ops .pos-dock-btn,
+        body.pos-tab-ops .pos-exit-btn {
+            min-block-size: 38px !important;
+            font-size: 0.78rem !important;
+            padding: 4px 8px !important;
         }
 
         /* MOBİLDE KATALOG IZGARA OPTİMİZASYONU */
@@ -2192,12 +2309,6 @@
         <button type="button" id="btnEditPrice" class="pos-mod-btn" onclick="applyNumpadPrice()">
             <i class="bi bi-tag-fill"></i> Fiyat / İskonto
         </button>
-        <button type="button" id="btnEditQty" class="pos-mod-btn" onclick="applyNumpadQtyOrMultiplier()">
-            <i class="bi bi-123"></i> Miktar Gir (×)
-        </button>
-        <button type="button" id="btnRemoveSelected" class="pos-mod-btn pos-mod-btn--warn" onclick="removeSelectedRow()">
-            <i class="bi bi-dash-circle-fill"></i> Seçili Satırı Sil
-        </button>
         <button type="button" id="btnParkSale" class="pos-mod-btn pos-mod-btn--sand" onclick="parkSale()">
             <i class="bi bi-pause-circle-fill"></i> Fişi Beklet (F4)
         </button>
@@ -2361,7 +2472,7 @@
                placeholder="1"
                inputmode="decimal"
                aria-label="Ürün miktarı"
-               autofocus>
+               data-autofocus="true">
         <div class="pos-modal-pad-grid">
             <button type="button" class="pos-modal-key" onclick="qtyModalType('7')">7</button>
             <button type="button" class="pos-modal-key" onclick="qtyModalType('8')">8</button>
@@ -2420,7 +2531,7 @@
 
         <label for="cashPaidInput" class="form-label fw-bold text-slate-700" id="modalCashLabel">ALINAN NAKİT</label>
         <div class="input-group input-group-lg mb-3">
-            <input type="number" step="0.01" min="0" id="cashPaidInput" class="form-control fw-extrabold mono text-end" placeholder="0.00" autofocus>
+            <input type="number" step="0.01" min="0" id="cashPaidInput" class="form-control fw-extrabold mono text-end" placeholder="0.00" inputmode="decimal" data-autofocus="true">
             <button class="btn btn-outline-secondary fw-bold" type="button" onclick="cashClear()">C</button>
         </div>
 
@@ -2469,11 +2580,11 @@
         <div class="row g-2">
             <div class="col-6">
                 <label for="splitCashInput" class="form-label fw-bold text-slate-700">Nakit Alınan (TL)</label>
-                <input type="number" step="0.01" min="0" id="splitCashInput" class="form-control form-control-lg mono fw-bold text-end" oninput="onSplitCashChange()" autofocus>
+                <input type="number" step="0.01" min="0" id="splitCashInput" class="form-control form-control-lg mono fw-bold text-end" oninput="onSplitCashChange()" inputmode="decimal" data-autofocus="true">
             </div>
             <div class="col-6">
                 <label for="splitCardInput" class="form-label fw-bold text-slate-700">Kart / POS Çekilen (TL)</label>
-                <input type="number" step="0.01" min="0" id="splitCardInput" class="form-control form-control-lg mono fw-bold text-end" oninput="updateSplitSummary()">
+                <input type="number" step="0.01" min="0" id="splitCardInput" class="form-control form-control-lg mono fw-bold text-end" oninput="updateSplitSummary()" inputmode="decimal">
             </div>
         </div>
         <div class="pos-bill-grid mt-3">
@@ -2509,7 +2620,7 @@
         </div>
         <div class="input-group mb-3">
             <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
-            <input type="search" id="customerSearchInput" class="form-control" placeholder="Müşteri adı, soyadı, telefon, vergi no veya ünvan ara..." oninput="fetchCustomers(this.value)" autofocus>
+            <input type="search" id="customerSearchInput" class="form-control" placeholder="Müşteri adı, soyadı, telefon, vergi no veya ünvan ara..." oninput="fetchCustomers(this.value)" data-autofocus="true">
             <button type="button" class="btn btn-outline-secondary fw-bold" onclick="fetchCustomers('')">Tümünü Listele</button>
         </div>
         <div id="customerListContainer" class="d-flex flex-column gap-2" style="max-block-size: 360px; overflow-y: auto;"></div>
@@ -2549,7 +2660,7 @@
     <div class="pos-dialog-foot">
         <button type="button" class="btn btn-outline-secondary fw-bold me-auto" onclick="document.getElementById('creditConfirmModal').close('change'); openCustomerModal('VERESIYE');">Cari Değiştir</button>
         <button type="button" class="btn btn-light border fw-bold" onclick="document.getElementById('creditConfirmModal').close('cancel')">Vazgeç</button>
-        <button type="button" class="btn btn-primary fw-extrabold px-4" id="btnConfirmCreditSale" onclick="submitCreditSale()" autofocus>
+        <button type="button" class="btn btn-primary fw-extrabold px-4" id="btnConfirmCreditSale" onclick="submitCreditSale()" data-autofocus="true">
             <i class="bi bi-check2-circle me-1"></i> VERESİYE SATIŞI ONAYLA
         </button>
     </div>
@@ -2570,7 +2681,7 @@
     <div class="pos-dialog-body">
         <div class="row g-2 mb-3">
             <div class="col-md-8">
-                <input type="search" id="stockLookupInput" class="form-control" placeholder="Ürün adı veya barkod ile canlı stok sorgula..." oninput="fetchStockLookup()" autofocus>
+                <input type="search" id="stockLookupInput" class="form-control" placeholder="Ürün adı veya barkod ile canlı stok sorgula..." oninput="fetchStockLookup()" data-autofocus="true">
             </div>
             <div class="col-md-4">
                 <select id="stockLookupCategory" class="form-select" onchange="fetchStockLookup()">
@@ -2624,7 +2735,7 @@
                 </div>
                 <div class="col-6">
                     <label for="priceRowNewInput" class="form-label small fw-bold mb-1">Yeni Birim Fiyat (≤ Liste)</label>
-                    <input type="number" step="0.01" min="0" id="priceRowNewInput" class="form-control mono fw-bold text-end" autofocus>
+                    <input type="number" step="0.01" min="0" id="priceRowNewInput" class="form-control mono fw-bold text-end" inputmode="decimal" data-autofocus="true">
                 </div>
             </div>
         </div>
@@ -2634,7 +2745,7 @@
             <div class="row g-2 mb-2">
                 <div class="col-6">
                     <label for="cartDiscountInput" class="form-label small fw-bold mb-1">Ek Fiş İskontosu (TL)</label>
-                    <input type="number" step="0.01" min="0" id="cartDiscountInput" class="form-control mono fw-bold text-end">
+                    <input type="number" step="0.01" min="0" id="cartDiscountInput" class="form-control mono fw-bold text-end" inputmode="decimal">
                 </div>
                 <div class="col-6 d-flex align-items-end gap-1 flex-wrap">
                     <button type="button" class="pos-bill-chip px-2" onclick="applyPercentCartDiscount(5)">%5</button>
@@ -2757,7 +2868,7 @@
         <div class="row g-2">
             <div class="col-12">
                 <label for="qcBarcode" class="form-label small fw-bold mb-1">Barkod</label>
-                <input type="text" id="qcBarcode" class="form-control mono" autofocus>
+                <input type="text" id="qcBarcode" class="form-control mono" data-autofocus="true">
             </div>
             <div class="col-12">
                 <label for="qcName" class="form-label small fw-bold mb-1">Ürün Adı</label>
@@ -2765,7 +2876,7 @@
             </div>
             <div class="col-6">
                 <label for="qcPrice" class="form-label small fw-bold mb-1">Satış Fiyatı (TL)</label>
-                <input type="number" step="0.01" min="0" id="qcPrice" class="form-control mono" placeholder="0.00">
+                <input type="number" step="0.01" min="0" id="qcPrice" class="form-control mono" placeholder="0.00" inputmode="decimal">
             </div>
             <div class="col-6">
                 <label for="qcStock" class="form-label small fw-bold mb-1">Başlangıç Stok</label>
@@ -2795,7 +2906,7 @@
         <p class="small fw-bold text-slate-700 mb-2" id="supervisorActionNotice">
             Bu işlem işletme ayarı gereği yönetici PIN onayı gerektirir.
         </p>
-        <input type="password" id="supervisorPinInput" class="form-control form-control-lg text-center mono fw-extrabold" placeholder="Yönetici PIN" autocomplete="off" autofocus>
+        <input type="password" id="supervisorPinInput" class="form-control form-control-lg text-center mono fw-extrabold" placeholder="Yönetici PIN" autocomplete="off" inputmode="numeric" data-autofocus="true">
         <div id="supervisorErrorBox" class="text-danger small fw-bold mt-2 d-none"></div>
     </div>
     <div class="pos-dialog-foot">
@@ -2960,7 +3071,7 @@
                     Dükkan Satış Fiyatı (TL) <span class="text-danger">*</span>
                 </label>
                 <div class="input-group">
-                    <input type="number" step="0.01" min="0" id="poolSellPriceInput" class="form-control form-control-lg mono fw-bold text-success" autofocus>
+                    <input type="number" step="0.01" min="0" id="poolSellPriceInput" class="form-control form-control-lg mono fw-bold text-success" inputmode="decimal" data-autofocus="true">
                     <span class="input-group-text fw-bold">₺</span>
                 </div>
                 <div class="form-text small text-muted" id="poolRecommendedHint">Önerilen: 0.00 TL</div>
@@ -3054,8 +3165,15 @@
         const dlg = document.getElementById(id);
         if (!dlg) return;
         if (!dlg.open) dlg.showModal();
-        const auto = dlg.querySelector('[autofocus]');
-        if (auto) setTimeout(() => auto.focus(), 20);
+        if (window.innerWidth >= 992) {
+            const auto = dlg.querySelector('[data-autofocus], [autofocus]');
+            if (auto) setTimeout(() => auto.focus(), 20);
+        } else {
+            // Mobilde sanal klavyenin ekranı kapatmasını önle; kullanıcı bizzat dokununca klavye/numpad açılsın
+            if (document.activeElement && typeof document.activeElement.blur === 'function') {
+                document.activeElement.blur();
+            }
+        }
     }
 
     function closeDialog(id) {
@@ -3848,10 +3966,12 @@
         document.getElementById('poolStockInput').value = '10';
 
         openDialog('poolProductModal');
-        setTimeout(() => {
-            priceInput.focus();
-            priceInput.select();
-        }, 60);
+        if (window.innerWidth >= 992) {
+            setTimeout(() => {
+                priceInput.focus();
+                priceInput.select();
+            }, 60);
+        }
     }
 
     async function submitPoolProductToStore() {
