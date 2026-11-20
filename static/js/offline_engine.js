@@ -274,13 +274,22 @@ const HiMarketOfflineEngine = (function () {
             const tx = db.transaction('products', 'readonly');
             const store = tx.objectStore('products');
             const req = store.openCursor();
+            const cleanPlu = String(itemCode || '').replace(/^0+/, '') || '0';
+            const candidates = [
+                itemCode,
+                cleanPlu,
+                `27${itemCode}`,
+                `28${itemCode}`,
+                `27${cleanPlu}`,
+                `28${cleanPlu}`
+            ];
 
             req.onsuccess = function (e) {
                 const cursor = e.target.result;
                 if (cursor) {
                     const prod = cursor.value;
                     const bc = String(prod.barcode || '');
-                    if (bc.includes(itemCode) || bc === itemCode) {
+                    if (candidates.includes(bc) || bc.includes(itemCode) || bc === cleanPlu) {
                         resolve(prod);
                         return;
                     }

@@ -1626,6 +1626,29 @@
             z-index: 20;
         }
 
+        .pos-mobile-cam-btn {
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 12px;
+            border: 1px solid var(--pos-border-subtle);
+            background: #f1f5f9;
+            color: var(--pos-navy);
+            border-radius: 8px;
+            font-size: 1.15rem;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: all 0.12s ease;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .pos-mobile-cam-btn:active {
+            background: var(--pos-navy);
+            color: #ffffff;
+            transform: scale(0.94);
+        }
+
         .pos-mobile-tab-btn {
             flex: 1 1 0;
             display: inline-flex;
@@ -2113,6 +2136,9 @@
     <button type="button" class="pos-mobile-tab-btn" id="btnTabOps" data-tab="ops" onclick="switchMobilePosTab('ops')">
         <i class="bi bi-calculator-fill"></i>
         <span>Tuş &amp; Ödeme</span>
+    </button>
+    <button type="button" class="pos-mobile-cam-btn" id="btnMobileCameraScan" onclick="openCameraModal()" title="Kamera ile Barkod Okut" aria-label="Kamera Barkod">
+        <i class="bi bi-camera-fill"></i>
     </button>
 </nav>
 
@@ -3675,6 +3701,11 @@
                     showPosToast(`ℹ️ BİLGİ: "${data.product.name}" SKT Yaklaşıyor: ${data.product.expiration_date} (${data.product.days_to_expiration} gün kaldı)`, 'warning');
                 }
 
+                // Eksi Stok Uyarısı (Sayım açığı ve mal kabul kontrolü)
+                if (data.product.stock_quantity !== undefined && Number(data.product.stock_quantity) < 0) {
+                    showPosToast(`⚠️ DİKKAT: "${data.product.name}" eksi stokta (${Number(data.product.stock_quantity).toFixed(data.product.is_weighted ? 3 : 0)} ${data.product.unit || 'Adet'}). Mal kabulünü kontrol ediniz.`, 'warning');
+                }
+
                 return { ok: true, product: data.product, quantity: finalQty };
             }
 
@@ -4213,6 +4244,7 @@
                         <div class="pos-row-name">
                             ${safeName}
                             ${item.variant_info ? `<span class="badge ms-1 px-2 py-0.5 rounded-1 fw-bold" style="background:#e0e7ff;color:#3730a3;font-size:11px;letter-spacing:0.3px;"><i class="bi bi-tag-fill me-1"></i>${escapeHtml(item.variant_info)}</span>` : ''}
+                            ${item.is_weighted ? `<span class="badge ms-1 px-1.5 py-0.5 rounded-1 fw-bold bg-success-subtle text-success border border-success-subtle" style="font-size:10.5px;"><i class="bi bi-scale me-1"></i>Tartılı</span>` : ''}
                         </div>
                         <div class="pos-row-sub">${item.unit_price.toFixed(2)} ₺ / ${safeUnit}${hasLineDisc ? ' · İndirimli' : ''}</div>
                     </td>
@@ -4571,13 +4603,26 @@
             }
             window.__stockLookupList = data.products;
             tbody.innerHTML = data.products.map((p, idx) => {
-                const stockClass = p.stock_quantity <= 0 ? 'text-danger fw-extrabold' : (p.stock_quantity <= p.min_stock_level ? 'text-warning fw-bold' : 'text-success fw-bold');
+                const stockQty = Number(p.stock_quantity);
+                let stockBadgeHtml = '';
+                if (stockQty < 0) {
+                    stockBadgeHtml = `<span class="badge bg-warning-subtle text-warning-emphasis border border-warning px-2 py-1 fw-bold" title="Stok eksiye düşmüş; mal kabulü veya sayım yapılması önerilir."><i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>Eksi Stok: ${stockQty.toFixed(p.is_weighted ? 3 : 0)} ${escapeHtml(p.unit)}</span>`;
+                } else if (stockQty === 0) {
+                    stockBadgeHtml = `<span class="badge bg-secondary-subtle text-secondary border border-secondary px-2 py-1 fw-bold">Tükendi (0 ${escapeHtml(p.unit)})</span>`;
+                } else if (stockQty <= p.min_stock_level) {
+                    stockBadgeHtml = `<span class="badge bg-danger-subtle text-danger border border-danger px-2 py-1 fw-bold"><i class="bi bi-bell-fill me-1"></i>Kritik: ${stockQty.toFixed(p.is_weighted ? 3 : 0)} ${escapeHtml(p.unit)}</span>`;
+                } else {
+                    stockBadgeHtml = `<span class="text-success fw-bold mono">${stockQty.toFixed(p.is_weighted ? 3 : 0)} ${escapeHtml(p.unit)}</span>`;
+                }
                 return `
                     <tr>
                         <td class="mono small text-slate-600">${escapeHtml(p.barcode || '—')}</td>
-                        <td class="fw-bold text-slate-900">${escapeHtml(p.name)}</td>
+                        <td class="fw-bold text-slate-900">
+                            ${escapeHtml(p.name)}
+                            ${p.is_weighted ? '<span class="badge ms-1 bg-success-subtle text-success border border-success-subtle" style="font-size:10px;"><i class="bi bi-scale me-1"></i>Tartılı</span>' : ''}
+                        </td>
                         <td class="small text-slate-600">${escapeHtml(p.category_name)}</td>
-                        <td class="text-end mono ${stockClass}">${Number(p.stock_quantity).toFixed(p.is_weighted ? 3 : 0)} ${escapeHtml(p.unit)}</td>
+                        <td class="text-end mono">${stockBadgeHtml}</td>
                         <td class="text-end mono fw-extrabold">${p.sell_price.toFixed(2)} TL</td>
                         <td class="text-end">
                             <button type="button" class="btn btn-sm btn-primary fw-bold" onclick="addFromStockLookup(${idx})">
@@ -5258,9 +5303,14 @@
             await html5QrScanner.start(
                 deviceOrConstraint || { facingMode: 'environment' },
                 {
-                    fps: 12,
-                    qrbox: { width: 250, height: 130 },
+                    fps: 15,
+                    qrbox: (viewfinderWidth, viewfinderHeight) => {
+                        const boxWidth = Math.max(200, Math.min(280, Math.floor(viewfinderWidth * 0.82)));
+                        const boxHeight = Math.max(100, Math.min(160, Math.floor(boxWidth * 0.52)));
+                        return { width: boxWidth, height: boxHeight };
+                    },
                     useBarCodeDetectorIfSupported: true,
+                    aspectRatio: 1.777778
                 },
                 onCameraScanSuccess,
                 () => {}

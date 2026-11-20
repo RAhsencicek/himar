@@ -4618,6 +4618,64 @@ class MobilePosAndProductVisibilityTestSuite(TestCase):
         self.assertIn('Günlük Süt 1L', content)
         self.assertIn('En Çok Satan Ürünler', content)
 
+    def test_scale_barcode_27_weight_embedded_with_flexible_plu(self):
+        """27 ile başlayan EAN-13 terazi barkodları, ürün PLU'su sıfırsız ('101') dahi girilmiş olsa gramajı (1.425 KG) çözmelidir."""
+        p_elma = Product.objects.create(
+            company=self.company,
+            barcode='101',
+            name='Amasya Elması',
+            sell_price=Decimal('40.00'),
+            buy_price=Decimal('25.00'),
+            unit='KG',
+            is_weighted=True,
+            stock_quantity=Decimal('50.000'),
+            is_active=True
+        )
+
+        res = self.client.get(reverse('search_barcode') + '?barcode=2700101014256')
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data.get('success'))
+        self.assertTrue(data.get('is_weighted_barcode'))
+        self.assertEqual(data.get('scale_prefix'), '27')
+        self.assertEqual(data.get('scale_plu'), '101')
+        self.assertEqual(data.get('quantity'), 1.425)
+        self.assertEqual(data.get('product', {}).get('name'), 'Amasya Elması')
+
+    def test_scale_barcode_28_price_embedded(self):
+        """28 ile başlayan fiyat gömülü terazi barkodları etiketteki toplam tutara göre gramajı doğru hesaplamalıdır."""
+        p_kasar = Product.objects.create(
+            company=self.company,
+            barcode='2700205000000',
+            name='Taze Kaşar',
+            sell_price=Decimal('200.00'),
+            buy_price=Decimal('150.00'),
+            unit='KG',
+            is_weighted=True,
+            stock_quantity=Decimal('20.000'),
+            is_active=True
+        )
+
+        # 28 + 00205 + 05000 (50.00 TL) + 7
+        res = self.client.get(reverse('search_barcode') + '?barcode=2800205050007')
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data.get('success'))
+        self.assertTrue(data.get('is_weighted_barcode'))
+        self.assertEqual(data.get('scale_prefix'), '28')
+        self.assertEqual(data.get('quantity'), 0.25)
+        self.assertEqual(data.get('product', {}).get('name'), 'Taze Kaşar')
+
+    def test_pos_screen_renders_mobile_camera_button_and_stock_badges(self):
+        """Kasa ekranı mobil kamera butonunu ve eksi stok / tartılı rozet markup'larını içermelidir."""
+        res = self.client.get(reverse('pos_screen'))
+        self.assertEqual(res.status_code, 200)
+        content = res.content.decode('utf-8')
+
+        self.assertIn('id="btnMobileCameraScan"', content)
+        self.assertIn('Eksi Stok:', content)
+        self.assertIn('Tartılı', content)
+
 
 
 

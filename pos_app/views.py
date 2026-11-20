@@ -610,15 +610,56 @@ def search_barcode(request):
     if len(barcode) == 13 and (barcode.startswith('27') or barcode.startswith('28')):
         prefix = barcode[:2]
         product_code = barcode[2:7]
+        plu_clean = product_code.lstrip('0') or '0'
         raw_val = barcode[7:12]
 
-        weighted_product = Product.objects.filter(company=user_company, is_weighted=True, is_active=True, barcode__contains=product_code).first()
+        lookup_candidates = [
+            product_code,
+            plu_clean,
+            f"27{product_code}",
+            f"28{product_code}",
+            f"27{plu_clean}",
+            f"28{plu_clean}",
+            f"27{product_code}000000"[:13],
+            f"28{product_code}000000"[:13],
+            f"27{plu_clean.zfill(5)}000000"[:13],
+            f"28{plu_clean.zfill(5)}000000"[:13],
+        ]
+
+        weighted_product = Product.objects.filter(
+            company=user_company,
+            is_active=True
+        ).filter(
+            Q(barcode__in=lookup_candidates) |
+            Q(barcode__contains=product_code) |
+            Q(barcode=plu_clean) |
+            Q(secondary_barcode__in=lookup_candidates)
+        ).filter(
+            Q(is_weighted=True) | Q(unit__in=['KG', 'Gram']) | Q(barcode__startswith='27') | Q(barcode__startswith='28')
+        ).first()
+
+        # Tartılı bayrağı işaretlenmemiş olsa dahi PLU/barkod uyuşuyorsa eşleştir
+        if not weighted_product:
+            weighted_product = Product.objects.filter(
+                company=user_company,
+                is_active=True
+            ).filter(
+                Q(barcode__in=lookup_candidates) |
+                Q(barcode__contains=product_code) |
+                Q(barcode=plu_clean)
+            ).first()
+
         if weighted_product:
             try:
                 if prefix == '27':
-                    calculated_quantity = round(Decimal(raw_val) / Decimal('1000.0'), 3)
+                    # 27: Ağırlık / Gramaj gömülü (Örn: 01425 -> 1.425 kg)
+                    weight_grams = Decimal(raw_val)
+                    calculated_quantity = round(weight_grams / Decimal('1000.0'), 3)
+                    if calculated_quantity <= Decimal('0.000'):
+                        calculated_quantity = Decimal('1.000')
                     final_sell_price = float(weighted_product.sell_price)
                 else:
+                    # 28: Fiyat / Tutar gömülü (Örn: 06412 -> 64.12 TL)
                     total_price_tl = Decimal(raw_val) / Decimal('100.0')
                     if weighted_product.sell_price > Decimal('0.00'):
                         calculated_quantity = round(total_price_tl / weighted_product.sell_price, 3)
@@ -627,12 +668,18 @@ def search_barcode(request):
                         calculated_quantity = Decimal('1.000')
                         final_sell_price = float(total_price_tl)
 
+                formatted_prod = _format_pos_product(weighted_product, override_price=final_sell_price)
+                formatted_prod['is_weighted'] = True
+
                 return JsonResponse({
                     'success': True,
                     'has_variants': False,
-                    'product': _format_pos_product(weighted_product, override_price=final_sell_price),
+                    'product': formatted_prod,
                     'quantity': float(calculated_quantity),
-                    'is_weighted_barcode': True
+                    'is_weighted_barcode': True,
+                    'scale_prefix': prefix,
+                    'scale_plu': plu_clean,
+                    'scale_raw_val': raw_val
                 })
             except (ValueError, ArithmeticError):
                 pass
