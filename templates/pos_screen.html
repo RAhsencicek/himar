@@ -5317,11 +5317,12 @@
             );
             isCameraRunning = true;
             setCameraStatus('Canlı tarama aktif — barkodu çerçeveye yaklaştırın.', 'info');
-        } catch {
+        } catch (err) {
+            console.error('[CameraScanner] start error:', err);
             html5QrScanner = null;
             isCameraRunning = false;
-            readerEl.innerHTML = '<span class="small text-center px-3">Kamera başlatılamadı veya erişim izni verilmedi.<br>USB okuyucu ya da aşağıdaki manuel barkod alanını kullanabilirsiniz.</span>';
-            setCameraStatus('Kamera başlatılamadı veya izin verilmedi. Aşağıdan manuel barkod girebilirsiniz.', 'warn');
+            readerEl.innerHTML = '<span class="small text-center px-3">Kamera başlatılamadı veya erişim izni verilmedi.<br>Tarayıcınızın adres çubuğundaki kilit / izin simgesinden kamera izni veriniz ya da aşağıdaki manuel barkod alanını kullanınız.</span>';
+            setCameraStatus('Kamera başlatılamadı. Lütfen tarayıcı ayarlarından kamera iznini onaylayınız.', 'warn');
         }
     }
 
@@ -5343,33 +5344,29 @@
             return;
         }
 
+        let selectedCamera = { facingMode: 'environment' };
         try {
             const devices = await Html5Qrcode.getCameras();
-            const dlg = document.getElementById('cameraModal');
-            if (!dlg || !dlg.open) return;
-
-            if (!Array.isArray(devices) || devices.length === 0) {
-                if (deviceSel) deviceSel.innerHTML = '<option value="">Kamera bulunamadı</option>';
-                if (readerEl) readerEl.innerHTML = '<span class="small text-center px-3">Cihazda aktif kamera algılanamadı.<br>USB okuyucu veya manuel barkod girişi kullanabilirsiniz.</span>';
-                setCameraStatus('Kamera bulunamadı. Aşağıdan manuel barkod girebilirsiniz.', 'warn');
-                return;
+            if (Array.isArray(devices) && devices.length > 0) {
+                if (deviceSel) {
+                    deviceSel.innerHTML = devices.map((d, i) => (
+                        `<option value="${escapeHtml(d.id)}">${escapeHtml(d.label || ('Kamera ' + (i + 1)))}</option>`
+                    )).join('');
+                    const preferred = devices.find(d => /back|rear|environment|arka/i.test(d.label || '')) || devices[0];
+                    deviceSel.value = preferred.id;
+                    selectedCamera = preferred.id;
+                } else {
+                    selectedCamera = devices[0].id;
+                }
             }
-
-            if (deviceSel) {
-                deviceSel.innerHTML = devices.map((d, i) => (
-                    `<option value="${escapeHtml(d.id)}">${escapeHtml(d.label || ('Kamera ' + (i + 1)))}</option>`
-                )).join('');
-                const preferred = devices.find(d => /back|rear|environment|arka/i.test(d.label || '')) || devices[0];
-                deviceSel.value = preferred.id;
-                await startCameraScanner(preferred.id);
-            } else {
-                await startCameraScanner(devices[0].id);
-            }
-        } catch {
-            if (deviceSel) deviceSel.innerHTML = '<option value="">Kamera erişimi yok</option>';
-            if (readerEl) readerEl.innerHTML = '<span class="small text-center px-3">Kamera algılanamadı veya izin verilmedi.<br>USB okuyucu ya da aşağıdaki manuel barkod alanını kullanabilirsiniz.</span>';
-            setCameraStatus('Kamera bulunamadı veya tarayıcı izni reddedildi. Manuel giriş kullanabilirsiniz.', 'warn');
+        } catch (enumErr) {
+            console.warn('[Camera] Cihaz listesi doğrudan okunamadı, arka kamera (facingMode) ile deneniyor:', enumErr);
         }
+
+        const dlg = document.getElementById('cameraModal');
+        if (!dlg || !dlg.open) return;
+
+        await startCameraScanner(selectedCamera);
     }
 
     async function switchCameraDevice() {
