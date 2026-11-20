@@ -1591,7 +1591,7 @@
         display: none !important;
     }
 
-    .pos-mobile-cart-floater {
+    .pos-mobile-cat-selector {
         display: none !important;
     }
 
@@ -1680,7 +1680,93 @@
             max-block-size: none !important;
             min-height: 0 !important;
             overflow: hidden !important;
-            padding-bottom: 74px !important; /* Yüzen sepet çubuğu için boşluk */
+            padding-bottom: 6px !important;
+        }
+
+        /* Mobilde arama kutusu ve yığılan kategori haplarını gizle; yerine kompakt açılır seçiciyi göster */
+        body.pos-tab-catalog .pos-catalog-search {
+            display: none !important;
+        }
+
+        body.pos-tab-catalog .pos-cat-pills {
+            display: none !important;
+        }
+
+        .pos-mobile-cat-selector {
+            display: block !important;
+            margin-bottom: 6px;
+            position: relative;
+            z-index: 15;
+            flex-shrink: 0;
+        }
+
+        .pos-mobile-cat-btn {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #ffffff;
+            border: 1.5px solid var(--pos-border-subtle);
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 0.84rem;
+            color: var(--pos-ink);
+            font-weight: 600;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .pos-mobile-cat-btn:active {
+            background: #f8fafc;
+        }
+
+        .pos-mobile-cat-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            margin-top: 4px;
+            background: #ffffff;
+            border: 1.5px solid var(--pos-border-subtle);
+            border-radius: 10px;
+            padding: 8px;
+            box-shadow: 0 10px 25px rgba(15, 23, 42, 0.2);
+            max-height: 260px;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            z-index: 100;
+            animation: fadeInDown 0.15s ease-out;
+        }
+
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .pos-mobile-cat-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .mobile-cat-chip {
+            padding: 6px 12px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            border-radius: 20px;
+            border: 1px solid #cbd5e1;
+            background: #f8fafc;
+            color: var(--pos-ink);
+            cursor: pointer;
+            transition: all 0.12s ease;
+        }
+
+        .mobile-cat-chip.active {
+            background: var(--pos-navy);
+            color: #ffffff;
+            border-color: var(--pos-navy);
+            box-shadow: 0 2px 5px rgba(30, 58, 95, 0.3);
         }
 
         body.pos-tab-catalog .pos-catalog-scroll {
@@ -1748,98 +1834,6 @@
             flex-shrink: 0 !important;
             padding: 4px !important;
             overflow-x: auto !important;
-        }
-
-        /* YÜZEN MOBİL SEPET ÇUBUĞU */
-        .pos-mobile-cart-floater {
-            position: fixed;
-            bottom: 10px;
-            left: 10px;
-            right: 10px;
-            background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
-            color: #ffffff;
-            border-radius: 12px;
-            padding: 9px 14px;
-            display: flex !important;
-            align-items: center;
-            justify-content: space-between;
-            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.45);
-            z-index: 999;
-            cursor: pointer;
-            border: 1px solid rgba(255, 255, 255, 0.16);
-            animation: slideUpFloater 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        @keyframes slideUpFloater {
-            from { transform: translateY(100%); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-
-        .pos-mobile-floater-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .pos-mobile-floater-icon {
-            position: relative;
-            width: 38px;
-            height: 38px;
-            background: rgba(255, 255, 255, 0.16);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.25rem;
-            color: #ffffff;
-        }
-
-        .pos-mobile-floater-badge {
-            position: absolute;
-            top: -5px;
-            right: -5px;
-            background: #ef4444;
-            color: #ffffff;
-            font-size: 0.68rem;
-            font-weight: 800;
-            padding: 1px 6px;
-            border-radius: 999px;
-            border: 2px solid #1e3a5f;
-            line-height: 1.2;
-        }
-
-        .pos-mobile-floater-text {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .pos-mobile-floater-qty {
-            font-size: 0.72rem;
-            color: #cbd5e1;
-            font-weight: 600;
-            line-height: 1.2;
-        }
-
-        .pos-mobile-floater-amount {
-            font-size: 1.15rem;
-            font-weight: 800;
-            color: #38bdf8;
-            font-family: 'Roboto Mono', monospace;
-            line-height: 1.2;
-        }
-
-        .pos-mobile-floater-action {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            background: #10b981;
-            color: #ffffff;
-            font-weight: 700;
-            font-size: 0.84rem;
-            padding: 8px 12px;
-            border-radius: 8px;
-            box-shadow: 0 2px 6px rgba(16, 185, 129, 0.4);
         }
 
         /* MOBİLDE KATALOG IZGARA OPTİMİZASYONU */
@@ -2218,6 +2212,33 @@
 
 <!-- SAĞ KOLON: KATEGORİ FİLTRELERİ + GÖRSELLİ HIZLI ÜRÜN KATALOĞU -->
 <section class="pos-pane pos-catalog-card" aria-label="Hızlı Ürün Kataloğu">
+    <!-- MOBİLDE GÖRÜNEN AÇILIR KATEGORİ SEÇİCİ (ARAMA ÇUBUĞU VE HAPLAR YERİNE TEMİZ TEK BUTON) -->
+    <div class="pos-mobile-cat-selector">
+        <button type="button" class="pos-mobile-cat-btn" id="posMobileCatBtn" onclick="toggleMobileCategoryDrawer()">
+            <span class="d-flex align-items-center gap-2 text-truncate">
+                <i class="bi bi-tags-fill text-primary"></i>
+                <span id="posMobileActiveCatTitle">Kategori: <strong>Tümü</strong></span>
+            </span>
+            <div class="d-flex align-items-center gap-1.5 ms-auto">
+                <span class="badge bg-light text-dark border font-monospace" id="posMobileCatTotalBadge">{{ categories|length|add:"1" }}</span>
+                <i class="bi bi-chevron-down text-secondary" id="posMobileCatChevron"></i>
+            </div>
+        </button>
+        <!-- AÇILIR KATEGORİ MENÜSÜ -->
+        <div class="pos-mobile-cat-dropdown d-none" id="posMobileCatDropdown">
+            <div class="pos-mobile-cat-grid">
+                <button type="button" class="mobile-cat-chip active" data-cat="all" onclick="selectMobileCat('all', 'Tümü', this)">
+                    <i class="bi bi-grid-fill me-1"></i> Tümü
+                </button>
+                {% for cat in categories %}
+                <button type="button" class="mobile-cat-chip" data-cat="{{ cat.id }}" onclick="selectMobileCat('{{ cat.id }}', '{{ cat.name|escapejs }}', this)">
+                    {{ cat.name }}
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
     <div class="pos-catalog-search">
         <i class="bi bi-search text-slate-600" aria-hidden="true"></i>
         <input type="search" id="quickSearchInput" placeholder="Katalogda hızlı ürün ara..." autocomplete="off" aria-label="Katalogda hızlı ürün ara">
@@ -2311,24 +2332,6 @@
     </a>
     {% endif %}
 </nav>
-
-<!-- YÜZEN MOBİL SEPET ÇUBUĞU (Katalog sekmesindeyken sepette ürün varsa ekranın altına yapışır) -->
-<div class="pos-mobile-cart-floater d-none" id="posMobileCartFloater" onclick="switchMobilePosTab('receipt')" role="button" aria-label="Sepete Git ve Öde">
-    <div class="pos-mobile-floater-info">
-        <div class="pos-mobile-floater-icon">
-            <i class="bi bi-cart3"></i>
-            <span class="pos-mobile-floater-badge" id="mobileFloaterBadge">0</span>
-        </div>
-        <div class="pos-mobile-floater-text">
-            <div class="pos-mobile-floater-qty" id="mobileFloaterQty">0 Kalem</div>
-            <div class="pos-mobile-floater-amount" id="mobileFloaterAmount">0.00 TL</div>
-        </div>
-    </div>
-    <div class="pos-mobile-floater-action">
-        <span>Sepete Git / Öde</span>
-        <i class="bi bi-arrow-right-short fs-4"></i>
-    </div>
-</div>
 
 <!-- ============================================================
      NATIVE <dialog> MODALLARI
@@ -3108,7 +3111,6 @@
     }
 
     function updateMobileCartFloater() {
-        const floater = document.getElementById('posMobileCartFloater');
         const tabBadge = document.getElementById('mobileTabCartCount');
         const itemCount = Array.isArray(cart) ? cart.length : 0;
 
@@ -3120,33 +3122,59 @@
                 tabBadge.classList.add('d-none');
             }
         }
+    }
 
-        if (!floater) return;
-
-        const total = typeof getGrandTotal === 'function' ? getGrandTotal() : 0.00;
-        const totalUnits = Array.isArray(cart) ? cart.reduce((acc, item) => acc + (item.is_weighted ? 1 : item.quantity), 0) : 0;
-        const qtyLabel = Math.abs(totalUnits - Math.round(totalUnits)) < 0.01 ? Math.round(totalUnits) : totalUnits.toFixed(2);
-
-        const badgeEl = document.getElementById('mobileFloaterBadge');
-        const qtyEl = document.getElementById('mobileFloaterQty');
-        const amtEl = document.getElementById('mobileFloaterAmount');
-
-        if (badgeEl) badgeEl.textContent = String(itemCount);
-        if (qtyEl) qtyEl.textContent = `${itemCount} Kalem (${qtyLabel} Adet)`;
-        if (amtEl) amtEl.textContent = `${total.toFixed(2)} TL`;
-
-        if (window.innerWidth <= 991.98 && currentMobileTab === 'catalog' && itemCount > 0) {
-            floater.classList.remove('d-none');
+    /* ============================================================
+       MOBİL KATEGORİ AÇILIR SEÇİCİ (TEMİZ & TEK DOKUNUŞ)
+       ============================================================ */
+    function toggleMobileCategoryDrawer() {
+        const dd = document.getElementById('posMobileCatDropdown');
+        const chevron = document.getElementById('posMobileCatChevron');
+        if (!dd) return;
+        const isHidden = dd.classList.contains('d-none');
+        if (isHidden) {
+            dd.classList.remove('d-none');
+            if (chevron) chevron.className = 'bi bi-chevron-up text-primary';
         } else {
-            floater.classList.add('d-none');
+            dd.classList.add('d-none');
+            if (chevron) chevron.className = 'bi bi-chevron-down text-secondary';
         }
     }
+
+    function selectMobileCat(catId, catName, btn) {
+        // Desktop filtre fonksiyonuyla aynı şekilde hızlı filtre uygula
+        filterQuickCategory(catId, btn);
+
+        // Mobildeki aktif buton ve başlığı güncelle
+        document.querySelectorAll('.mobile-cat-chip').forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+
+        const titleEl = document.getElementById('posMobileActiveCatTitle');
+        if (titleEl) {
+            titleEl.innerHTML = `Kategori: <strong>${escapeHtml(catName)}</strong>`;
+        }
+
+        // Açılır menüyü kapat
+        const dd = document.getElementById('posMobileCatDropdown');
+        const chevron = document.getElementById('posMobileCatChevron');
+        if (dd) dd.classList.add('d-none');
+        if (chevron) chevron.className = 'bi bi-chevron-down text-secondary';
+    }
+
+    // Mobil kategori açılır menüsü dışına dokunulduğunda otomatik kapatma
+    document.addEventListener('click', (e) => {
+        const selector = document.querySelector('.pos-mobile-cat-selector');
+        const dd = document.getElementById('posMobileCatDropdown');
+        if (selector && dd && !selector.contains(e.target) && !dd.classList.contains('d-none')) {
+            dd.classList.add('d-none');
+            const chevron = document.getElementById('posMobileCatChevron');
+            if (chevron) chevron.className = 'bi bi-chevron-down text-secondary';
+        }
+    });
 
     window.addEventListener('resize', () => {
         if (window.innerWidth > 991.98) {
             document.body.classList.remove('pos-tab-catalog', 'pos-tab-receipt', 'pos-tab-ops');
-            const floater = document.getElementById('posMobileCartFloater');
-            if (floater) floater.classList.add('d-none');
         } else {
             if (!document.body.classList.contains('pos-tab-catalog') &&
                 !document.body.classList.contains('pos-tab-receipt') &&

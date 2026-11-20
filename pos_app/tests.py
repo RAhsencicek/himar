@@ -4587,9 +4587,9 @@ class MobilePosAndProductVisibilityTestSuite(TestCase):
         self.assertIn('id="btnTabReceipt"', content)
         self.assertIn('id="btnTabOps"', content)
 
-        # Yüzen Sepet Çubuğu
-        self.assertIn('pos-mobile-cart-floater', content)
-        self.assertIn('id="posMobileCartFloater"', content)
+        # Mobil Temiz Arayüz: Açılır Kategori Seçici Barı (Arama ve gereksiz kalabalık gizli)
+        self.assertIn('pos-mobile-cat-selector', content)
+        self.assertIn('id="posMobileCatBtn"', content)
 
         # Sepet Altı Mobil Hızlı Ödeme Butonları
         self.assertIn('pos-mobile-receipt-actions', content)
