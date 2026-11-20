@@ -5233,19 +5233,29 @@
     }
 
     /* ============================================================
-       KAMERA İLE CANLI BARKOD / QR OKUTMA
+       KAMERA İLE CANLI BARKOD / QR OKUTMA (DONANIM HIZLANDIRMALI & HD)
        ============================================================ */
     let html5QrScanner = null;
     let isCameraRunning = false;
     let lastCameraDecoded = '';
     let lastCameraScanAt = 0;
+    let isTorchOn = false;
+    let torchSupported = false;
 
     function setCameraStatus(message, variant = 'info') {
         const box = document.getElementById('cameraScanStatus');
+        const guide = document.getElementById('posCameraGuide');
         if (!box) return;
         box.className = 'pos-camera-status';
-        if (variant === 'success') box.classList.add('pos-camera-status--success');
-        else if (variant === 'warn') box.classList.add('pos-camera-status--warn');
+        if (variant === 'success') {
+            box.classList.add('pos-camera-status--success');
+            if (guide) guide.classList.add('pos-camera-guide--active');
+            setTimeout(() => {
+                if (guide) guide.classList.remove('pos-camera-guide--active');
+            }, 800);
+        } else if (variant === 'warn') {
+            box.classList.add('pos-camera-status--warn');
+        }
         box.textContent = message;
     }
 
@@ -5258,8 +5268,10 @@
             'UPC_E',
             'CODE_128',
             'CODE_39',
+            'CODE_93',
             'ITF',
             'QR_CODE',
+            'DATA_MATRIX'
         ];
         const formats = wanted
             .map(name => Html5QrcodeSupportedFormats[name])
@@ -5268,6 +5280,16 @@
     }
 
     async function stopCameraScanner() {
+        isTorchOn = false;
+        torchSupported = false;
+        const torchBtn = document.getElementById('btnCameraTorch');
+        if (torchBtn) {
+            torchBtn.classList.add('d-none');
+            torchBtn.classList.remove('btn-warning', 'text-dark');
+            torchBtn.classList.add('btn-outline-warning');
+            torchBtn.innerHTML = '<i class="bi bi-lightbulb"></i> Flaş';
+        }
+
         const instance = html5QrScanner;
         const wasRunning = isCameraRunning;
         html5QrScanner = null;
@@ -5285,6 +5307,59 @@
         } catch {}
     }
 
+    async function checkTorchCapability() {
+        const btn = document.getElementById('btnCameraTorch');
+        if (!btn || !html5QrScanner) return;
+        try {
+            if (typeof html5QrScanner.getRunningTrackCameraCapabilities === 'function') {
+                const caps = html5QrScanner.getRunningTrackCameraCapabilities();
+                if (caps && typeof caps.torchFeature === 'function') {
+                    torchSupported = Boolean(caps.torchFeature().isSupported());
+                }
+            }
+            if (!torchSupported && typeof html5QrScanner.getRunningTrackCapabilities === 'function') {
+                const trackCaps = html5QrScanner.getRunningTrackCapabilities();
+                if (trackCaps && ('torch' in trackCaps)) {
+                    torchSupported = Boolean(trackCaps.torch);
+                }
+            }
+        } catch (e) {
+            console.warn('[CameraTorch] Yetenek sorgulanamadı:', e);
+            torchSupported = false;
+        }
+
+        if (torchSupported) {
+            btn.classList.remove('d-none');
+        } else {
+            btn.classList.add('d-none');
+        }
+    }
+
+    async function toggleCameraTorch() {
+        if (!html5QrScanner || !torchSupported) return;
+        const btn = document.getElementById('btnCameraTorch');
+        try {
+            isTorchOn = !isTorchOn;
+            await html5QrScanner.applyVideoConstraints({
+                advanced: [{ torch: isTorchOn }]
+            });
+            if (btn) {
+                if (isTorchOn) {
+                    btn.classList.remove('btn-outline-warning');
+                    btn.classList.add('btn-warning', 'text-dark');
+                    btn.innerHTML = '<i class="bi bi-lightbulb-fill"></i> Flaş Açık';
+                } else {
+                    btn.classList.remove('btn-warning', 'text-dark');
+                    btn.classList.add('btn-outline-warning');
+                    btn.innerHTML = '<i class="bi bi-lightbulb"></i> Flaş';
+                }
+            }
+        } catch (err) {
+            console.warn('[CameraTorch] Flaş açılamadı / değiştirilemedi:', err);
+            isTorchOn = false;
+        }
+    }
+
     async function startCameraScanner(deviceOrConstraint) {
         const dlg = document.getElementById('cameraModal');
         const readerEl = document.getElementById('cameraReaderRegion');
@@ -5295,28 +5370,76 @@
 
         readerEl.innerHTML = '';
         const formatsToSupport = getSupportedBarcodeFormats();
-        const config = { verbose: false };
-        if (formatsToSupport) config.formatsToSupport = formatsToSupport;
+
+        // 1. Donanımsal BarcodeDetector (iOS Vision & Android Barcode API) desteği constructor'da açılır!
+        const config = {
+            verbose: false,
+            useBarCodeDetectorIfSupported: true,
+            experimentalFeatures: {
+                useBarCodeDetectorIfSupported: true
+            }
+        };
+        if (formatsToSupport) {
+            config.formatsToSupport = formatsToSupport;
+        }
+
+        // 2. HD Çözünürlük ve Sürekli Otomatik Odak Kısıtı (Continuous Autofocus & HD)
+        let primaryConstraint;
+        if (typeof deviceOrConstraint === 'string') {
+            primaryConstraint = {
+                deviceId: { exact: deviceOrConstraint },
+                width: { min: 1280, ideal: 1920 },
+                height: { min: 720, ideal: 1080 }
+            };
+        } else if (deviceOrConstraint && typeof deviceOrConstraint === 'object') {
+            primaryConstraint = {
+                facingMode: 'environment',
+                width: { min: 1280, ideal: 1920 },
+                height: { min: 720, ideal: 1080 },
+                ...deviceOrConstraint
+            };
+        } else {
+            primaryConstraint = {
+                facingMode: 'environment',
+                width: { min: 1280, ideal: 1920 },
+                height: { min: 720, ideal: 1080 }
+            };
+        }
+
+        // 3. Tarama Yapılandırması:
+        // qrbox verilmediğinde motor videonun TÜM ALANINI (full-frame) tarar.
+        // Böylece kavisli su şişesi vb. ürünlerde çizgiler dar kutuya sığdırılmak zorunda kalınmaz.
+        const scanConfig = {
+            fps: 25,
+            aspectRatio: 1.777778,
+            disableFlip: false
+        };
 
         try {
             html5QrScanner = new Html5Qrcode('cameraReaderRegion', config);
-            await html5QrScanner.start(
-                deviceOrConstraint || { facingMode: 'environment' },
-                {
-                    fps: 15,
-                    qrbox: (viewfinderWidth, viewfinderHeight) => {
-                        const boxWidth = Math.max(200, Math.min(280, Math.floor(viewfinderWidth * 0.82)));
-                        const boxHeight = Math.max(100, Math.min(160, Math.floor(boxWidth * 0.52)));
-                        return { width: boxWidth, height: boxHeight };
-                    },
-                    useBarCodeDetectorIfSupported: true,
-                    aspectRatio: 1.777778
-                },
-                onCameraScanSuccess,
-                () => {}
-            );
+
+            // Önce yüksek çözünürlük ile başlatmayı dene
+            try {
+                await html5QrScanner.start(
+                    primaryConstraint,
+                    scanConfig,
+                    onCameraScanSuccess,
+                    () => {}
+                );
+            } catch (hdErr) {
+                console.warn('[CameraScanner] HD constraint desteklenmedi, standart facingMode ile deneniyor:', hdErr);
+                // Fallback: Standart cihaz kısıtı
+                await html5QrScanner.start(
+                    deviceOrConstraint || { facingMode: 'environment' },
+                    scanConfig,
+                    onCameraScanSuccess,
+                    () => {}
+                );
+            }
+
             isCameraRunning = true;
-            setCameraStatus('Canlı tarama aktif — barkodu çerçeveye yaklaştırın.', 'info');
+            setCameraStatus('Canlı tarama aktif — barkodu kırmızı lazer çizgisine hizalayınız.', 'info');
+            setTimeout(checkTorchCapability, 500);
         } catch (err) {
             console.error('[CameraScanner] start error:', err);
             html5QrScanner = null;
@@ -5396,11 +5519,18 @@
         const code = String(decodedText || '').trim();
         if (!code) return;
         const now = Date.now();
-        if (code === lastCameraDecoded && (now - lastCameraScanAt) < 1500) {
+        if (code === lastCameraDecoded && (now - lastCameraScanAt) < 1800) {
             return;
         }
         lastCameraDecoded = code;
         lastCameraScanAt = now;
+
+        // Anında haptik titreşim ve başarı sesi
+        try {
+            if (navigator.vibrate) navigator.vibrate(100);
+            playBeep(880, 0.12);
+        } catch {}
+
         await handleDecodedCameraCode(code);
     }
 
