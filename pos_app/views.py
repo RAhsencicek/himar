@@ -1864,11 +1864,15 @@ def open_shift_action(request):
 
 def login_view(request):
     """
-    Hİ MARKET Özel Modern Giriş Sayfası (Kasiyer Dokunmatik PIN Pad & Standart Kullanıcı Girişi)
-    Faz 19: Cihaz Mühürleme (Device Binding) ve Mağaza Kapsamlı PIN İzolasyonu.
+    Hİ MARKET Özel Modern Giriş Sayfası
+    - 'Personel' Sekmesi: SADECE Kasiyerler PIN ile girer (Kasa POS ekranına yönlendirilir)
+    - 'Yönetici' Sekmesi: Şube Yöneticisi ve Süper Admin kullanıcı adı + şifre ile girer
+    Faz 19: Cihaz Mühürleme (Device Binding), RBAC ve PIN İzolasyonu.
     """
     if request.user.is_authenticated:
-        if request.user.is_staff or request.user.is_superuser:
+        if request.user.is_superuser:
+            return redirect('super_admin_dashboard')
+        if request.user.is_staff:
             return redirect('admin_dashboard')
         return redirect('pos_screen')
 
@@ -1894,12 +1898,14 @@ def login_view(request):
         except Exception:
             pass
 
+    initial_mode = 'pin'
+
     if request.method == 'POST':
         login_mode = request.POST.get('login_mode', 'standard').strip()
         username = request.POST.get('username', '').strip()
         password = request.POST.get('password', '').strip()
         pin_code = request.POST.get('pin_code', '').strip()
-        
+
         # Eğer cihaz mühürlüyse register_code zorunlu olarak bu mühürlü kasadır!
         if paired_register:
             register_code = paired_register.register_code
@@ -1907,36 +1913,53 @@ def login_view(request):
             register_code = request.POST.get('register_code', 'KASA-01').strip() or 'KASA-01'
 
         next_url = request.POST.get('next') or request.GET.get('next')
-
         user = None
-        secret = pin_code if (login_mode == 'pin' and pin_code) else password
 
-        if username and secret:
-            user = authenticate(request, username=username, password=secret)
+        if login_mode == 'standard':
+            initial_mode = 'standard'
+            if username and password:
+                user = authenticate(request, username=username, password=password)
+            if not user:
+                messages.error(request, 'Yönetici kullanıcı adı veya şifre hatalı! Lütfen bilgilerinizi kontrol ediniz.')
+        elif login_mode == 'pin':
+            initial_mode = 'pin'
+            secret = pin_code
+            if secret:
+                # 1. Yöneticilerin PIN ile girmesini engelle (Güvenlik Kuralı)
+                manager_check = User.objects.filter(is_active=True).filter(Q(is_staff=True) | Q(is_superuser=True))
+                if paired_company:
+                    manager_check = manager_check.filter(Q(profile__company=paired_company) | Q(is_superuser=True))
 
-        # Hızlı PIN modu: Doğrudan PIN girildiyse
-        if user is None and secret:
-            # 1. Eğer cihaz bir mağazaya mühürlüyse, SADECE bu mağazanın personeli içinde ara (İzolasyon)!
-            if paired_company:
-                company_candidates = User.objects.filter(is_active=True, profile__company=paired_company).order_by('is_staff', 'id')
-                for candidate in company_candidates:
-                    cand_pin = getattr(getattr(candidate, 'profile', None), 'pin_code', '')
-                    if (cand_pin and cand_pin == secret) or candidate.check_password(secret):
-                        user = candidate
+                is_manager_pin = False
+                for m in manager_check:
+                    cand_pin = getattr(getattr(m, 'profile', None), 'pin_code', '')
+                    if (cand_pin and cand_pin == secret) or m.check_password(secret):
+                        is_manager_pin = True
                         break
-            else:
-                # Cihaz mühürlü değilse genel aktif kullanıcılar içinde ara
-                for candidate in User.objects.filter(is_active=True).order_by('is_staff', 'id'):
-                    cand_pin = getattr(getattr(candidate, 'profile', None), 'pin_code', '')
-                    if (cand_pin and cand_pin == secret) or candidate.check_password(secret):
-                        user = candidate
-                        break
+
+                if is_manager_pin:
+                    messages.warning(request, "Yöneticiler PIN ile giriş yapamaz! Lütfen 'Yönetici' sekmesinden kullanıcı adı ve şifrenizle giriş yapınız.")
+                    initial_mode = 'standard'
+                else:
+                    # 2. SADECE Kasiyer adayları (is_staff=False, is_superuser=False)
+                    cashier_query = User.objects.filter(is_active=True, is_staff=False, is_superuser=False)
+                    if paired_company:
+                        cashier_query = cashier_query.filter(profile__company=paired_company)
+
+                    for candidate in cashier_query.order_by('id'):
+                        cand_pin = getattr(getattr(candidate, 'profile', None), 'pin_code', '')
+                        if (cand_pin and cand_pin == secret) or candidate.check_password(secret):
+                            user = candidate
+                            break
+
+                    if not user:
+                        messages.error(request, 'Hatalı personel PIN kodu! Lütfen PIN kodunuzu kontrol ediniz.')
 
         if user is not None:
             if user.is_active:
                 login(request, user)
                 request.session['active_register_code'] = register_code
-                auth_method_label = "Hızlı PIN Pad" if login_mode == 'pin' else "Standart Giriş"
+                auth_method_label = "Personel PIN Pad" if login_mode == 'pin' else "Yönetici Girişi"
                 log_action(
                     'SİSTEM',
                     f'[{register_code}] Kullanıcı Girişi ({auth_method_label})',
@@ -1945,22 +1968,20 @@ def login_view(request):
                 )
                 if next_url:
                     return redirect(next_url)
-                if user.is_staff or user.is_superuser:
+                if user.is_superuser:
+                    return redirect('super_admin_dashboard')
+                if user.is_staff:
                     return redirect('admin_dashboard')
                 return redirect('pos_screen')
             else:
                 messages.error(request, 'Bu kullanıcı hesabı pasif durumdadır.')
-        else:
-            if login_mode == 'pin':
-                messages.error(request, 'Hatalı PIN kodu! Lütfen PIN kodunuzu kontrol ediniz.')
-            else:
-                messages.error(request, 'Kullanıcı adı veya şifre hatalı! Lütfen bilgilerinizi kontrol ediniz.')
 
     # Giriş ekranı sadeleştirildi: Terminal mühürlüdür ve PIN doğrudan kullanıcıya aittir
     context = {
         'paired_register': paired_register,
         'paired_company': paired_company,
         'is_device_paired': bool(paired_register),
+        'initial_mode': initial_mode,
     }
     return render(request, 'login.html', context)
 
@@ -3493,14 +3514,21 @@ def user_reset_password_action(request, user_id):
 
     target_user.set_password(new_password)
     target_user.save()
+
+    is_manager = target_user.is_staff or target_user.is_superuser
+    pin_value = '' if is_manager else (new_password if new_password.isdigit() else '')
+
     if hasattr(target_user, 'profile'):
-        target_user.profile.pin_code = new_password if new_password.isdigit() else ''
+        target_user.profile.pin_code = pin_value
         target_user.profile.save()
     else:
-        UserProfile.objects.create(user=target_user, company=user_company, pin_code=new_password if new_password.isdigit() else '')
+        UserProfile.objects.create(user=target_user, company=user_company, pin_code=pin_value)
 
     log_action('AUTH', 'Şifre/PIN Güncellendi', f"'{target_user.username}' kullanıcısının şifresi/PIN kodu yönetici tarafından güncellendi.", user=request.user)
-    messages.success(request, f"'{target_user.get_full_name() or target_user.username}' personeline '{new_password}' PIN kodu başarıyla tanımlandı.")
+    if is_manager:
+        messages.success(request, f"'{target_user.get_full_name() or target_user.username}' yöneticisinin şifresi başarıyla güncellendi.")
+    else:
+        messages.success(request, f"'{target_user.get_full_name() or target_user.username}' personeline '{new_password}' PIN kodu başarıyla tanımlandı.")
     return redirect('user_management_view')
 
 

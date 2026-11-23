@@ -4937,6 +4937,43 @@ class SmartTvDevicePairingAndPinScopeTests(TestCase):
         }, follow=True)
         self.assertContains(res3, 'sadece rakam')
 
+    def test_manager_cannot_login_via_pin_pad(self):
+        """Yöneticilerin PIN pad üzerinden kasadan giriş yapması güvenlik gereği engellenir."""
+        # patron_gunes yöneticisine 9999 şifresi verelim
+        self.manager_a.set_password('9999')
+        self.manager_a.save()
+
+        # patron_gunes PIN Pad üzerinden 9999 girmeyi dener
+        res = self.client.post(reverse('login_view'), {
+            'login_mode': 'pin',
+            'pin_code': '9999'
+        })
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "Yöneticiler PIN ile giriş yapamaz")
+        # Oturum açılmamış olmalı
+        self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_manager_and_super_admin_redirect_after_standard_login(self):
+        """Yönetici sekmesinden giriş yapan şube müdürü admin paneline, süper admin ise süper admin paneline yönlendirilir."""
+        # 1. Şube Müdürü Girişi
+        res_mgr = self.client.post(reverse('login_view'), {
+            'login_mode': 'standard',
+            'username': 'patron_gunes',
+            'password': 'password123'
+        })
+        self.assertRedirects(res_mgr, reverse('admin_dashboard'))
+
+        self.client.logout()
+
+        # 2. Süper Admin Girişi
+        super_admin = User.objects.create_superuser('super_patron', 'super@hi.com', 'SuperPass123!')
+        res_super = self.client.post(reverse('login_view'), {
+            'login_mode': 'standard',
+            'username': 'super_patron',
+            'password': 'SuperPass123!'
+        })
+        self.assertRedirects(res_super, reverse('super_admin_dashboard'))
+
 
 
 

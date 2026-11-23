@@ -303,16 +303,16 @@
 
         <!-- FORM VE SABİT NUMPAD ALANI -->
         <div class="login-body">
-            <!-- GİRİŞ MODU SEÇİCİ SEKMELER (PIN PAD vs KULLANICI ADI/ŞİFRE) -->
+            <!-- GİRİŞ MODU SEÇİCİ SEKMELER (PERSONEL PIN vs YÖNETİCİ ŞİFRE) -->
             <div class="row g-1 mb-2 bg-light p-1 rounded-2 border flex-shrink-0">
                 <div class="col-6">
                     <button type="button" id="tabPinBtn" class="btn btn-primary w-100 mode-tab-btn shadow-xs" onclick="switchLoginMode('pin')">
-                        <i class="bi bi-grid-3x3-gap-fill"></i> Hızlı PIN
+                        <i class="bi bi-person-badge-fill me-1"></i> Personel
                     </button>
                 </div>
                 <div class="col-6">
                     <button type="button" id="tabStdBtn" class="btn btn-light w-100 mode-tab-btn text-secondary border-0" onclick="switchLoginMode('standard')">
-                        <i class="bi bi-person-lock"></i> Kullanıcı Adı
+                        <i class="bi bi-shield-lock-fill me-1"></i> Yönetici
                     </button>
                 </div>
             </div>
@@ -373,12 +373,12 @@
 
                     <button type="submit" class="btn btn-success w-100 btn-login-submit shadow-xs">
                         <i class="bi bi-unlock-fill"></i>
-                        <span>GİRİŞ YAP</span>
+                        <span>KASAYA GİRİŞ YAP</span>
                     </button>
                 </div>
             </form>
 
-            <!-- 2. SEÇENEK: STANDART KULLANICI ADI & ŞİFRE FORMU -->
+            <!-- 2. SEÇENEK: STANDART KULLANICI ADI & ŞİFRE FORMU (YÖNETİCİ & SÜPER ADMİN) -->
             <form method="post" action="{% url 'login_view' %}" id="stdLoginForm" style="display: none;">
                 {% csrf_token %}
                 <input type="hidden" name="login_mode" value="standard">
@@ -391,7 +391,7 @@
                     <!-- KULLANICI ADI -->
                     <div class="mb-2">
                         <label class="form-label fw-bold text-slate-800 mb-1" style="font-size: 0.74rem;">
-                            <i class="bi bi-person-fill text-primary me-0.5"></i> Kullanıcı Adı
+                            <i class="bi bi-shield-person text-primary me-0.5"></i> Yönetici Kullanıcı Adı
                         </label>
                         <div class="input-group">
                             <span class="input-group-text bg-light border-end-0 text-slate-500 py-1 px-2">
@@ -406,24 +406,25 @@
                     <!-- ŞİFRE -->
                     <div class="mb-3">
                         <label class="form-label fw-bold text-slate-800 mb-1" style="font-size: 0.74rem;">
-                            <i class="bi bi-shield-lock-fill text-primary me-0.5"></i> Parola / Şifre
+                            <i class="bi bi-key-fill text-primary me-0.5"></i> Yönetici Şifresi
                         </label>
                         <div class="input-group">
                             <span class="input-group-text bg-light border-end-0 text-slate-500 py-1 px-2">
-                                <i class="bi bi-key-fill"></i>
+                                <i class="bi bi-shield-lock"></i>
                             </span>
                             <input type="password" name="password" id="passwordInput" class="form-control border-start-0 border-end-0 ps-1 fw-bold"
-                                   placeholder="Parola..." required autocomplete="current-password">
+                                   placeholder="Şifre..." required autocomplete="current-password">
                             <button class="btn btn-outline-secondary border-start-0 bg-white px-2.5" type="button" onclick="togglePasswordVisibility()" title="Şifreyi Göster/Gizle">
                                 <i class="bi bi-eye-fill text-slate-500" id="passwordToggleIcon"></i>
                             </button>
                         </div>
+                        <small class="text-muted fs-9 d-block mt-1">Şube yöneticileri ve sistem yetkilileri şifreleriyle buradan oturum açar.</small>
                     </div>
 
                     <!-- GİRİŞ BUTONU -->
                     <button type="submit" class="btn btn-primary w-100 btn-login-submit shadow-xs">
                         <i class="bi bi-box-arrow-in-right"></i>
-                        <span>SİSTEME GİRİŞ YAP</span>
+                        <span>YÖNETİCİ GİRİŞİ YAP</span>
                     </button>
                 </div>
             </form>
@@ -520,6 +521,10 @@
 
         // Belli bir süre (3.5 saniye) sonra otomatik kaybolma (Auto-fade dismiss)
         document.addEventListener('DOMContentLoaded', () => {
+            {% if initial_mode == 'standard' %}
+            switchLoginMode('standard');
+            {% endif %}
+
             const toasts = document.querySelectorAll('.login-toast-msg');
             toasts.forEach((t) => {
                 setTimeout(() => {
