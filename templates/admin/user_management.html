@@ -121,6 +121,11 @@
                         </td>
                         <td class="text-end pe-3">
                             <div class="d-inline-flex gap-1">
+                                {% if su == request.user %}
+                                <span class="badge bg-light text-muted border py-1 px-2 fs-8">Mevcut Oturum</span>
+                                {% elif su.is_superuser and not request.user.is_superuser %}
+                                <span class="badge bg-dark-subtle text-dark border py-1 px-2 fs-8"><i class="bi bi-shield-lock-fill me-1"></i>Korumalı Süper Admin</span>
+                                {% else %}
                                 <!-- Şifre Değiştir -->
                                 <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2 fs-8 fw-bold" 
                                         onclick="openPasswordModal('{{ su.id }}', '{{ su.username }}')" title="Kullanıcının şifresini veya kasa PIN kodunu günceller">
@@ -128,11 +133,12 @@
                                 </button>
                                 
                                 <!-- Yetki Değiştir -->
-                                {% if su != request.user %}
+                                {% if not su.is_superuser or request.user.is_superuser %}
                                 <button type="button" class="btn btn-sm btn-outline-info py-1 px-2 fs-8 fw-bold" 
                                         onclick="openRoleModal('{{ su.id }}', '{{ su.username }}', '{% if su.is_staff %}YONETICI{% else %}KASIYER{% endif %}')" title="Kasiyer ile Yönetici arasında geçiş yapar">
                                     <i class="bi bi-person-gear"></i> Yetki
                                 </button>
+                                {% endif %}
 
                                 <!-- Aktif / Pasif Toggle -->
                                 <a href="{% url 'user_toggle_status_action' su.id %}" 
@@ -141,8 +147,6 @@
                                    title="{% if su.is_active %}Hesabı dondurur, sisteme giremez{% else %}Hesabı açar, sisteme girebilir{% endif %}">
                                     {% if su.is_active %}<i class="bi bi-pause-circle"></i> Durdur{% else %}<i class="bi bi-play-circle"></i> Aktif Et{% endif %}
                                 </a>
-                                {% else %}
-                                <span class="badge bg-light text-muted border py-1 px-2 fs-8">Mevcut Oturum</span>
                                 {% endif %}
                             </div>
                         </td>

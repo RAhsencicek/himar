@@ -4677,6 +4677,84 @@ class MobilePosAndProductVisibilityTestSuite(TestCase):
         self.assertIn('Tartılı', content)
 
 
+class UserManagementRBACTests(TestCase):
+    """
+    Faz 19: Süper Admin & Şube Yöneticisi İzolasyonu ve RBAC Güvenlik Testleri
+    """
+    def setUp(self):
+        self.client = Client()
+        self.merkez_company = Company.objects.create(name='Merkez Market', code='merkez-test', is_active=True)
+        self.diger_company = Company.objects.create(name='Güneş Market', code='gunes-test', is_active=True)
+
+        # 1. Süper Admin
+        self.super_admin = User.objects.create_superuser(username='super_boss', password='password123', email='boss@example.com')
+
+        # 2. Şube Yöneticisi (Merkez Market)
+        self.branch_manager = User.objects.create_user(username='sube_muduru', password='password123', is_staff=True, is_superuser=False)
+        UserProfile.objects.create(user=self.branch_manager, company=self.merkez_company)
+
+        # 3. Kendi Kasiyeri (Merkez Market)
+        self.branch_cashier = User.objects.create_user(username='sube_kasiyeri', password='password123', is_staff=False, is_superuser=False)
+        UserProfile.objects.create(user=self.branch_cashier, company=self.merkez_company)
+
+        # 4. Başka Şirket Kasiyeri (Güneş Market)
+        self.other_cashier = User.objects.create_user(username='diger_kasiyer', password='password123', is_staff=False, is_superuser=False)
+        UserProfile.objects.create(user=self.other_cashier, company=self.diger_company)
+
+    def test_branch_manager_cannot_see_super_admin_or_other_company_users(self):
+        """Şube yöneticisi kullanıcı yönetiminde Süper Admin'i veya başka şirketin personelini göremez."""
+        self.client.login(username='sube_muduru', password='password123')
+        res = self.client.get(reverse('user_management_view'))
+        self.assertEqual(res.status_code, 200)
+        staff_users = res.context['staff_users']
+
+        usernames = [u.username for u in staff_users]
+        self.assertIn('sube_muduru', usernames)
+        self.assertIn('sube_kasiyeri', usernames)
+        # Süper Admin ve Başka Şirket personeli ASLA listede olmamalı:
+        self.assertNotIn('super_boss', usernames)
+        self.assertNotIn('diger_kasiyer', usernames)
+
+    def test_super_admin_sees_all_users(self):
+        """Süper Admin kullanıcı yönetiminde tüm kullanıcıları görebilir."""
+        self.client.login(username='super_boss', password='password123')
+        res = self.client.get(reverse('user_management_view'))
+        self.assertEqual(res.status_code, 200)
+        usernames = [u.username for u in res.context['staff_users']]
+        self.assertIn('super_boss', usernames)
+        self.assertIn('sube_muduru', usernames)
+        self.assertIn('diger_kasiyer', usernames)
+
+    def test_branch_manager_cannot_change_super_admin_role(self):
+        """Şube yöneticisi Süper Admin'in rolünü değiştiremez (engellenir)."""
+        self.client.login(username='sube_muduru', password='password123')
+        res = self.client.post(reverse('user_change_role_action', args=[self.super_admin.id]), {'role': 'KASIYER'}, follow=True)
+        # Süper admin rolü değişmemelidir:
+        self.super_admin.refresh_from_db()
+        self.assertTrue(self.super_admin.is_superuser)
+        self.assertTrue(self.super_admin.is_staff)
+
+    def test_branch_manager_cannot_toggle_super_admin_status(self):
+        """Şube yöneticisi Süper Admin'i pasife alamaz / donduramaz."""
+        self.client.login(username='sube_muduru', password='password123')
+        res = self.client.get(reverse('user_toggle_status_action', args=[self.super_admin.id]), follow=True)
+        self.super_admin.refresh_from_db()
+        self.assertTrue(self.super_admin.is_active)
+
+    def test_branch_manager_cannot_modify_other_company_user(self):
+        """Şube yöneticisi başka şirketin personelini donduramaz veya rolünü değiştiremez."""
+        self.client.login(username='sube_muduru', password='password123')
+        res = self.client.post(reverse('user_change_role_action', args=[self.other_cashier.id]), {'role': 'YONETICI'}, follow=True)
+        self.other_cashier.refresh_from_db()
+        self.assertFalse(self.other_cashier.is_staff)
+
+    def test_branch_manager_cannot_access_super_admin_dashboard(self):
+        """Şube yöneticisi /super-admin/ sayfasına erişemez (403 Forbidden)."""
+        self.client.login(username='sube_muduru', password='password123')
+        res = self.client.get(reverse('super_admin_dashboard'))
+        self.assertEqual(res.status_code, 403)
+
+
 
 
 

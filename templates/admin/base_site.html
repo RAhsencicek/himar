@@ -1513,13 +1513,13 @@
         <i class="bi bi-people-fill"></i>
         <span>Personel & Yetkiler</span>
     </a>
+    {% if user.is_superuser %}
+    <div class="sidebar-section-title">PLATFORM YÖNETİMİ</div>
     <a href="{% url 'admin:index' %}" class="himarket-nav-item {% if request.path == '/admin/' %}active{% endif %}" title="Django Birincil Veri Tabanı ve Tablo Yönetimi">
         <i class="bi bi-database-check"></i>
         <span>Veritabanı Yönetimi</span>
         <span class="himarket-nav-pill">SSOT</span>
     </a>
-    {% if user.is_superuser %}
-    <div class="sidebar-section-title">PLATFORM YÖNETİMİ</div>
     <a href="{% url 'super_admin_dashboard' %}" class="himarket-nav-item {% if '/super-admin/' in request.path %}active{% endif %}" title="Tüm Mağazalar, Lisanslar ve Kasa Kotaları">
         <i class="bi bi-shield-lock"></i>
         <span>Süper Admin Konsolu</span>

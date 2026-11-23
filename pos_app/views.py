@@ -3217,9 +3217,24 @@ def system_logs_view(request):
 @staff_required
 def user_management_view(request):
     """
-    Sadeleştirilmiş Personel ve Kullanıcı Yetkilendirme Ekranı
+    Sadeleştirilmiş Personel ve Kullanıcı Yetkilendirme Ekranı (Multi-Tenant & RBAC)
     """
-    users = User.objects.all().order_by('-is_superuser', '-is_staff', 'username')
+    if request.user.is_superuser:
+        # Süper Admin platformdaki tüm kullanıcıları görebilir
+        users = User.objects.all().order_by('-is_superuser', '-is_staff', 'username')
+    else:
+        # Şube Yöneticisi SADECE kendi şirketine bağlı personeli görebilir
+        # Süper Admin hesapları ASLA listelenmez!
+        user_company = get_user_company(request.user)
+        if user_company:
+            users = User.objects.filter(
+                profile__company=user_company,
+                is_superuser=False
+            ).order_by('-is_staff', 'username')
+        else:
+            # Şirketi henüz atanmamış yönetici sadece kendisini görebilir (güvenli fallback)
+            users = User.objects.filter(id=request.user.id, is_superuser=False)
+
     total_users = users.count()
     cashier_count = users.filter(is_staff=False, is_superuser=False).count()
     admin_count = users.filter(Q(is_staff=True) | Q(is_superuser=True)).count()
@@ -3229,6 +3244,7 @@ def user_management_view(request):
         'total_users': total_users,
         'cashier_count': cashier_count,
         'admin_count': admin_count,
+        'is_master_admin': request.user.is_superuser,
     }
     return render(request, 'admin/user_management.html', context)
 
@@ -3236,7 +3252,7 @@ def user_management_view(request):
 @staff_required
 def user_create_action(request):
     """
-    Yeni Personel / Kullanıcı Ekleme
+    Yeni Personel / Kullanıcı Ekleme (Multi-Tenant & RBAC Korumalı)
     """
     if request.method == 'POST':
         full_name = request.POST.get('full_name', '').strip()
@@ -3259,6 +3275,7 @@ def user_create_action(request):
             first_name = parts[0]
             last_name = parts[1] if len(parts) > 1 else ''
 
+        # Şube yöneticisi asla süper admin oluşturamaz!
         is_staff = (role == 'YONETICI')
         user = User.objects.create_user(
             username=username,
@@ -3266,10 +3283,19 @@ def user_create_action(request):
             first_name=first_name,
             last_name=last_name,
             is_staff=is_staff,
+            is_superuser=False,
             is_active=True
         )
-        role_label = "Yönetici (Tam Yetkili)" if is_staff else "Kasiyer (POS Satış)"
-        log_action('AUTH', 'Yeni Personel Eklendi', f"'{user.username}' ({role_label}) sisteme eklendi. Ekleyen: {request.user.username}", user=request.user)
+
+        # Şirket / Tenant Bağlantısı (Multi-Tenancy)
+        user_company = get_user_company(request.user)
+        UserProfile.objects.create(
+            user=user,
+            company=user_company
+        )
+
+        role_label = "Yönetici (Mağaza Müdürü)" if is_staff else "Kasiyer (POS Satış)"
+        log_action('AUTH', 'Yeni Personel Eklendi', f"'{user.username}' ({role_label}) sisteme eklendi. Şirket: {user_company}. Ekleyen: {request.user.username}", user=request.user)
         messages.success(request, f"'{user.username}' başarıyla oluşturuldu. Rol: {role_label}.")
 
     return redirect('user_management_view')
@@ -3278,12 +3304,25 @@ def user_create_action(request):
 @staff_required
 def user_toggle_status_action(request, user_id):
     """
-    Kullanıcıyı Aktif veya Pasif Yapma (Durdurma)
+    Kullanıcıyı Aktif veya Pasif Yapma (Durdurma) - RBAC & Multi-Tenant Korumalı
     """
     target_user = get_object_or_404(User, id=user_id)
     if target_user == request.user:
         messages.error(request, 'Kendi hesabınızı pasife alamazsınız!')
         return redirect('user_management_view')
+
+    # 1. Hiyerarşik Koruma: Süper Admin hesaplarını sadece Süper Admin değiştirebilir!
+    if target_user.is_superuser and not request.user.is_superuser:
+        messages.error(request, 'Süper Yönetici hesapları üzerinde değişiklik yapma yetkiniz yoktur!')
+        return redirect('user_management_view')
+
+    # 2. Şirket İzolasyonu: Şube yöneticisi başka şirketin personelini pasife alamaz!
+    if not request.user.is_superuser:
+        user_company = get_user_company(request.user)
+        target_company = get_user_company(target_user)
+        if user_company != target_company:
+            messages.error(request, 'Farklı bir mağazanın personelini değiştirme yetkiniz yoktur!')
+            return redirect('user_management_view')
 
     target_user.is_active = not target_user.is_active
     target_user.save(update_fields=['is_active'])
@@ -3297,23 +3336,38 @@ def user_toggle_status_action(request, user_id):
 @staff_required
 def user_change_role_action(request, user_id):
     """
-    Kullanıcı Rolünü Değiştirme (Kasiyer <-> Yönetici)
+    Kullanıcı Rolünü Değiştirme (Kasiyer <-> Yönetici) - RBAC & Multi-Tenant Korumalı
     """
     target_user = get_object_or_404(User, id=user_id)
     if target_user == request.user:
         messages.error(request, 'Kendi yönetici rolünüzü değiştiremezsiniz!')
         return redirect('user_management_view')
 
+    # 1. Hiyerarşik Koruma: Süper Admin rolü asla şube yöneticisi tarafından değiştirilemez / düşürülemez!
+    if target_user.is_superuser and not request.user.is_superuser:
+        messages.error(request, 'Süper Yönetici rolü üzerinde değişiklik yapma yetkiniz yoktur!')
+        return redirect('user_management_view')
+
+    # 2. Şirket İzolasyonu: Başka şirketin personelinin rolü değiştirilemez!
+    if not request.user.is_superuser:
+        user_company = get_user_company(request.user)
+        target_company = get_user_company(target_user)
+        if user_company != target_company:
+            messages.error(request, 'Farklı bir mağazanın personel rolünü değiştirme yetkiniz yoktur!')
+            return redirect('user_management_view')
+
     new_role = request.POST.get('role')
     if new_role == 'YONETICI':
         target_user.is_staff = True
-        role_name = "Yönetici (Tam Yetkili)"
+        target_user.is_superuser = False  # Şube yöneticisi kesinlikle is_superuser olamaz
+        role_name = "Yönetici (Mağaza Müdürü)"
     else:
         target_user.is_staff = False
         target_user.is_superuser = False
         role_name = "Kasiyer (Kasa Satış)"
 
     target_user.save(update_fields=['is_staff', 'is_superuser'])
+
     log_action('AUTH', 'Yetki Değiştirildi', f"'{target_user.username}' rolü '{role_name}' olarak güncellendi.", user=request.user)
     messages.success(request, f"'{target_user.username}' kullanıcısının yeni rolü: {role_name}.")
     return redirect('user_management_view')
@@ -3322,9 +3376,23 @@ def user_change_role_action(request, user_id):
 @staff_required
 def user_reset_password_action(request, user_id):
     """
-    Kullanıcı Şifresi / Kasa PIN Kodu Sıfırlama
+    Kullanıcı Şifresi / Kasa PIN Kodu Sıfırlama - RBAC & Multi-Tenant Korumalı
     """
     target_user = get_object_or_404(User, id=user_id)
+
+    # 1. Hiyerarşik Koruma: Süper Admin şifresi şube yöneticisi tarafından sıfırlanamaz!
+    if target_user.is_superuser and not request.user.is_superuser:
+        messages.error(request, 'Süper Yönetici şifresini sıfırlama yetkiniz yoktur!')
+        return redirect('user_management_view')
+
+    # 2. Şirket İzolasyonu: Başka şirketin personelinin şifresi sıfırlanamaz!
+    if not request.user.is_superuser:
+        user_company = get_user_company(request.user)
+        target_company = get_user_company(target_user)
+        if user_company != target_company:
+            messages.error(request, 'Farklı bir mağazanın personel şifresini değiştirme yetkiniz yoktur!')
+            return redirect('user_management_view')
+
     new_password = request.POST.get('new_password', '').strip()
     if not new_password:
         messages.error(request, 'Lütfen yeni bir şifre giriniz.')
