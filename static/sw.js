@@ -3,7 +3,7 @@
  * Kesintisiz Çevrimdışı Kasa Çalışması İçin Varlık Önbellekleme
  */
 
-const CACHE_NAME = 'himarket-pos-cache-v1';
+const CACHE_NAME = 'himarket-pos-cache-v2';
 
 const STATIC_ASSETS = [
     '/',

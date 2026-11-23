@@ -1411,11 +1411,20 @@
         box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
     }
 
+    .pos-camera-wrapper {
+        position: relative;
+        inline-size: 100%;
+        overflow: hidden;
+        border-radius: 12px;
+        background: #0f172a;
+        border: 2px solid #334155;
+    }
+
     .pos-camera-reader {
         background: #0f172a;
         inline-size: 100%;
-        min-block-size: 320px;
-        max-block-size: 420px;
+        min-block-size: 280px;
+        max-block-size: 380px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -1426,7 +1435,7 @@
 
     .pos-camera-reader video {
         inline-size: 100% !important;
-        max-block-size: 420px !important;
+        max-block-size: 380px !important;
         object-fit: cover !important;
         border-radius: 10px;
     }
@@ -1434,20 +1443,21 @@
     /* Kılavuz Vizör ve Kırmızı Lazer Overlay */
     .pos-camera-guide {
         position: absolute;
-        inset: 18% 7%;
-        border: 2px solid rgba(255, 255, 255, 0.55);
+        inset: 16% 6%;
+        border: 2px solid rgba(255, 255, 255, 0.65);
         border-radius: 12px;
-        box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.45);
+        box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.40);
         pointer-events: none;
         z-index: 50;
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: border-color 0.2s ease;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
 
     .pos-camera-guide.pos-camera-guide--active {
-        border-color: #22c55e;
+        border-color: #22c55e !important;
+        box-shadow: 0 0 0 9999px rgba(34, 197, 94, 0.18), 0 0 15px rgba(34, 197, 94, 0.8) !important;
     }
 
     /* Vizör Köşeleri */
@@ -1499,6 +1509,8 @@
 
     .pos-camera-status {
         border-radius: 8px;
+        padding: 8px 11px;
+        font-size: 0.84rem;
         padding: 8px 12px;
         font-size: 0.85rem;
         font-weight: 700;
@@ -3117,8 +3129,18 @@
             </div>
         </div>
 
-        <div id="cameraReaderRegion" class="pos-camera-reader">
-            <span class="small fw-semibold">Kamera başlatılıyor...</span>
+        <div class="pos-camera-wrapper position-relative overflow-hidden rounded-3">
+            <div id="cameraReaderRegion" class="pos-camera-reader">
+                <span class="small fw-semibold">Kamera başlatılıyor...</span>
+            </div>
+            <!-- Vizör ve Lazer Çizgisi Overlay -->
+            <div id="cameraLaserOverlay" class="pos-camera-guide" aria-hidden="true">
+                <div class="pos-camera-corner top-left"></div>
+                <div class="pos-camera-corner top-right"></div>
+                <div class="pos-camera-corner bottom-left"></div>
+                <div class="pos-camera-corner bottom-right"></div>
+                <div class="pos-camera-laser"></div>
+            </div>
         </div>
 
         <div id="cameraScanStatus" class="pos-camera-status" aria-live="polite">
@@ -5447,12 +5469,27 @@
         readerEl.innerHTML = '';
         const formatsToSupport = getSupportedBarcodeFormats();
 
-        // 1. Donanımsal BarcodeDetector (iOS Vision & Android Barcode API) desteği constructor'da açılır
+        // 1. Donanımsal BarcodeDetector Kontrolü:
+        // iOS Safari'de WebKit BarcodeDetector yalnızca QR destekler, 1D EAN barkodları çözemez!
+        // Sadece platformun BarcodeDetector'ı gerçekten 'ean_13' formatını destekliyorsa donanım motoru açılır;
+        // aksi halde güvenilir ve stabil ZXing yazılım motoru devrede kalır.
+        let useHardwareDetector = false;
+        try {
+            if (typeof BarcodeDetector !== 'undefined' && typeof BarcodeDetector.getSupportedFormats === 'function') {
+                const supported = await BarcodeDetector.getSupportedFormats();
+                if (Array.isArray(supported) && (supported.includes('ean_13') || supported.includes('ean-13'))) {
+                    useHardwareDetector = true;
+                }
+            }
+        } catch (e) {
+            useHardwareDetector = false;
+        }
+
         const config = {
             verbose: false,
-            useBarCodeDetectorIfSupported: true,
+            useBarCodeDetectorIfSupported: useHardwareDetector,
             experimentalFeatures: {
-                useBarCodeDetectorIfSupported: true
+                useBarCodeDetectorIfSupported: useHardwareDetector
             }
         };
         if (formatsToSupport) {
@@ -5461,7 +5498,6 @@
 
         // 2. Kütüphanenin 1. parametresi (cameraIdOrConfig) kuralı:
         // String deviceId veya SADECE TEK ANAHTARLI { facingMode: 'environment' } olmalıdır!
-        // Fazladan anahtar (width, height vs.) konursa kütüphane "should have exactly 1 key" hatası verir.
         let cameraIdOrConfig;
         if (typeof deviceOrConstraint === 'string' && deviceOrConstraint.trim()) {
             cameraIdOrConfig = deviceOrConstraint.trim();
@@ -5472,15 +5508,14 @@
         }
 
         // 3. Tarama Yapılandırması:
-        // qrbox: 1D EAN barkodlar için vizörün orta yatay bölgesini (%90 genişlik) hedefler.
-        // aspectRatio 1.333333 (4:3) mobil kamera sensörlerinin doğal en-boy oranıdır.
+        // qrbox: 1D EAN barkodlar yatay dikdörtgendir; barkod kenarındaki beyaz boşlukları (quiet zone)
+        // rahat yakalamak için vizörün orta yatay bölgesini (%92 genişlik) odaklar.
         const scanConfig = {
             fps: 25,
-            aspectRatio: 1.333333,
             disableFlip: false,
             qrbox: (viewfinderWidth, viewfinderHeight) => {
-                const w = Math.max(250, Math.min(360, Math.floor(viewfinderWidth * 0.90)));
-                const h = Math.max(120, Math.min(220, Math.floor(viewfinderHeight * 0.52)));
+                const w = Math.max(260, Math.min(Math.floor(viewfinderWidth * 0.92), 420));
+                const h = Math.max(120, Math.min(Math.floor(viewfinderHeight * 0.46), 220));
                 return { width: w, height: h };
             },
             videoConstraints: {
@@ -5510,10 +5545,9 @@
                     cameraIdOrConfig,
                     {
                         fps: 20,
-                        aspectRatio: 1.333333,
                         qrbox: (w, h) => ({
-                            width: Math.max(240, Math.floor(w * 0.88)),
-                            height: Math.max(110, Math.floor(h * 0.48))
+                            width: Math.max(240, Math.floor(w * 0.90)),
+                            height: Math.max(100, Math.floor(h * 0.45))
                         })
                     },
                     onCameraScanSuccess,
@@ -5550,24 +5584,20 @@
     function pickOptimalRearCamera(devices) {
         if (!Array.isArray(devices) || devices.length === 0) return null;
 
-        const isUltra = d => /çift|ultra|dual wide|0\.5/i.test(d.label || '');
+        const isUltra = d => /ultra\s*geni[sş]|ultra-wide|0\.5/i.test(d.label || '');
         const isFront = d => /front|ön|selfie|user/i.test(d.label || '');
-        const isBack = d => /back|rear|environment|arka|geniş/i.test(d.label || '') && !isFront(d);
+        const isBack = d => /back|rear|environment|arka|geni[sş]|çift/i.test(d.label || '') && !isFront(d);
 
-        // 1. Tercih: iPhone'da "Geniş Kamera Arka Yüzü" (1x Ana Arka Kamera - Ultra-wide olmayan)
+        // 1. Tercih: 1x Ana Kamera (Ultra geniş ve ön kamera hariç arka kameralar)
         const primary1x = devices.find(d => isBack(d) && !isUltra(d));
         if (primary1x) return primary1x;
 
-        // 2. Tercih: Çift geniş olmayan herhangi bir kamera (ön kamera hariç)
-        const nonUltra = devices.find(d => !isUltra(d) && !isFront(d));
-        if (nonUltra) return nonUltra;
-
-        // 3. Tercih: Herhangi bir arka kamera
+        // 2. Tercih: Herhangi bir arka kamera
         const anyBack = devices.find(d => isBack(d));
         if (anyBack) return anyBack;
 
-        // 4. Fallback: İkinci kamera (iOS'ta 0 genelde ultra-wide, 1 normal kameradır) veya ilk kamera
-        return devices.length > 1 ? devices[1] : devices[0];
+        // 3. Fallback
+        return devices[0];
     }
 
     async function openCameraModal() {
@@ -5596,9 +5626,9 @@
                     deviceSel.innerHTML = devices.map((d, i) => {
                         let raw = d.label || ('Kamera ' + (i + 1));
                         let badge = '';
-                        if (/çift|ultra|0\.5/i.test(raw)) {
+                        if (/ultra\s*geni[sş]|0\.5/i.test(raw)) {
                             badge = ' (0.5x Ultra Geniş - Odaklamaz)';
-                        } else if (/arka|back|rear/i.test(raw) || !/front|ön/i.test(raw)) {
+                        } else if (/arka|back|rear|geni[sş]|çift/i.test(raw) && !/front|ön/i.test(raw)) {
                             badge = ' ⭐ (1x Ana Kamera - Tavsiye Edilen)';
                         }
                         return `<option value="${escapeHtml(d.id)}">${escapeHtml(raw + badge)}</option>`;
@@ -5658,6 +5688,13 @@
         }
         lastCameraDecoded = code;
         lastCameraScanAt = now;
+
+        // Vizör lazerini ve çerçeveyi yeşile boya (başarı efekti)
+        const overlay = document.getElementById('cameraLaserOverlay');
+        if (overlay) {
+            overlay.classList.add('pos-camera-guide--active');
+            setTimeout(() => overlay.classList.remove('pos-camera-guide--active'), 800);
+        }
 
         // Anında haptik titreşim ve başarı sesi
         try {
