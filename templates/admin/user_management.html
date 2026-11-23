@@ -79,12 +79,13 @@
             <table class="table mb-0 fs-8 align-middle">
                 <thead>
                     <tr>
-                        <th class="ps-3" style="width: 180px;">Kullanıcı Adı</th>
+                        <th class="ps-3" style="width: 170px;">Kullanıcı Adı</th>
                         <th>Ad Soyad</th>
-                        <th style="width: 180px;">Rol & Yetki</th>
-                        <th style="width: 120px;">Durum</th>
-                        <th style="width: 180px;">Son Giriş</th>
-                        <th class="text-end pe-3" style="width: 260px;">İşlemler</th>
+                        <th style="width: 150px;">Kasa PIN</th>
+                        <th style="width: 160px;">Rol & Yetki</th>
+                        <th style="width: 110px;">Durum</th>
+                        <th style="width: 160px;">Son Giriş</th>
+                        <th class="text-end pe-3" style="width: 250px;">İşlemler</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -95,6 +96,17 @@
                         </td>
                         <td class="fw-semibold text-slate-900">
                             {{ su.get_full_name|default:"-" }}
+                        </td>
+                        <td>
+                            {% if su.profile.pin_code %}
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle font-monospace fs-7 px-2.5 py-1.5 d-inline-flex align-items-center gap-1 shadow-xs">
+                                    <i class="bi bi-key-fill text-warning"></i> {{ su.profile.pin_code }}
+                                </span>
+                            {% else %}
+                                <span class="badge bg-light text-secondary border font-monospace fs-8 px-2 py-1">
+                                    <i class="bi bi-dash-circle me-1"></i> Tanımsız
+                                </span>
+                            {% endif %}
                         </td>
                         <td>
                             {% if su.is_superuser %}
@@ -126,10 +138,11 @@
                                 {% elif su.is_superuser and not request.user.is_superuser %}
                                 <span class="badge bg-dark-subtle text-dark border py-1 px-2 fs-8"><i class="bi bi-shield-lock-fill me-1"></i>Korumalı Süper Admin</span>
                                 {% else %}
-                                <!-- Şifre Değiştir -->
+                                <!-- Şifre / PIN Değiştir -->
                                 <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2 fs-8 fw-bold" 
-                                        onclick="openPasswordModal('{{ su.id }}', '{{ su.username }}')" title="Kullanıcının şifresini veya kasa PIN kodunu günceller">
-                                    <i class="bi bi-key-fill text-warning"></i> Şifre
+                                        onclick="openPasswordModal('{{ su.id }}', '{{ su.username|escapejs }}', '{{ su.profile.pin_code|default:''|escapejs }}', '{% if su.is_staff or su.is_superuser %}YONETICI{% else %}KASIYER{% endif %}', '{{ su.get_full_name|default:su.username|escapejs }}')" 
+                                        title="Kullanıcının şifresini veya kasa PIN kodunu günceller">
+                                    <i class="bi bi-key-fill text-warning"></i> Şifre / PIN
                                 </button>
                                 
                                 <!-- Yetki Değiştir -->
@@ -192,9 +205,15 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-bold text-slate-800">Giriş Şifresi veya PIN Kodu *</label>
-                        <input type="password" name="password" class="form-control font-monospace" placeholder="Örn: 1234 veya Güçlü Şifre" required autocomplete="new-password">
-                        <small class="text-muted fs-8">Kasiyerin kasaya girerken veya Z raporu onaylarken yazacağı şifre.</small>
+                        <label class="form-label fw-bold text-slate-800 d-flex justify-content-between">
+                            <span>Giriş Şifresi veya PIN Kodu *</span>
+                            <span id="addUserPinHint" class="text-primary fw-normal fs-9">Kasiyer için 4-6 haneli rakam</span>
+                        </label>
+                        <input type="text" name="password" id="addUserPasswordInput" class="form-control font-monospace fs-5 text-center" placeholder="Örn: 1234" required autocomplete="off" oninput="handleAddUserInput(this)">
+                        <div id="addUserPinConflictAlert" class="alert alert-danger p-2 mt-2 fs-8 d-none">
+                            <i class="bi bi-exclamation-triangle-fill me-1"></i> <span id="addUserConflictText"></span>
+                        </div>
+                        <small class="text-muted fs-8 d-block mt-1">Kasiyerler kasaya girerken bu numerik PIN'i tuşlar. Mağazada benzersiz olmalıdır.</small>
                     </div>
 
                     <div class="mb-2">
@@ -228,9 +247,9 @@
     </div>
 </div>
 
-<!-- 2. ŞİFRE DEĞİŞTİRME MODALI -->
+<!-- 2. ŞİFRE / PIN DEĞİŞTİRME MODALI -->
 <div class="modal fade" id="passwordModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered" style="max-width: 420px;">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 440px;">
         <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
             <div class="modal-header bg-dark text-white py-3 px-4">
                 <h5 class="modal-title fw-bold fs-6 d-flex align-items-center gap-2">
@@ -241,18 +260,41 @@
             <form id="passwordForm" method="post" action="">
                 {% csrf_token %}
                 <div class="modal-body p-4">
-                    <p class="text-secondary small mb-3">
-                        <strong id="passwordTargetUser" class="text-primary font-monospace"></strong> kullanıcısı için yeni bir şifre veya kasa PIN kodu belirleyiniz.
-                    </p>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold text-slate-800">Yeni Şifre / PIN *</label>
-                        <input type="password" name="new_password" class="form-control font-monospace fs-5 text-center" placeholder="Yeni şifre giriniz..." required autocomplete="new-password">
-                        <small class="text-muted fs-8 d-block mt-1">Kullanıcı bundan sonraki girişlerinde bu yeni şifreyi kullanacaktır.</small>
+                    <div class="d-flex align-items-center gap-2 mb-3 p-2.5 bg-light rounded-3 border">
+                        <i class="bi bi-person-circle fs-3 text-primary"></i>
+                        <div>
+                            <div class="fw-bold text-slate-900 fs-7" id="passwordTargetDisplayName"></div>
+                            <div class="text-secondary font-monospace fs-8" id="passwordTargetUser"></div>
+                        </div>
+                    </div>
+
+                    <!-- MEVCUT ŞİFRE / PIN GÖSTERGESİ (İSTENEN ÖZELLİK) -->
+                    <div class="p-2.5 mb-3 bg-warning-subtle border border-warning-subtle rounded-3 d-flex justify-content-between align-items-center">
+                        <span class="fs-8 fw-bold text-warning-emphasis">
+                            <i class="bi bi-shield-lock me-1"></i> Mevcut Kasa PIN:
+                        </span>
+                        <span id="currentPinBadge" class="badge bg-white text-dark border font-monospace fs-6 px-2.5 py-1 fw-bold"></span>
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="form-label fw-bold text-slate-800 fs-8 d-flex justify-content-between">
+                            <span>Yeni Şifre / PIN *</span>
+                            <span id="pinRuleHint" class="text-muted fw-normal">Sadece Rakam (4-6 hane)</span>
+                        </label>
+                        <input type="text" name="new_password" id="newPasswordInput" 
+                               class="form-control font-monospace fs-4 text-center fw-bold" 
+                               placeholder="••••" required autocomplete="off" oninput="handlePasswordInput(this)">
+                        <div id="pinLiveConflictAlert" class="alert alert-danger p-2 mt-2 fs-8 d-none">
+                            <i class="bi bi-exclamation-triangle-fill me-1"></i> <span id="conflictNoticeText"></span>
+                        </div>
+                        <small class="text-muted fs-8 d-block mt-1" id="pinHelperText">
+                            Kasiyer POS ekranına girerken bu numerik PIN kodunu tuşlayacaktır.
+                        </small>
                     </div>
                 </div>
                 <div class="modal-footer bg-light py-2.5 px-4 border-top">
                     <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">İptal</button>
-                    <button type="submit" class="btn btn-success fw-bold px-3 text-white">
+                    <button type="submit" id="savePasswordBtn" class="btn btn-success fw-bold px-3 text-white">
                         <i class="bi bi-check2 me-1"></i> Şifreyi Kaydet
                     </button>
                 </div>
@@ -306,12 +348,125 @@
 </div>
 
 <script>
-    function openPasswordModal(userId, username) {
-        document.getElementById('passwordTargetUser').innerText = username;
+    // Mağazadaki mevcut kullanıcıların PIN kodları (çakışma kontrolü için)
+    const companyPins = {
+        {% for su in staff_users %}
+            {% if su.profile.pin_code %}
+                "{{ su.profile.pin_code }}": {
+                    id: "{{ su.id }}",
+                    name: "{{ su.get_full_name|default:su.username|escapejs }}"
+                },
+            {% endif %}
+        {% endfor %}
+    };
+
+    let activeModalUserId = null;
+    let activeModalRole = null;
+
+    function openPasswordModal(userId, username, currentPin, role, displayName) {
+        activeModalUserId = String(userId);
+        activeModalRole = role;
+
+        document.getElementById('passwordTargetUser').innerText = '@' + username;
+        document.getElementById('passwordTargetDisplayName').innerText = displayName || username;
         document.getElementById('passwordForm').action = '/management/users/' + userId + '/reset-password/';
+        
+        const pinBadge = document.getElementById('currentPinBadge');
+        if (currentPin && currentPin.trim() !== '') {
+            pinBadge.innerHTML = '<i class="bi bi-key-fill text-warning me-1"></i>' + currentPin;
+            pinBadge.className = 'badge bg-white text-dark border font-monospace fs-6 px-2.5 py-1 fw-bold';
+        } else {
+            pinBadge.innerHTML = '<i class="bi bi-dash-circle text-muted me-1"></i>Tanımlı Değil';
+            pinBadge.className = 'badge bg-light text-muted border font-monospace fs-8 px-2 py-1';
+        }
+
+        const input = document.getElementById('newPasswordInput');
+        input.value = '';
+        document.getElementById('pinLiveConflictAlert').classList.add('d-none');
+        document.getElementById('savePasswordBtn').disabled = false;
+
+        if (role === 'KASIYER') {
+            document.getElementById('pinRuleHint').innerText = 'Sadece Rakam (4-6 hane)';
+            document.getElementById('pinHelperText').innerText = 'Kasiyer POS ekranına girerken bu numerik PIN kodunu tuşlayacaktır.';
+            input.setAttribute('inputmode', 'numeric');
+            input.setAttribute('maxlength', '6');
+            input.setAttribute('placeholder', '••••');
+        } else {
+            document.getElementById('pinRuleHint').innerText = 'En az 4 karakter veya PIN';
+            document.getElementById('pinHelperText').innerText = 'Yönetici yönetim paneline veya kasaya bu şifreyle girecektir.';
+            input.removeAttribute('inputmode');
+            input.removeAttribute('maxlength');
+            input.setAttribute('placeholder', 'Yeni şifre veya PIN');
+        }
+
         const modal = new bootstrap.Modal(document.getElementById('passwordModal'));
         modal.show();
+        setTimeout(() => input.focus(), 300);
     }
+
+    function handlePasswordInput(input) {
+        const conflictBox = document.getElementById('pinLiveConflictAlert');
+        const conflictText = document.getElementById('conflictNoticeText');
+        const saveBtn = document.getElementById('savePasswordBtn');
+
+        if (activeModalRole === 'KASIYER') {
+            // Harf veya sembol yazılmasını anında engelle (sadece rakam)
+            input.value = input.value.replace(/[^0-9]/g, '');
+        }
+
+        const val = input.value.trim();
+
+        // Çakışma kontrolü
+        if (val && companyPins[val] && companyPins[val].id !== activeModalUserId) {
+            conflictText.innerText = "'" + val + "' PIN kodu mağazadaki '" + companyPins[val].name + "' personeline aittir! Çakışma olmaması için farklı bir PIN belirleyiniz.";
+            conflictBox.classList.remove('d-none');
+            saveBtn.disabled = true;
+            return;
+        }
+
+        // Kasiyer uzunluk kontrolü
+        if (activeModalRole === 'KASIYER' && val.length > 0 && val.length < 4) {
+            conflictText.innerText = 'Kasiyer PIN kodu en az 4 rakam olmalıdır.';
+            conflictBox.classList.remove('d-none');
+            saveBtn.disabled = true;
+            return;
+        }
+
+        conflictBox.classList.add('d-none');
+        saveBtn.disabled = false;
+    }
+
+    function handleAddUserInput(input) {
+        const isCashier = document.getElementById('roleCashier').checked;
+        if (isCashier) {
+            input.value = input.value.replace(/[^0-9]/g, '');
+        }
+
+        const val = input.value.trim();
+        const conflictBox = document.getElementById('addUserPinConflictAlert');
+        const conflictText = document.getElementById('addUserConflictText');
+
+        if (val && companyPins[val]) {
+            conflictText.innerText = "'" + val + "' PIN kodu mağazadaki '" + companyPins[val].name + "' personeline aittir!";
+            conflictBox.classList.remove('d-none');
+        } else {
+            conflictBox.classList.add('d-none');
+        }
+    }
+
+    // Rol değiştiğinde input kısıtlamasını dinamik ayarla
+    document.querySelectorAll('input[name="role"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            const pwdInput = document.getElementById('addUserPasswordInput');
+            const hint = document.getElementById('addUserPinHint');
+            if (this.value === 'KASIYER') {
+                hint.innerText = 'Kasiyer için 4-6 haneli rakam';
+                pwdInput.value = pwdInput.value.replace(/[^0-9]/g, '');
+            } else {
+                hint.innerText = 'Yönetici için güçlü şifre veya PIN';
+            }
+        });
+    });
 
     function openRoleModal(userId, username, currentRole) {
         document.getElementById('roleTargetUser').innerText = username;

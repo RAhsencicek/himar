@@ -3327,7 +3327,16 @@ def user_create_action(request):
         # Şirket / Tenant Bağlantısı (Multi-Tenancy)
         user_company = get_user_company(request.user)
 
-        # PIN / Şifre Çakışma Kontrolü (Aynı şirkette iki personele aynı numerik PIN verilemez)
+        # 1. Kasiyer için sadece numerik (4-6 hane) PIN zorunluluğu
+        if role == 'KASIYER':
+            if not password.isdigit():
+                messages.error(request, 'Kasiyer PIN kodu sadece rakamlardan oluşmalıdır (harf veya özel karakter içeremez)!')
+                return redirect('user_management_view')
+            if len(password) < 4 or len(password) > 6:
+                messages.error(request, 'Kasiyer PIN kodu 4 ile 6 hane arasında rakam olmalıdır (Örn: 1234)!')
+                return redirect('user_management_view')
+
+        # 2. PIN / Şifre Çakışma Kontrolü (Aynı şirkette iki personele aynı numerik PIN verilemez)
         if password.isdigit() and user_company:
             for existing in User.objects.filter(is_active=True, profile__company=user_company):
                 cand_pin = getattr(getattr(existing, 'profile', None), 'pin_code', '')
@@ -3358,7 +3367,7 @@ def user_create_action(request):
 
         role_label = "Yönetici (Mağaza Müdürü)" if is_staff else "Kasiyer (POS Satış)"
         log_action('AUTH', 'Yeni Personel Eklendi', f"'{user.username}' ({role_label}) sisteme eklendi. Şirket: {user_company}. Ekleyen: {request.user.username}", user=request.user)
-        messages.success(request, f"'{user.username}' başarıyla oluşturuldu. Rol: {role_label}.")
+        messages.success(request, f"'{user.get_full_name() or user.username}' ({role_label}) başarıyla eklendi. PIN/Şifre: {password}")
 
     return redirect('user_management_view')
 
@@ -3457,10 +3466,21 @@ def user_reset_password_action(request, user_id):
 
     new_password = request.POST.get('new_password', '').strip()
     if not new_password:
-        messages.error(request, 'Lütfen yeni bir şifre giriniz.')
+        messages.error(request, 'Lütfen yeni bir şifre / PIN kodu giriniz.')
         return redirect('user_management_view')
 
     user_company = get_user_company(request.user)
+
+    # 1. Kasiyer için sadece numerik (4-6 hane) PIN zorunluluğu
+    if not target_user.is_staff and not target_user.is_superuser:
+        if not new_password.isdigit():
+            messages.error(request, 'Kasiyer PIN kodu sadece rakamlardan oluşmalıdır (harf veya özel karakter içeremez)!')
+            return redirect('user_management_view')
+        if len(new_password) < 4 or len(new_password) > 6:
+            messages.error(request, 'Kasiyer PIN kodu 4 ile 6 hane arasında rakam olmalıdır (Örn: 1234)!')
+            return redirect('user_management_view')
+
+    # 2. Şirket İçi PIN Çakışması Kontrolü (Aynı mağazada iki personele aynı PIN verilemez)
     if new_password.isdigit() and user_company:
         for existing in User.objects.filter(is_active=True, profile__company=user_company).exclude(id=target_user.id):
             cand_pin = getattr(getattr(existing, 'profile', None), 'pin_code', '')
@@ -3476,8 +3496,11 @@ def user_reset_password_action(request, user_id):
     if hasattr(target_user, 'profile'):
         target_user.profile.pin_code = new_password if new_password.isdigit() else ''
         target_user.profile.save()
-    log_action('AUTH', 'Şifre Güncellendi', f"'{target_user.username}' kullanıcısının şifresi yönetici tarafından sıfırlandı.", user=request.user)
-    messages.success(request, f"'{target_user.username}' şifresi başarıyla güncellendi.")
+    else:
+        UserProfile.objects.create(user=target_user, company=user_company, pin_code=new_password if new_password.isdigit() else '')
+
+    log_action('AUTH', 'Şifre/PIN Güncellendi', f"'{target_user.username}' kullanıcısının şifresi/PIN kodu yönetici tarafından güncellendi.", user=request.user)
+    messages.success(request, f"'{target_user.get_full_name() or target_user.username}' personeline '{new_password}' PIN kodu başarıyla tanımlandı.")
     return redirect('user_management_view')
 
 

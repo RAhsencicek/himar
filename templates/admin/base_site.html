@@ -1347,6 +1347,56 @@
 
 {% block content_title %}{% endblock %}
 
+{% block messages %}
+{% if messages %}
+<div id="himarket-floating-toast-container" style="position: fixed; top: 25px; left: 50%; transform: translateX(-50%); z-index: 999999; min-width: 340px; max-width: 540px; width: 90%; pointer-events: none;">
+    {% for message in messages %}
+    <div class="alert {% if message.tags == 'error' %}alert-danger border-danger-subtle bg-danger-subtle text-danger-emphasis{% elif message.tags == 'success' %}alert-success border-success-subtle bg-success-subtle text-success-emphasis{% elif message.tags == 'warning' %}alert-warning border-warning-subtle bg-warning-subtle text-warning-emphasis{% else %}alert-info border-info-subtle bg-info-subtle text-info-emphasis{% endif %} shadow-lg rounded-4 p-3 mb-2.5 d-flex align-items-center gap-3 border-2" role="alert" style="pointer-events: auto; backdrop-filter: blur(12px); box-shadow: 0 12px 32px rgba(0,0,0,0.22) !important; animation: toastSlideIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);">
+        <div class="flex-shrink-0">
+            {% if message.tags == 'error' %}
+                <i class="bi bi-x-circle-fill text-danger fs-2"></i>
+            {% elif message.tags == 'success' %}
+                <i class="bi bi-check-circle-fill text-success fs-2"></i>
+            {% elif message.tags == 'warning' %}
+                <i class="bi bi-exclamation-triangle-fill text-warning fs-2"></i>
+            {% else %}
+                <i class="bi bi-info-circle-fill text-primary fs-2"></i>
+            {% endif %}
+        </div>
+        <div class="flex-grow-1">
+            <div class="fw-bold fs-7 mb-0.5">
+                {% if message.tags == 'error' %}İşlem Engellendi / Hata!{% elif message.tags == 'success' %}İşlem Başarılı!{% elif message.tags == 'warning' %}Uyarı!{% else %}Bilgilendirme{% endif %}
+            </div>
+            <div class="fs-8 fw-medium lh-sm">{{ message }}</div>
+        </div>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Kapat" style="font-size: 0.85rem;"></button>
+    </div>
+    {% endfor %}
+</div>
+<style>
+@keyframes toastSlideIn {
+    from { opacity: 0; transform: translateY(-30px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.toast-fade-out {
+    opacity: 0 !important;
+    transform: translateY(-25px) scale(0.95) !important;
+    transition: opacity 0.5s ease, transform 0.5s ease !important;
+}
+.messagelist { display: none !important; }
+</style>
+<script>
+    setTimeout(function() {
+        const container = document.getElementById('himarket-floating-toast-container');
+        if (container) {
+            container.classList.add('toast-fade-out');
+            setTimeout(() => { if (container) container.remove(); }, 550);
+        }
+    }, 4500);
+</script>
+{% endif %}
+{% endblock %}
+
 {% block header %}
 {% if user.is_authenticated %}
 <!-- ÜST SABİT BAŞLIK -->

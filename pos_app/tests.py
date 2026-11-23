@@ -463,7 +463,7 @@ class RegisterIndependenceAndUserManagementTest(BasePosTestCase):
             data={
                 'full_name': 'Mehmet Demir',
                 'username': 'mehmet_kasiyer',
-                'password': 'Pin1234Password!',
+                'password': '9876',
                 'role': 'KASIYER'
             }
         )
@@ -4906,6 +4906,36 @@ class SmartTvDevicePairingAndPinScopeTests(TestCase):
         self.assertNotContains(res, 'KASİYER SEÇİMİ:')
         self.assertNotContains(res, 'reg_selector')
         self.assertContains(res, 'pinCodeInput')
+
+    def test_cashier_pin_must_be_numeric_and_between_4_and_6_digits(self):
+        """Kasiyer PIN kodu sadece rakamlardan (4-6 hane) oluşmalıdır, harf girilemez."""
+        self.client.login(username='patron_gunes', password='password123')
+
+        # Harf içeren PIN ile kasiyer ekleme denemesi
+        res1 = self.client.post(reverse('user_create_action'), {
+            'username': 'harfli_kasiyer',
+            'full_name': 'Harfli Personel',
+            'password': 'abcd',
+            'role': 'KASIYER'
+        }, follow=True)
+        self.assertFalse(User.objects.filter(username='harfli_kasiyer').exists())
+        self.assertContains(res1, 'sadece rakam')
+
+        # 3 haneli eksik PIN ile kasiyer ekleme denemesi
+        res2 = self.client.post(reverse('user_create_action'), {
+            'username': 'kisa_kasiyer',
+            'full_name': 'Kısa Personel',
+            'password': '123',
+            'role': 'KASIYER'
+        }, follow=True)
+        self.assertFalse(User.objects.filter(username='kisa_kasiyer').exists())
+        self.assertContains(res2, '4 ile 6 hane')
+
+        # Kasiyerin şifresini harfle değiştirme denemesi
+        res3 = self.client.post(reverse('user_reset_password_action', args=[self.cashier_a.id]), {
+            'new_password': 'harf_pin'
+        }, follow=True)
+        self.assertContains(res3, 'sadece rakam')
 
 
 
