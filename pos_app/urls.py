@@ -22,6 +22,10 @@ urlpatterns = [
     path('api/pos/verify-supervisor/', views.verify_supervisor_pin_api, name='verify_supervisor_pin_api'),
     path('pos/terminal/pair/', views.pair_terminal_action, name='pair_terminal_action'),
     path('pos/terminal/unpair/', views.unpair_terminal_action, name='unpair_terminal_action'),
+    path('api/terminal/request-code/', views.terminal_device_request_code_api, name='terminal_device_request_code_api'),
+    path('api/terminal/pairing-status/', views.terminal_device_pairing_status_api, name='terminal_device_pairing_status_api'),
+    path('api/terminal/approve/', views.terminal_device_approve_api, name='terminal_device_approve_api'),
+    path('api/terminal/unbind/', views.terminal_device_unbind_api, name='terminal_device_unbind_api'),
     path('api/pos/supervisor-force-close/', views.supervisor_force_close_shift_api, name='supervisor_force_close_shift_api'),
 
     # Termal Fiş Görüntüleme & Yazdırma

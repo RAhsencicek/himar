@@ -420,6 +420,14 @@ class CashRegister(models.Model):
     name = models.CharField(max_length=100, default="Kasa 1", verbose_name="Kasa Adı")
     register_code = models.CharField(max_length=20, default="KASA-01", verbose_name="Kasa Kodu")
     is_active = models.BooleanField(default=True, verbose_name="Aktif mi?")
+    
+    # Cihaz Mühürleme (Device Binding / Pairing) Alanları
+    device_token = models.CharField(max_length=120, null=True, blank=True, unique=True, db_index=True, verbose_name="Cihaz Mührü (Token)")
+    device_name = models.CharField(max_length=255, null=True, blank=True, verbose_name="Bağlı Donanım / Tarayıcı")
+    device_ip = models.GenericIPAddressField(null=True, blank=True, verbose_name="Son Bağlanan IP")
+    device_paired_at = models.DateTimeField(null=True, blank=True, verbose_name="Mühürlenme Tarihi")
+    last_seen_at = models.DateTimeField(null=True, blank=True, verbose_name="Son Çevrimiçi Zamanı")
+    
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -430,12 +438,65 @@ class CashRegister(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.name} [{self.register_code}]"
+        paired_str = f" [Mühürlü: {self.device_name}]" if self.device_token else " [Cihaz Bağlı Değil]"
+        return f"{self.name} ({self.register_code}){paired_str}"
+
+    @property
+    def is_paired(self):
+        return bool(self.device_token)
+
+    def unbind_device(self):
+        """Mevcut cihaz mührünü kaldırır ve kasayı boşaltır"""
+        self.device_token = None
+        self.device_name = None
+        self.device_ip = None
+        self.device_paired_at = None
+        self.save(update_fields=['device_token', 'device_name', 'device_ip', 'device_paired_at'])
 
     def save(self, *args, **kwargs):
         if not self.company_id:
             self.company = Company.get_default_company()
         super().save(*args, **kwargs)
+
+
+class DevicePairingSession(models.Model):
+    """
+    Kasa Terminali Cihaz Mühürleme Oturumu (Smart TV / Cihaz Kodu Modeli)
+    """
+    STATUS_CHOICES = [
+        ('PENDING', 'Onay Bekliyor'),
+        ('APPROVED', 'Onaylandı'),
+        ('REJECTED', 'Reddedildi'),
+        ('EXPIRED', 'Süresi Doldu'),
+    ]
+
+    session_id = models.CharField(max_length=64, unique=True, db_index=True, verbose_name="Oturum Kimliği")
+    pairing_code = models.CharField(max_length=10, unique=True, db_index=True, verbose_name="6 Haneli Eşleme Kodu")
+    device_info = models.CharField(max_length=255, blank=True, default='', verbose_name="Cihaz Tarayıcı Bilgisi")
+    ip_address = models.GenericIPAddressField(null=True, blank=True, verbose_name="Cihaz IP")
+    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING', verbose_name="Durum")
+    
+    # Onaylandığında doldurulan alanlar:
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, null=True, blank=True, related_name="pairing_sessions", verbose_name="Mağaza")
+    cash_register = models.ForeignKey(CashRegister, on_delete=models.CASCADE, null=True, blank=True, related_name="pairing_sessions", verbose_name="Atanan Kasa")
+    approved_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="approved_pairings", verbose_name="Onaylayan Yönetici")
+    device_token = models.CharField(max_length=120, blank=True, default='', verbose_name="Üretilen Cihaz Mührü")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(verbose_name="Son Geçerlilik Zamanı")
+
+    class Meta:
+        verbose_name = "Cihaz Eşleme Oturumu"
+        verbose_name_plural = "Cihaz Eşleme Oturumları"
+        ordering = ['-created_at']
+
+    def is_expired(self):
+        from django.utils import timezone
+        return timezone.now() > self.expires_at
+
+    def __str__(self):
+        return f"{self.pairing_code} ({self.get_status_display()})"
 
 
 class Shift(models.Model):

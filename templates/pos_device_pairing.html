@@ -1,83 +1,282 @@
-{% extends "base.html" %}
-{% load static %}
+<!DOCTYPE html>
+<html lang="tr" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Kasa Cihazı Eşleştirme | Hİ MARKET POS</title>
+    <link rel="manifest" href="{% url 'pwa_manifest' %}">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="HiMarket POS">
 
-{% block title %}Cihaz Kasa Eşleştirme | HiMarket POS{% endblock %}
+    <!-- Bootstrap 5.3 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
-{% block content %}
-<div class="container py-5" style="max-width: 720px;">
-    <div class="text-center mb-4">
-        <div class="d-inline-flex align-items-center justify-content-center bg-primary text-white rounded-circle shadow-sm mb-3" style="width: 72px; height: 72px;">
-            <i class="bi bi-pc-display fs-1"></i>
-        </div>
-        <h2 class="fw-extrabold text-slate-900 mb-1">CİHAZ VE KASA EŞLEŞTİRME</h2>
-        <p class="text-secondary fs-6 mb-0">
-            Bu bilgisayar veya dokunmatik terminal henüz bir kasaya atanmamış.<br>
-            Karışıklığı ve hatalı işlemleri önlemek için lütfen bu cihazın hangi kasa olarak çalışacağını seçiniz.
-        </p>
-    </div>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --primary-blue: #1d4ed8;
+            --card-border: #cbd5e1;
+        }
 
-    {% if messages %}
-        {% for message in messages %}
-            <div class="alert alert-{{ message.tags }} alert-dismissible fade show rounded-3 shadow-xs py-2.5 px-3 mb-3 fs-7" role="alert">
-                <i class="bi bi-info-circle-fill me-1"></i> {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        * {
+            box-sizing: border-box;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            min-height: 100dvh;
+            margin: 0;
+            padding: 0;
+            background: radial-gradient(circle at 50% 15%, #1e293b 0%, #0f172a 100%);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            color: #0f172a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .pairing-card {
+            background: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+            width: 100%;
+            max-width: 480px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            animation: fadeInCard 0.25s ease-out;
+        }
+
+        @keyframes fadeInCard {
+            from { opacity: 0; transform: translateY(10px) scale(0.98); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .code-display {
+            font-size: 2.75rem;
+            font-weight: 900;
+            letter-spacing: 4px;
+            color: #1e40af;
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            text-shadow: 0 2px 8px rgba(30, 64, 175, 0.15);
+        }
+
+        .status-pulse {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #3b82f6;
+            animation: pulseDot 1.5s infinite;
+        }
+
+        @keyframes pulseDot {
+            0% { transform: scale(0.9); opacity: 0.7; box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+            70% { transform: scale(1.1); opacity: 1; box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
+            100% { transform: scale(0.9); opacity: 0.7; box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container py-4 px-3" style="max-width: 520px;">
+    <div class="pairing-card p-4 p-md-5">
+        <!-- Logo ve Üst Başlık -->
+        <div class="text-center mb-3">
+            <div class="d-inline-flex align-items-center justify-content-center bg-primary text-white rounded-circle shadow-sm mb-2" style="width: 56px; height: 56px;">
+                <i class="bi bi-display fs-2"></i>
             </div>
-        {% endfor %}
-    {% endif %}
-
-    <div class="card shadow-sm border-2 rounded-4 overflow-hidden mb-4">
-        <div class="card-header bg-slate-900 text-white py-3 px-4 d-flex justify-content-between align-items-center">
-            <span class="fw-bold fs-7"><i class="bi bi-link-45deg text-warning me-1"></i> AKTİF KASA TERMİNALLERİ</span>
-            <span class="badge bg-secondary font-monospace">{{ registers.count }} Kasa Tanımlı</span>
+            <h1 class="h4 fw-extrabold text-slate-900 mb-1">BU CİHAZI BİR KASAYA BAĞLAYIN</h1>
+            <p class="text-secondary small mb-0 px-2">
+                Yöneticinizin telefonundan veya bilgisayarından <strong>Yönetim Paneli &gt; Kasa Terminalleri</strong> menüsüne girip aşağıdaki kodu onaylayınız:
+            </p>
         </div>
-        <div class="card-body p-4 bg-light">
-            <div class="row g-3">
-                {% for reg in registers %}
-                <div class="col-12 col-md-6">
-                    <form method="post" action="{% url 'pair_terminal_action' %}">
-                        {% csrf_token %}
-                        <input type="hidden" name="register_code" value="{{ reg.register_code }}">
-                        <button type="submit" class="btn btn-white w-100 p-3.5 border-2 rounded-3 text-start shadow-xs h-100 d-flex flex-column justify-content-between hover-shadow transition-all" style="border-color: #cbd5e1; background: #fff;">
-                            <div>
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle fw-bold fs-8 font-monospace px-2 py-1">
-                                        {{ reg.register_code }}
-                                    </span>
-                                    <span class="badge bg-success-subtle text-success border border-success-subtle fw-semibold fs-9">
-                                        Aktif Terminal
-                                    </span>
-                                </div>
-                                <h5 class="fw-bold text-slate-900 mb-1">{{ reg.name }}</h5>
-                                <p class="text-slate-500 fs-8 mb-3">Bu cihazı mühürleyerek bu kasanın satış ekranına sabitleyin.</p>
-                            </div>
-                            <div class="d-flex align-items-center text-primary fw-bold fs-8 mt-2 pt-2 border-top">
-                                <i class="bi bi-lock-fill me-1.5"></i> Bu Cihazı Bu Kasaya Kilitle
-                            </div>
-                        </button>
-                    </form>
-                </div>
-                {% empty %}
-                <div class="col-12 text-center py-4 text-secondary">
-                    <i class="bi bi-exclamation-triangle fs-2 d-block mb-2 text-warning"></i>
-                    Sistemde tanımlı aktif kasa bulunamadı. Lütfen yönetici panelinden kasa ekleyiniz.
-                </div>
-                {% endfor %}
+
+        <!-- 6 Haneli Eşleme Kodu Alanı -->
+        <div id="pairingBox" class="p-3 my-3 bg-light rounded-4 border border-2 border-primary-subtle text-center">
+            <div class="text-uppercase text-secondary fs-8 fw-bold letter-spacing-1 mb-1">CİHAZ EŞLEME KODU</div>
+            <div id="pairingCodeDisplay" class="code-display my-1">
+                <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
+            </div>
+            <div class="d-flex align-items-center justify-content-center gap-2 mt-2">
+                <span id="timerBadge" class="badge bg-white text-secondary border font-monospace px-2.5 py-1 fs-8">
+                    <i class="bi bi-clock-history me-1 text-primary"></i> Kalan Süre: <span id="timerText">10:00</span>
+                </span>
+                <button type="button" class="btn btn-sm btn-link text-decoration-none text-primary fw-semibold p-0 fs-8" onclick="requestPairingCode(true)">
+                    <i class="bi bi-arrow-clockwise"></i> Yeni Kod Al
+                </button>
             </div>
         </div>
-    </div>
 
-    <div class="d-flex justify-content-between align-items-center px-2">
-        {% if current_user.is_staff or current_user.is_superuser %}
-        <a href="{% url 'cash_register_list_view' %}" class="btn btn-sm btn-outline-secondary fw-semibold">
-            <i class="bi bi-gear-fill me-1"></i> Kasa Terminallerini Yönet
-        </a>
-        {% else %}
-        <span></span>
-        {% endif %}
-        <a href="{% url 'logout_view' %}" class="btn btn-sm btn-outline-danger fw-semibold">
-            <i class="bi bi-box-arrow-right me-1"></i> Farklı Kullanıcı Girişi
-        </a>
+        <!-- Canlı Durum Bildirimi -->
+        <div id="waitingStatus" class="d-flex align-items-center justify-content-center gap-2 text-slate-600 small fw-semibold py-2">
+            <span class="status-pulse"></span>
+            <span id="statusMessage">Yönetici onayı bekleniyor, lütfen bekleyiniz...</span>
+        </div>
+
+        <!-- Başarı Durumu (Onaylandığında Açılır) -->
+        <div id="successState" class="d-none text-center py-4">
+            <div class="mb-3 animate__animated animate__zoomIn">
+                <i class="bi bi-shield-fill-check text-success" style="font-size: 4rem;"></i>
+            </div>
+            <h3 class="fw-extrabold text-success mb-1">CİHAZ MÜHÜRLENDİ!</h3>
+            <p id="approvedRegisterText" class="fs-5 fw-bold text-slate-900 mb-2"></p>
+            <p class="text-secondary small mb-0">
+                <span class="spinner-border spinner-border-sm text-success me-1"></span>
+                Satış ekranına aktarılıyorsunuz...
+            </p>
+        </div>
+
+        <!-- Alt Bilgilendirme ve Yönetici Girişi Linki -->
+        <div class="mt-4 pt-3 border-top text-center fs-8 text-secondary">
+            <span>Dükkan yöneticisi misiniz?</span>
+            <a href="{% url 'login_view' %}" class="fw-bold text-primary text-decoration-none ms-1">
+                Yönetici Girişi Yap <i class="bi bi-arrow-right"></i>
+            </a>
+        </div>
     </div>
 </div>
-{% endblock %}
 
+<script>
+    let currentSessionId = null;
+    let timerSeconds = 600;
+    let timerInterval = null;
+    let pollingInterval = null;
+
+    async function requestPairingCode(forceNew = false) {
+        clearInterval(timerInterval);
+        clearInterval(pollingInterval);
+
+        const codeEl = document.getElementById('pairingCodeDisplay');
+        const timerText = document.getElementById('timerText');
+        const statusMsg = document.getElementById('statusMessage');
+
+        if (codeEl) codeEl.innerHTML = '<span class="spinner-border spinner-border-sm text-primary"></span>';
+        if (statusMsg) statusMsg.textContent = 'Yeni eşleme kodu alınıyor...';
+
+        try {
+            const url = forceNew ? '/api/terminal/request-code/?force=1' : (currentSessionId ? `/api/terminal/request-code/?session_id=${encodeURIComponent(currentSessionId)}` : '/api/terminal/request-code/');
+            const res = await fetch(url);
+            const data = await res.json();
+
+            if (data.ok) {
+                currentSessionId = data.session_id;
+                timerSeconds = data.expires_in_seconds || 600;
+
+                if (codeEl) codeEl.textContent = data.formatted_code;
+                if (statusMsg) statusMsg.textContent = 'Yönetici onayı bekleniyor, lütfen bekleyiniz...';
+
+                startTimer();
+                startPolling();
+            } else {
+                if (codeEl) codeEl.textContent = 'HATA';
+                if (statusMsg) statusMsg.textContent = 'Kod alınamadı. Lütfen yenileyiniz.';
+            }
+        } catch (err) {
+            console.error('[TerminalPairing] Request error:', err);
+            if (codeEl) codeEl.textContent = 'HATA';
+            if (statusMsg) statusMsg.textContent = 'Bağlantı hatası. Lütfen internetinizi kontrol ediniz.';
+        }
+    }
+
+    function startTimer() {
+        clearInterval(timerInterval);
+        updateTimerDisplay();
+
+        timerInterval = setInterval(() => {
+            timerSeconds--;
+            if (timerSeconds <= 0) {
+                clearInterval(timerInterval);
+                clearInterval(pollingInterval);
+                const codeEl = document.getElementById('pairingCodeDisplay');
+                const timerText = document.getElementById('timerText');
+                const statusMsg = document.getElementById('statusMessage');
+                if (codeEl) codeEl.innerHTML = '<span class="text-danger fs-3">SÜRE DOLDU</span>';
+                if (timerText) timerText.textContent = '00:00';
+                if (statusMsg) statusMsg.innerHTML = '<span class="text-danger fw-bold">Kodun süresi doldu. Lütfen "Yeni Kod Al" butonuna tıklayınız.</span>';
+                return;
+            }
+            updateTimerDisplay();
+        }, 1000);
+    }
+
+    function updateTimerDisplay() {
+        const timerText = document.getElementById('timerText');
+        if (!timerText) return;
+        const mins = Math.floor(timerSeconds / 60);
+        const secs = timerSeconds % 60;
+        timerText.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    function startPolling() {
+        clearInterval(pollingInterval);
+        // Her 2.5 saniyede bir eşleme durumunu sorgula
+        pollingInterval = setInterval(checkPairingStatus, 2500);
+    }
+
+    async function checkPairingStatus() {
+        if (!currentSessionId) return;
+
+        try {
+            const res = await fetch(`/api/terminal/pairing-status/?session_id=${encodeURIComponent(currentSessionId)}`);
+            const data = await res.json();
+
+            if (data.ok && data.status === 'APPROVED') {
+                clearInterval(timerInterval);
+                clearInterval(pollingInterval);
+
+                // Token'ı tarayıcı kalıcı çerezine ve localStorage'a yaz (365 gün)
+                const token = data.device_token;
+                document.cookie = `himarket_device_token=${encodeURIComponent(token)}; max-age=${365 * 24 * 3600}; path=/; SameSite=Lax`;
+                document.cookie = `himarket_terminal_code=${encodeURIComponent(data.register_code)}; max-age=${365 * 24 * 3600}; path=/; SameSite=Lax`;
+
+                try {
+                    localStorage.setItem('himarket_device_token', token);
+                    localStorage.setItem('himarket_register_name', data.register_name || '');
+                    localStorage.setItem('himarket_register_code', data.register_code || '');
+                    localStorage.setItem('himarket_company_name', data.company_name || '');
+                } catch (e) {}
+
+                // Başarı durumunu göster
+                document.getElementById('pairingBox').classList.add('d-none');
+                document.getElementById('waitingStatus').classList.add('d-none');
+                const successState = document.getElementById('successState');
+                successState.classList.remove('d-none');
+
+                const appText = document.getElementById('approvedRegisterText');
+                if (appText) {
+                    const comp = data.company_name ? `${data.company_name} · ` : '';
+                    appText.textContent = `${comp}${data.register_name} (${data.register_code})`;
+                }
+
+                // Kısa bir beklemeden sonra satış ekranına aktar
+                setTimeout(() => {
+                    window.location.href = '/pos/';
+                }, 1400);
+            } else if (data.ok && data.status === 'EXPIRED') {
+                clearInterval(timerInterval);
+                clearInterval(pollingInterval);
+                const codeEl = document.getElementById('pairingCodeDisplay');
+                const statusMsg = document.getElementById('statusMessage');
+                if (codeEl) codeEl.innerHTML = '<span class="text-danger fs-3">SÜRE DOLDU</span>';
+                if (statusMsg) statusMsg.innerHTML = '<span class="text-danger fw-bold">Kodun süresi doldu. Lütfen "Yeni Kod Al"a tıklayınız.</span>';
+            }
+        } catch (err) {
+            console.warn('[TerminalPairing] Status poll error:', err);
+        }
+    }
+
+    // Sayfa açıldığında otomatik olarak ilk kodu iste
+    document.addEventListener('DOMContentLoaded', () => {
+        requestPairingCode();
+    });
+</script>
+
+</body>
+</html>

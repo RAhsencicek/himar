@@ -5,7 +5,7 @@ from .models import (
     Category, Product, CashRegister, Shift, Sale, SaleItem,
     Supplier, SupplierTransaction, StockEntry, StockEntryItem, SystemLog,
     Company, UserProfile, Subscription, CompanySetting,
-    BranchTransfer, BranchTransferItem
+    BranchTransfer, BranchTransferItem, DevicePairingSession
 )
 
 
@@ -130,7 +130,23 @@ class SystemLogAdmin(admin.ModelAdmin):
 
 @admin.register(CashRegister)
 class CashRegisterAdmin(admin.ModelAdmin):
-    list_display = ('name', 'register_code', 'is_active', 'created_at')
+    list_display = ('name', 'company', 'register_code', 'device_name', 'device_paired_badge', 'is_active', 'created_at')
+    list_filter = ('company', 'is_active')
+    search_fields = ('name', 'register_code', 'device_name', 'device_token')
+
+    def device_paired_badge(self, obj):
+        if obj.device_token:
+            return mark_safe(f'<span class="badge bg-success text-white px-2 py-1"><i class="bi bi-shield-check me-1"></i>Mühürlü: {obj.device_name or "Cihaz"}</span>')
+        return mark_safe('<span class="badge bg-secondary text-white px-2 py-1"><i class="bi bi-shield-slash me-1"></i>Bağlı Değil</span>')
+    device_paired_badge.short_description = "Cihaz Mührü"
+
+
+@admin.register(DevicePairingSession)
+class DevicePairingSessionAdmin(admin.ModelAdmin):
+    list_display = ('pairing_code', 'status', 'company', 'cash_register', 'approved_by', 'device_info', 'created_at', 'expires_at')
+    list_filter = ('status', 'company', 'created_at')
+    search_fields = ('pairing_code', 'session_id', 'device_info', 'device_token')
+    readonly_fields = ('session_id', 'created_at')
 
 
 class SaleItemInline(admin.TabularInline):

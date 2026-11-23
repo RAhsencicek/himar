@@ -16,6 +16,9 @@
             <span class="text-secondary small fw-medium">Marketinizdeki fiziksel satış bilgisayarlarını, terminalleri ve canlı vardiya sahiplerini yönetin.</span>
         </div>
         <div class="d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-sm btn-success fw-bold px-3 py-1.5 shadow-xs d-flex align-items-center gap-1.5" data-bs-toggle="modal" data-bs-target="#pairDeviceModal">
+                <i class="bi bi-shield-check"></i> 6 Haneli Kodla Kasa Eşle
+            </button>
             {% if can_add_register %}
             <button type="button" class="btn btn-sm btn-primary fw-bold px-3 py-1.5 shadow-xs d-flex align-items-center gap-1.5" data-bs-toggle="modal" data-bs-target="#createRegisterModal">
                 <i class="bi bi-plus-circle-fill"></i> Yeni Kasa Terminali Ekle
@@ -105,7 +108,7 @@
                         <th>Kasa Adı / Tanımı</th>
                         <th>Canlı Vardiya & Kasiyer Durumu</th>
                         <th>Toplam Vardiya</th>
-                        <th>Bu Cihaz Eşleştirmesi</th>
+                        <th>Bağlı Donanım (Mühür Durumu)</th>
                         <th>Durum</th>
                         <th class="text-end pe-3" style="width: 140px;">İşlemler</th>
                     </tr>
@@ -140,21 +143,35 @@
                             {{ item.total_shifts_count }} Vardiya
                         </td>
                         <td>
-                            {% if item.is_current_terminal %}
-                                <span class="badge bg-primary text-white py-1 px-2 fw-bold d-inline-flex align-items-center gap-1">
-                                    <i class="bi bi-check2-circle"></i> Bu Bilgisayar
-                                </span>
+                            {% if item.register.device_token %}
+                                <div>
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle py-1 px-2 fw-bold d-inline-flex align-items-center gap-1 fs-8">
+                                        <i class="bi bi-shield-check"></i> {{ item.register.device_name|default:"Mühürlü Terminal" }}
+                                    </span>
+                                    <div class="font-monospace text-slate-500 fs-9 mt-1">
+                                        Son Görülme: {{ item.register.last_seen_at|date:"d.m.Y H:i"|default:"Yeni Eşlendi" }}
+                                        {% if item.register.device_ip %} · IP: {{ item.register.device_ip }}{% endif %}
+                                    </div>
+                                    <div class="d-flex gap-1.5 mt-1.5">
+                                        <button type="button" class="btn btn-xs btn-outline-primary py-0.5 px-2 fs-9 fw-semibold" onclick="openPairModalWithRegister({{ item.register.id }}, '{{ item.register.name|escapejs }}')">
+                                            <i class="bi bi-arrow-repeat me-1"></i> Cihazı Değiştir
+                                        </button>
+                                        <button type="button" class="btn btn-xs btn-outline-danger py-0.5 px-2 fs-9 fw-semibold" onclick="unbindRegisterDevice({{ item.register.id }}, '{{ item.register.name|escapejs }}')">
+                                            <i class="bi bi-x-circle me-1"></i> Mührü Çöz
+                                        </button>
+                                    </div>
+                                </div>
                             {% elif item.register.is_active %}
-                                <form method="post" action="{% url 'pair_terminal_action' %}" class="d-inline">
-                                    {% csrf_token %}
-                                    <input type="hidden" name="register_code" value="{{ item.register.register_code }}">
-                                    <input type="hidden" name="next" value="{% url 'cash_register_list_view' %}">
-                                    <button type="submit" class="btn btn-sm btn-outline-secondary fw-semibold py-0.5 px-2 fs-9">
-                                        <i class="bi bi-laptop me-1"></i> Bu Cihaza Bağla
+                                <div>
+                                    <span class="badge bg-secondary-subtle text-secondary border fs-8">
+                                        <i class="bi bi-shield-slash me-1"></i> Cihaz Bağlı Değil (Boşta)
+                                    </span>
+                                    <button type="button" class="btn btn-xs btn-outline-success d-block mt-1 py-0.5 px-2 fs-9 fw-bold shadow-xs" onclick="openPairModalWithRegister({{ item.register.id }}, '{{ item.register.name|escapejs }}')">
+                                        <i class="bi bi-shield-plus me-1"></i> 6 Haneli Kodla Eşle
                                     </button>
-                                </form>
+                                </div>
                             {% else %}
-                                <span class="text-muted fs-9">Pasif</span>
+                                <span class="text-muted fs-9">Pasif Kasa</span>
                             {% endif %}
                         </td>
                         <td>
@@ -223,5 +240,184 @@
         </div>
     </div>
 </div>
+
+<!-- 6 HANELİ KODLA KASA CİHAZI EŞLEME MODALI -->
+<div class="modal fade" id="pairDeviceModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 480px;">
+        <div class="modal-content rounded-4 shadow-lg border-0">
+            <div class="modal-header bg-slate-900 text-white py-3 px-4">
+                <h5 class="modal-title fw-bold fs-7 d-flex align-items-center gap-2">
+                    <i class="bi bi-shield-check text-success"></i> KASA CİHAZI MÜHÜRLEME (EŞLEŞTİRME)
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="pairDeviceForm" onsubmit="submitPairDeviceForm(event)">
+                <div class="modal-body p-4 bg-light">
+                    <div class="alert alert-info py-2 px-3 fs-8 mb-3 rounded-3 border-info-subtle">
+                        <i class="bi bi-info-circle-fill me-1"></i>
+                        Kasadaki ekranı açınız ve ekranda beliren <strong>6 haneli eşleme kodunu</strong> buraya yazınız.
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fs-8 fw-bold text-slate-700">KASA EKRANINDAKİ 6 HANELİ KOD *</label>
+                        <input type="text"
+                               id="pairCodeInput"
+                               class="form-control form-control-lg font-monospace text-center fw-extrabold text-primary"
+                               placeholder="842 109"
+                               maxlength="10"
+                               autocomplete="off"
+                               required
+                               style="font-size: 1.8rem; letter-spacing: 4px;">
+                        <div class="form-text fs-9 text-slate-500 text-center">Boşluk veya tire (-) fark etmeksizin 6 rakamı yazabilirsiniz.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fs-8 fw-bold text-slate-700">MÜHÜRLENECEK KASA TERMİNALİ *</label>
+                        <select id="pairRegisterSelect" class="form-select form-select-sm fw-bold" required>
+                            <option value="">-- Kasa Seçiniz --</option>
+                            {% for item in reg_cards %}
+                                {% if item.register.is_active %}
+                                    <option value="{{ item.register.id }}" data-paired="{% if item.register.device_token %}1{% else %}0{% endif %}">
+                                        {{ item.register.name }} ({{ item.register.register_code }}){% if item.register.device_token %} [Mühürlü - Cihazı Değiştir]{% else %} [Boşta]{% endif %}
+                                    </option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                        <div id="pairReplaceWarning" class="alert alert-warning py-1.5 px-2.5 fs-9 mt-2 rounded-2 d-none">
+                            <i class="bi bi-exclamation-triangle-fill me-1"></i> Bu kasaya daha önce bir cihaz bağlanmış. Onaylarsanız eski cihazın yetkisi iptal edilip yeni cihaza aktarılacaktır.
+                        </div>
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="form-label fs-8 fw-bold text-slate-700">CİHAZ TANIMI (İsteğe Bağlı)</label>
+                        <input type="text"
+                               id="pairDeviceNameInput"
+                               class="form-control form-control-sm"
+                               placeholder="Örn: Dell Dokunmatik PC, Giriş Masası Tableti">
+                    </div>
+
+                    <div id="pairErrorAlert" class="alert alert-danger py-2 px-3 fs-8 rounded-3 d-none mb-0 mt-3"></div>
+                </div>
+                <div class="modal-footer bg-white py-2.5 px-4 justify-content-between">
+                    <button type="button" class="btn btn-sm btn-light border fw-semibold" data-bs-dismiss="modal">Vazgeç</button>
+                    <button type="submit" id="btnSubmitPair" class="btn btn-sm btn-success fw-bold px-3 py-1.5 shadow-xs">
+                        <i class="bi bi-shield-check me-1"></i> Cihazı Onayla ve Mühürle
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function openPairModalWithRegister(registerId, registerName) {
+    const sel = document.getElementById('pairRegisterSelect');
+    if (sel) {
+        sel.value = registerId;
+        sel.dispatchEvent(new Event('change'));
+    }
+    const modalEl = document.getElementById('pairDeviceModal');
+    if (modalEl) {
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+        setTimeout(() => {
+            const input = document.getElementById('pairCodeInput');
+            if (input) input.focus();
+        }, 400);
+    }
+}
+
+document.getElementById('pairRegisterSelect')?.addEventListener('change', function() {
+    const opt = this.options[this.selectedIndex];
+    const isPaired = opt && opt.getAttribute('data-paired') === '1';
+    const warn = document.getElementById('pairReplaceWarning');
+    if (warn) {
+        if (isPaired) warn.classList.remove('d-none');
+        else warn.classList.add('d-none');
+    }
+});
+
+async function submitPairDeviceForm(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnSubmitPair');
+    const errAlert = document.getElementById('pairErrorAlert');
+    const code = document.getElementById('pairCodeInput').value.trim();
+    const regId = document.getElementById('pairRegisterSelect').value;
+    const devName = document.getElementById('pairDeviceNameInput').value.trim();
+
+    if (!code || !regId) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Mühürleniyor...';
+    if (errAlert) errAlert.classList.add('d-none');
+
+    try {
+        const res = await fetch('/api/terminal/approve/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            body: JSON.stringify({
+                pairing_code: code,
+                register_id: regId,
+                device_name: devName
+            })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            btn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> Başarılı!';
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-primary');
+            setTimeout(() => {
+                window.location.reload();
+            }, 800);
+        } else {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-shield-check me-1"></i> Cihazı Onayla ve Mühürle';
+            if (errAlert) {
+                errAlert.textContent = data.message || 'Eşleme başarısız oldu.';
+                errAlert.classList.remove('d-none');
+            }
+        }
+    } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-shield-check me-1"></i> Cihazı Onayla ve Mühürle';
+        if (errAlert) {
+            errAlert.textContent = 'Sunucu bağlantı hatası oluştu.';
+            errAlert.classList.remove('d-none');
+        }
+    }
+}
+
+async function unbindRegisterDevice(registerId, registerName) {
+    if (!confirm(`'${registerName}' kasasının bağlı cihaz mührünü kaldırmak istediğinize emin misiniz?\n\nKasa boşa çıkacak ve yeni bir cihaz eşlenebilecektir.`)) {
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/terminal/unbind/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            body: JSON.stringify({ register_id: registerId })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            window.location.reload();
+        } else {
+            alert(data.message || 'Mühür kaldırılamadı.');
+        }
+    } catch (err) {
+        alert('Bağlantı hatası oluştu.');
+    }
+}
+
+function getCsrfToken() {
+    return document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+}
+</script>
 {% endblock %}
 

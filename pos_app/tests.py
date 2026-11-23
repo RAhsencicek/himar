@@ -4755,6 +4755,138 @@ class UserManagementRBACTests(TestCase):
         self.assertEqual(res.status_code, 403)
 
 
+class SmartTvDevicePairingAndPinScopeTests(TestCase):
+    """
+    Faz 19: Akıllı TV / Cihaz Kodu Modeli (RFC 8628) Terminal Mühürleme & Mağaza İzolasyonlu PIN Testleri
+    """
+    def setUp(self):
+        self.company_a = Company.objects.create(name="Güneş Market", code="gunes-market", is_active=True)
+        self.company_b = Company.objects.create(name="Yıldız Bakkal", code="yildiz-bakkal", is_active=True)
+
+        self.manager_a = User.objects.create_user(
+            username='patron_gunes', password='password123', is_staff=True, is_active=True
+        )
+        UserProfile.objects.create(user=self.manager_a, company=self.company_a)
+
+        # İki farklı şirkette aynı PIN (5555) kullanan iki kasiyer
+        self.cashier_a = User.objects.create_user(
+            username='kasiyer_gunes', password='password123', first_name='Ahmet', is_staff=False, is_active=True
+        )
+        UserProfile.objects.create(user=self.cashier_a, company=self.company_a, pin_code='5555')
+
+        self.cashier_b = User.objects.create_user(
+            username='kasiyer_yildiz', password='password123', first_name='Mehmet', is_staff=False, is_active=True
+        )
+        UserProfile.objects.create(user=self.cashier_b, company=self.company_b, pin_code='5555')
+
+        self.register_a1 = CashRegister.objects.create(
+            company=self.company_a, name="Kasa 1", register_code="KASA-01", is_active=True
+        )
+        self.register_a2 = CashRegister.objects.create(
+            company=self.company_a, name="Kasa 2", register_code="KASA-02", is_active=True
+        )
+
+    def test_device_pairing_request_code_and_poll(self):
+        """Kasadaki cihaz 6 haneli eşleme kodu alabilmeli ve polling yapabilmelidir."""
+        res = self.client.get(reverse('terminal_device_request_code_api'))
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data['ok'])
+        self.assertEqual(len(data['pairing_code']), 6)
+        session_id = data['session_id']
+
+        # Polling: İlk başta PENDING olmalı
+        poll_res = self.client.get(reverse('terminal_device_pairing_status_api'), {'session_id': session_id})
+        self.assertEqual(poll_res.status_code, 200)
+        self.assertEqual(poll_res.json()['status'], 'PENDING')
+
+    def test_manager_approves_pairing_and_seals_device(self):
+        """Patron 6 haneli kodu girerek kasayı mühürleyebilmeli ve cihaz anında token almalıdır."""
+        # 1. Kasa cihazı kod ister
+        res = self.client.get(reverse('terminal_device_request_code_api'))
+        data = res.json()
+        code = data['pairing_code']
+        session_id = data['session_id']
+
+        # 2. Patron telefonundan giriş yapar ve onaylar
+        self.client.login(username='patron_gunes', password='password123')
+        approve_res = self.client.post(
+            reverse('terminal_device_approve_api'),
+            data=json.dumps({
+                'pairing_code': code,
+                'register_id': self.register_a1.id,
+                'device_name': 'Dell All-in-One Kasa PC'
+            }),
+            content_type='application/json'
+        )
+        self.assertEqual(approve_res.status_code, 200)
+        self.assertTrue(approve_res.json()['ok'])
+
+        # 3. Kasa güncellendi mi?
+        self.register_a1.refresh_from_db()
+        self.assertTrue(self.register_a1.is_paired)
+        self.assertEqual(self.register_a1.device_name, 'Dell All-in-One Kasa PC')
+        self.assertIsNotNone(self.register_a1.device_token)
+
+        # 4. Kasa ekranı polling yaptığında APPROVED durumunu ve tokenı almalı
+        self.client.logout()
+        poll_res = self.client.get(reverse('terminal_device_pairing_status_api'), {'session_id': session_id})
+        poll_data = poll_res.json()
+        self.assertEqual(poll_data['status'], 'APPROVED')
+        self.assertEqual(poll_data['device_token'], self.register_a1.device_token)
+        self.assertEqual(poll_data['register_code'], 'KASA-01')
+
+    def test_hardware_replacement_scenario(self):
+        """Donanım Değişimi: Yeni ekran geldiğinde patron Kasa 1'e yeni ekranı atayabilmeli, eski mührü geçersiz kılmalıdır."""
+        # 1. Kasa 1 ilk önce Eski Cihaz'a mühürlenir
+        self.register_a1.device_token = "trm_old_device_token"
+        self.register_a1.device_name = "Eski Kırık Tablet"
+        self.register_a1.save()
+
+        # 2. Yeni cihaz açılır ve yeni kod alır
+        res = self.client.get(reverse('terminal_device_request_code_api'))
+        new_code = res.json()['pairing_code']
+
+        # 3. Patron yeni kodu Kasa 1 için onaylar
+        self.client.login(username='patron_gunes', password='password123')
+        approve_res = self.client.post(
+            reverse('terminal_device_approve_api'),
+            data=json.dumps({
+                'pairing_code': new_code,
+                'register_id': self.register_a1.id,
+                'device_name': 'Yeni Dokunmatik Ekran'
+            }),
+            content_type='application/json'
+        )
+        self.assertEqual(approve_res.status_code, 200)
+
+        # 4. Kasa 1 artık yeni cihaza mühürlüdür
+        self.register_a1.refresh_from_db()
+        self.assertEqual(self.register_a1.device_name, 'Yeni Dokunmatik Ekran')
+        self.assertNotEqual(self.register_a1.device_token, "trm_old_device_token")
+
+    def test_pin_login_isolated_to_paired_company(self):
+        """PIN İzolasyonu: Güneş Market kasasında 5555 girildiğinde ASLA Yıldız Bakkal kasiyeri giriş yapamaz!"""
+        # Kasa Güneş Market'e mühürlüdür
+        self.register_a1.device_token = "trm_gunes_kasa_token"
+        self.register_a1.save()
+
+        self.client.cookies['himarket_device_token'] = 'trm_gunes_kasa_token'
+
+        # Kasiyer sadece PIN (5555) ile giriş yapar
+        res = self.client.post(reverse('login_view'), {
+            'login_mode': 'pin',
+            'pin_code': '5555'
+        })
+        self.assertEqual(res.status_code, 302)
+
+        # Giriş yapan kişi Güneş Market'in Ahmet'i olmalıdır, Yıldız Bakkal'ın Mehmet'i DEĞİL!
+        res_pos = self.client.get(reverse('pos_screen'))
+        self.assertEqual(res_pos.context['shift'].cashier, self.cashier_a)
+        self.assertEqual(res_pos.context['company'], self.company_a)
+
+
+
 
 
 

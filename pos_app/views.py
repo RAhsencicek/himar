@@ -22,6 +22,7 @@ import json
 import datetime
 import calendar
 import random
+import secrets
 import uuid
 from datetime import timedelta
 from django.db.models import Q, Sum, Count, F
@@ -34,7 +35,7 @@ from .models import (
     Supplier, SupplierTransaction, StockEntry, StockEntryItem, SystemLog, log_action,
     CompanySetting, Customer, CustomerTransaction, StockTake, StockTakeItem,
     Company, UserProfile, get_user_company, Subscription, GlobalProductPool,
-    BranchTransfer, BranchTransferItem
+    BranchTransfer, BranchTransferItem, DevicePairingSession
 )
 from .printer_service import silent_print_receipt, trigger_cash_drawer_only, silent_print_collection_receipt
 from .fiscal_service import calculate_vat_breakdown, apply_fiscal_data_to_sale, get_company_fiscal_profile
@@ -351,14 +352,34 @@ def download_backup_view(request):
     return response
 
 
+def get_client_ip(request):
+    """İstemcinin gerçek IP adresini tespit eder (Proxy / Cloudflare arkası dahil)"""
+    if not request:
+        return None
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        return x_forwarded_for.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR')
+
+
 def get_current_register(request=None, register_code=None, company=None):
     """
     Dinamik Kasa / Terminal Çözümleyici (Faz 9: Donanım/Cihaz Kilidi Uyumlu, Faz 11: Multi-Tenancy):
     1. Fonksiyona doğrudan parametre geçildiyse onu kullanır.
-    2. İstek varsa öncelikle 'himarket_terminal_code' kalıcı tarayıcı çerezi kontrol edilir (Cihaz Mühürleme).
-    3. Cihaz mühürlü değilse session'daki 'active_register_code' veya GET parametresi '?register=' kontrol edilir.
+    2. Öncelikle 'himarket_device_token' (Smart TV Cihaz Mührü) kontrol edilir.
+    3. Cihaz mühürlü değilse 'himarket_terminal_code' veya session/'?register=' kontrol edilir.
     4. Hiçbiri yoksa ilk aktif kasa veya varsayılan 'KASA-01' kullanılır.
     """
+    if request:
+        device_token = request.COOKIES.get('himarket_device_token') or request.META.get('HTTP_X_TERMINAL_TOKEN')
+        if device_token:
+            paired_reg = CashRegister.objects.filter(device_token=device_token, is_active=True).select_related('company').first()
+            if paired_reg:
+                paired_reg.last_seen_at = timezone.now()
+                paired_reg.save(update_fields=['last_seen_at'])
+                request.session['active_register_code'] = paired_reg.register_code
+                return paired_reg
+
     if company is None:
         if request and hasattr(request, 'user') and request.user.is_authenticated:
             company = get_user_company(request.user)
@@ -424,7 +445,19 @@ def pos_screen(request):
     Faz 9: Cihaz Eşleştirme ve Münhasır Kasa Kilidi (1 Kasa = 1 Kasiyer).
     Faz 11: Çoklu Mağaza / Multi-Tenancy Güvenli Veri İzolasyonu.
     """
-    user_company = get_user_company(request.user)
+    device_token = request.COOKIES.get('himarket_device_token')
+    paired_register = None
+    if device_token:
+        paired_register = CashRegister.objects.filter(device_token=device_token, is_active=True).select_related('company').first()
+
+    if paired_register:
+        user_company = paired_register.company
+        register = paired_register
+        paired_register.last_seen_at = timezone.now()
+        paired_register.save(update_fields=['last_seen_at'])
+    else:
+        user_company = get_user_company(request.user)
+        register = get_current_register(request, company=user_company)
 
     # Sistemde mağazaya ait en az KASA-01 ve KASA-02'nin hazır olmasını sağla
     CashRegister.objects.get_or_create(
@@ -438,17 +471,13 @@ def pos_screen(request):
         defaults={'name': 'KASA-02 (Ek Satış Terminali)', 'is_active': True}
     )
 
-    paired_cookie = request.COOKIES.get('himarket_terminal_code')
+    paired_legacy_cookie = request.COOKIES.get('himarket_terminal_code')
+    is_terminal_locked = bool(paired_register or paired_legacy_cookie)
     active_registers = CashRegister.objects.filter(company=user_company, is_active=True).order_by('register_code')
 
     # Özel olarak cihaz eşleştirme ekranı talep edilmişse (?pair=1)
     if request.GET.get('pair') == '1':
-        return render(request, 'pos_device_pairing.html', {
-            'registers': active_registers,
-            'current_user': request.user,
-        })
-
-    register = get_current_register(request, company=user_company)
+        return redirect('pair_terminal_action')
 
     # Münhasır Kasa / Vardiya Kilidi Kontrolü (1 Kasa = 1 Kasiyer)
     open_shift = Shift.objects.filter(company=user_company, cash_register=register, is_closed=False).first()
@@ -498,16 +527,9 @@ def pos_screen(request):
         'setting': setting,
         'supervisor_cancel_required': setting.supervisor_cancel_required,
         'is_supervisor': is_supervisor,
-        'is_terminal_locked': bool(paired_cookie),
+        'is_terminal_locked': is_terminal_locked,
     }
     response = render(request, 'pos_screen.html', context)
-    if not paired_cookie:
-        response.set_cookie(
-            'himarket_terminal_code',
-            register.register_code,
-            max_age=365 * 24 * 3600,
-            samesite='Lax'
-        )
     return response
 
 
@@ -1843,14 +1865,20 @@ def open_shift_action(request):
 def login_view(request):
     """
     Hİ MARKET Özel Modern Giriş Sayfası (Kasiyer Dokunmatik PIN Pad & Standart Kullanıcı Girişi)
-    - Dokunmatik ekranda 4 haneli Hızlı PIN (örn: 1234) veya personel seçerek tek tıkla giriş
-    - Standart Kullanıcı Adı + Parola ile giriş
-    - Giriş anında KASA-01 veya KASA-02 terminal seçimi
+    Faz 19: Cihaz Mühürleme (Device Binding) ve Mağaza Kapsamlı PIN İzolasyonu.
     """
     if request.user.is_authenticated:
         if request.user.is_staff or request.user.is_superuser:
             return redirect('admin_dashboard')
         return redirect('pos_screen')
+
+    # 1. Cihaz mühürlü mü kontrol et (Smart TV Device Token)
+    device_token = request.COOKIES.get('himarket_device_token')
+    paired_register = None
+    if device_token:
+        paired_register = CashRegister.objects.filter(device_token=device_token, is_active=True).select_related('company').first()
+
+    paired_company = paired_register.company if paired_register else None
 
     # Varsayılan kasiyer hesabının (kasiyer / 1234) mevcut olduğundan emin ol (PIN 1234 uyumu)
     if not User.objects.filter(username='kasiyer').exists():
@@ -1871,7 +1899,13 @@ def login_view(request):
         username = request.POST.get('username', '').strip()
         password = request.POST.get('password', '').strip()
         pin_code = request.POST.get('pin_code', '').strip()
-        register_code = request.POST.get('register_code', 'KASA-01').strip() or 'KASA-01'
+        
+        # Eğer cihaz mühürlüyse register_code zorunlu olarak bu mühürlü kasadır!
+        if paired_register:
+            register_code = paired_register.register_code
+        else:
+            register_code = request.POST.get('register_code', 'KASA-01').strip() or 'KASA-01'
+
         next_url = request.POST.get('next') or request.GET.get('next')
 
         user = None
@@ -1880,13 +1914,23 @@ def login_view(request):
         if username and secret:
             user = authenticate(request, username=username, password=secret)
 
-        # Hızlı PIN modu: Kullanıcı adı seçilmeden doğrudan PIN (örn: 1234) girildiyse
+        # Hızlı PIN modu: Doğrudan PIN girildiyse
         if user is None and secret:
-            # Önce kasiyerleri, sonra yöneticileri kontrol et
-            for candidate in User.objects.filter(is_active=True).order_by('is_staff', 'id'):
-                if candidate.check_password(secret):
-                    user = candidate
-                    break
+            # 1. Eğer cihaz bir mağazaya mühürlüyse, SADECE bu mağazanın personeli içinde ara (İzolasyon)!
+            if paired_company:
+                company_candidates = User.objects.filter(is_active=True, profile__company=paired_company).order_by('is_staff', 'id')
+                for candidate in company_candidates:
+                    cand_pin = getattr(getattr(candidate, 'profile', None), 'pin_code', '')
+                    if (cand_pin and cand_pin == secret) or candidate.check_password(secret):
+                        user = candidate
+                        break
+            else:
+                # Cihaz mühürlü değilse genel aktif kullanıcılar içinde ara
+                for candidate in User.objects.filter(is_active=True).order_by('is_staff', 'id'):
+                    cand_pin = getattr(getattr(candidate, 'profile', None), 'pin_code', '')
+                    if (cand_pin and cand_pin == secret) or candidate.check_password(secret):
+                        user = candidate
+                        break
 
         if user is not None:
             if user.is_active:
@@ -1912,8 +1956,20 @@ def login_view(request):
             else:
                 messages.error(request, 'Kullanıcı adı veya şifre hatalı! Lütfen bilgilerinizi kontrol ediniz.')
 
-    active_users = User.objects.filter(is_active=True).order_by('is_staff', 'username')
-    return render(request, 'login.html', {'active_users': active_users})
+    # Giriş ekranında gösterilecek kullanıcılar
+    if paired_company:
+        cashiers = User.objects.filter(is_active=True, profile__company=paired_company).order_by('is_staff', 'first_name', 'username')
+    else:
+        cashiers = User.objects.filter(is_active=True).order_by('is_staff', 'username')
+
+    context = {
+        'active_users': cashiers,
+        'cashiers': cashiers.filter(is_staff=False, is_superuser=False),
+        'paired_register': paired_register,
+        'paired_company': paired_company,
+        'is_device_paired': bool(paired_register),
+    }
+    return render(request, 'login.html', context)
 
 
 def logout_view(request):
@@ -6131,50 +6187,258 @@ def product_bulk_update_action(request):
 
 
 # ==========================================================
-# FAZ 9: TERMİNAL CİHAZ EŞLEŞTİRME & MÜNHASIR KASA GÜVENLİĞİ
+# FAZ 9 & FAZ 19: TERMİNAL CİHAZ MÜHÜRLEME & EŞLEŞTİRME (RFC 8628)
 # ==========================================================
 
-@login_required(login_url='/login/')
-def pair_terminal_action(request):
+def terminal_device_request_code_api(request):
     """
-    Bu tarayıcıyı/cihazı kalıcı olarak bir Kasa Terminaline (örn. KASA-01) bağlar.
-    365 günlük 'himarket_terminal_code' çerezi yazar.
-    GET isteğinde cihaz eşleştirme seçim ekranını açar.
+    Eşlenmemiş Kasa Cihazı İçin 6 Haneli Eşleme Kodu Üretir / Tazeler.
+    Smart TV / Cihaz Kodu Modeli (RFC 8628).
     """
-    if request.method == 'GET':
-        active_registers = CashRegister.objects.filter(is_active=True).order_by('register_code')
-        return render(request, 'pos_device_pairing.html', {
-            'registers': active_registers,
-            'current_user': request.user,
+    session_id = request.GET.get('session_id') or (request.POST.get('session_id') if request.method == 'POST' else None)
+    now = timezone.now()
+
+    session = None
+    if session_id:
+        session = DevicePairingSession.objects.filter(session_id=session_id, status='PENDING', expires_at__gt=now).first()
+
+    if not session:
+        # 6 haneli benzersiz numerik kod üret (Örn: 842109 -> Gösterim: 842 - 109)
+        pairing_code = ""
+        for _ in range(12):
+            candidate = str(random.randint(100000, 999999))
+            if not DevicePairingSession.objects.filter(pairing_code=candidate, status='PENDING', expires_at__gt=now).exists():
+                pairing_code = candidate
+                break
+        if not pairing_code:
+            pairing_code = str(random.randint(100000, 999999))
+
+        session_id = secrets.token_hex(16)
+        user_agent = request.META.get('HTTP_USER_AGENT', '')[:250]
+        ip = get_client_ip(request)
+        expires_at = now + datetime.timedelta(minutes=10)
+
+        session = DevicePairingSession.objects.create(
+            session_id=session_id,
+            pairing_code=pairing_code,
+            device_info=user_agent,
+            ip_address=ip,
+            status='PENDING',
+            expires_at=expires_at
+        )
+
+    formatted_code = f"{session.pairing_code[:3]} - {session.pairing_code[3:]}" if len(session.pairing_code) == 6 else session.pairing_code
+    remaining = max(0, int((session.expires_at - now).total_seconds()))
+
+    return JsonResponse({
+        'ok': True,
+        'session_id': session.session_id,
+        'pairing_code': session.pairing_code,
+        'formatted_code': formatted_code,
+        'expires_in_seconds': remaining
+    })
+
+
+def terminal_device_pairing_status_api(request):
+    """
+    Kasa Cihazı Ekranının Düzenli Polling Yaparak Onayı Sorguladığı API.
+    """
+    session_id = request.GET.get('session_id', '').strip()
+    if not session_id:
+        return JsonResponse({'ok': False, 'message': 'session_id parametresi gereklidir.'}, status=400)
+
+    now = timezone.now()
+    session = DevicePairingSession.objects.filter(session_id=session_id).select_related('cash_register', 'company').first()
+    if not session:
+        return JsonResponse({'ok': True, 'status': 'NOT_FOUND'})
+
+    if session.status == 'PENDING' and session.is_expired():
+        session.status = 'EXPIRED'
+        session.save(update_fields=['status'])
+
+    if session.status == 'APPROVED' and session.cash_register:
+        reg = session.cash_register
+        comp = session.company or reg.company
+        return JsonResponse({
+            'ok': True,
+            'status': 'APPROVED',
+            'device_token': session.device_token,
+            'register_id': reg.id,
+            'register_name': reg.name,
+            'register_code': reg.register_code,
+            'company_name': comp.name if comp else ''
         })
 
-    register_code = request.POST.get('register_code', '').strip().upper()
-    register = get_object_or_404(CashRegister, register_code=register_code, is_active=True)
-
-    next_url = request.POST.get('next') or 'pos_screen'
-    response = redirect(next_url)
-    response.set_cookie(
-        'himarket_terminal_code',
-        register.register_code,
-        max_age=365 * 24 * 3600,
-        samesite='Lax'
-    )
-    request.session['active_register_code'] = register.register_code
-    log_action('POS', 'Cihaz Terminale Eşleştirildi', f"Tarayıcı '{register.name}' ({register.register_code}) kasasına bağlandı.", user=request.user)
-    messages.success(request, f"Bu cihaz başarıyla '{register.name}' ({register.register_code}) terminaline mühürlendi.")
-    return response
+    remaining = max(0, int((session.expires_at - now).total_seconds()))
+    return JsonResponse({
+        'ok': True,
+        'status': session.status,
+        'remaining_seconds': remaining
+    })
 
 
-@login_required(login_url='/login/')
+@staff_required
+@require_POST
+def terminal_device_approve_api(request):
+    """
+    Yöneticinin Telefonundan veya Bilgisayarından 6 Haneli Kodu Onaylayıp Kasayı Mühürlediği API.
+    Eski cihaz bağlıysa yetkisi otomatik düşer, yeni cihaz mühürlenir.
+    """
+    try:
+        data = json.loads(request.body.decode('utf-8')) if request.body else request.POST
+    except Exception:
+        data = request.POST
+
+    raw_code = str(data.get('pairing_code', '')).replace(' ', '').replace('-', '').strip()
+    register_id = data.get('register_id')
+    device_name = str(data.get('device_name', '')).strip()
+
+    if not raw_code:
+        return JsonResponse({'ok': False, 'message': 'Lütfen kasa ekranındaki 6 haneli kodu giriniz.'}, status=400)
+
+    if not register_id:
+        return JsonResponse({'ok': False, 'message': 'Lütfen mühürlenecek kasayı seçiniz.'}, status=400)
+
+    user_company = get_user_company(request.user)
+    register = get_object_or_404(CashRegister, id=register_id, company=user_company)
+
+    now = timezone.now()
+    session = DevicePairingSession.objects.filter(
+        pairing_code=raw_code,
+        status='PENDING',
+        expires_at__gt=now
+    ).first()
+
+    if not session:
+        return JsonResponse({
+            'ok': False,
+            'message': 'Geçersiz veya süresi dolmuş eşleme kodu! Lütfen kasa ekranındaki güncel kodu kontrol ediniz.'
+        }, status=404)
+
+    # Yeni kriptolu cihaz mührü (token) üret
+    device_token = f"trm_{secrets.token_urlsafe(32)}"
+    clean_device_name = device_name or (session.device_info[:60] if session.device_info else "Kasa Terminali")
+
+    # Kasayı yeni cihaza mühürle
+    old_device_name = register.device_name
+    register.device_token = device_token
+    register.device_name = clean_device_name
+    register.device_ip = session.ip_address
+    register.device_paired_at = now
+    register.last_seen_at = now
+    register.save()
+
+    # Oturumu onayla
+    session.status = 'APPROVED'
+    session.company = register.company
+    session.cash_register = register
+    session.approved_by = request.user
+    session.device_token = device_token
+    session.save()
+
+    log_msg = f"'{register.name}' ({register.register_code}) kasasına yeni cihaz ('{clean_device_name}') mühürlendi."
+    if old_device_name:
+        log_msg += f" Önceki cihaz ('{old_device_name}') devreden çıkarıldı."
+    log_action('POS', 'Kasa Cihazı Mühürlendi', log_msg, user=request.user)
+
+    return JsonResponse({
+        'ok': True,
+        'message': f"'{register.name}' başarıyla bu cihaza mühürlendi!",
+        'register_id': register.id,
+        'register_name': register.name,
+        'register_code': register.register_code,
+        'device_name': clean_device_name
+    })
+
+
+@staff_required
+@require_POST
+def terminal_device_unbind_api(request):
+    """
+    Kayıtlı bir Kasa Terminalinin Cihaz Mührünü Kaldırır (Boşa Çıkarır).
+    """
+    try:
+        data = json.loads(request.body.decode('utf-8')) if request.body else request.POST
+    except Exception:
+        data = request.POST
+
+    register_id = data.get('register_id')
+    user_company = get_user_company(request.user)
+    register = get_object_or_404(CashRegister, id=register_id, company=user_company)
+
+    device_name = register.device_name or "Cihaz"
+    register.unbind_device()
+
+    log_action('POS', 'Cihaz Mührü Kaldırıldı', f"'{register.name}' kasasındaki cihaz ('{device_name}') mührü kaldırıldı.", level='WARNING', user=request.user)
+
+    return JsonResponse({
+        'ok': True,
+        'message': f"'{register.name}' cihaz mührü başarıyla kaldırıldı. Kasa artık boştadır.",
+        'register_id': register.id
+    })
+
+
+def pair_terminal_action(request):
+    """
+    Kasa Terminal Cihaz Eşleme Ekranı (Smart TV Eşleme Kodu Modeli).
+    Cihaz mühürlüyse doğrudan pos_screen'e yönlendirir; değilse 6 haneli kod gösterir.
+    POST ile register_code gönderilirse doğrudan mühürler (Geriye dönük uyumluluk).
+    """
+    if request.method == 'POST':
+        register_code = request.POST.get('register_code', '').strip().upper()
+        if register_code:
+            register = get_object_or_404(CashRegister, register_code=register_code, is_active=True)
+            next_url = request.POST.get('next') or 'pos_screen'
+            response = redirect(next_url)
+            response.set_cookie(
+                'himarket_terminal_code',
+                register.register_code,
+                max_age=365 * 24 * 3600,
+                samesite='Lax'
+            )
+            if not register.device_token:
+                register.device_token = f"trm_{secrets.token_urlsafe(32)}"
+                register.device_name = (request.META.get('HTTP_USER_AGENT', '')[:60] if request.META else '') or "Terminal"
+                register.device_ip = get_client_ip(request)
+                register.device_paired_at = timezone.now()
+                register.last_seen_at = timezone.now()
+                register.save()
+
+            response.set_cookie(
+                'himarket_device_token',
+                register.device_token,
+                max_age=365 * 24 * 3600,
+                samesite='Lax'
+            )
+            request.session['active_register_code'] = register.register_code
+            log_action('POS', 'Cihaz Terminale Eşleştirildi', f"Tarayıcı '{register.name}' ({register.register_code}) kasasına bağlandı.", user=request.user if request.user.is_authenticated else None)
+            messages.success(request, f"Bu cihaz başarıyla '{register.name}' ({register.register_code}) terminaline mühürlendi.")
+            return response
+
+    device_token = request.COOKIES.get('himarket_device_token')
+    if device_token and CashRegister.objects.filter(device_token=device_token, is_active=True).exists():
+        return redirect('pos_screen')
+
+    active_registers = []
+    if request.user.is_authenticated:
+        user_company = get_user_company(request.user)
+        active_registers = CashRegister.objects.filter(company=user_company, is_active=True).order_by('register_code')
+
+    return render(request, 'pos_device_pairing.html', {
+        'registers': active_registers,
+        'current_user': request.user if request.user.is_authenticated else None,
+    })
+
+
 @require_POST
 def unpair_terminal_action(request):
     """
-    Bu cihazın kasa mühürünü çözer (Süpervizör PIN veya Yönetici yetkisi gerekir).
+    Bu tarayıcının kasa mührünü çözer (Süpervizör PIN veya Yönetici oturumu gerekir).
     """
     pin = request.POST.get('pin', '').strip()
     is_authorized = False
 
-    if request.user.is_staff or request.user.is_superuser:
+    if request.user.is_authenticated and (request.user.is_staff or request.user.is_superuser):
         is_authorized = True
     elif pin:
         for sup in User.objects.filter(is_active=True).filter(Q(is_staff=True) | Q(is_superuser=True)):
@@ -6183,14 +6447,24 @@ def unpair_terminal_action(request):
                 break
 
     if not is_authorized:
-        messages.error(request, "Terminal kilidini çözmek için yetkili süpervizör PIN şifresi gereklidir.")
+        messages.error(request, "Terminal kilidini çözmek için yetkili yönetici şifresi veya PIN gereklidir.")
         return _safe_next_redirect(request, 'pos_screen')
 
-    response = redirect('pos_screen')
+    device_token = request.COOKIES.get('himarket_device_token')
+    if device_token:
+        CashRegister.objects.filter(device_token=device_token).update(
+            device_token=None,
+            device_name=None,
+            device_ip=None,
+            device_paired_at=None
+        )
+
+    response = redirect('pair_terminal_action')
+    response.delete_cookie('himarket_device_token')
     response.delete_cookie('himarket_terminal_code')
     request.session.pop('active_register_code', None)
-    log_action('POS', 'Terminal Bağı Çözüldü', "Cihazın kasa sabitlemesi yetkili tarafından kaldırıldı.", level='WARNING', user=request.user)
-    messages.warning(request, "Bu cihazın kasa sabitlemesi kaldırıldı. Lütfen yeni kasanızı seçiniz.")
+    log_action('POS', 'Terminal Bağı Çözüldü', "Cihazın kasa sabitlemesi yetkili tarafından kaldırıldı.", level='WARNING', user=request.user if request.user.is_authenticated else None)
+    messages.warning(request, "Bu cihazın kasa mührü kaldırıldı. Artık yeni bir kasaya bağlanabilir.")
     return response
 
 
