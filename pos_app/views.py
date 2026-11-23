@@ -1956,15 +1956,8 @@ def login_view(request):
             else:
                 messages.error(request, 'Kullanıcı adı veya şifre hatalı! Lütfen bilgilerinizi kontrol ediniz.')
 
-    # Giriş ekranında gösterilecek kullanıcılar
-    if paired_company:
-        cashiers = User.objects.filter(is_active=True, profile__company=paired_company).order_by('is_staff', 'first_name', 'username')
-    else:
-        cashiers = User.objects.filter(is_active=True).order_by('is_staff', 'username')
-
+    # Giriş ekranı sadeleştirildi: Terminal mühürlüdür ve PIN doğrudan kullanıcıya aittir
     context = {
-        'active_users': cashiers,
-        'cashiers': cashiers.filter(is_staff=False, is_superuser=False),
         'paired_register': paired_register,
         'paired_company': paired_company,
         'is_device_paired': bool(paired_register),
@@ -3331,6 +3324,20 @@ def user_create_action(request):
             first_name = parts[0]
             last_name = parts[1] if len(parts) > 1 else ''
 
+        # Şirket / Tenant Bağlantısı (Multi-Tenancy)
+        user_company = get_user_company(request.user)
+
+        # PIN / Şifre Çakışma Kontrolü (Aynı şirkette iki personele aynı numerik PIN verilemez)
+        if password.isdigit() and user_company:
+            for existing in User.objects.filter(is_active=True, profile__company=user_company):
+                cand_pin = getattr(getattr(existing, 'profile', None), 'pin_code', '')
+                if cand_pin == password or existing.check_password(password):
+                    messages.error(
+                        request,
+                        f"'{password}' PIN kodu bu mağazada zaten '{existing.get_full_name() or existing.username}' tarafından kullanılıyor! Lütfen her personele benzersiz bir PIN belirleyiniz."
+                    )
+                    return redirect('user_management_view')
+
         # Şube yöneticisi asla süper admin oluşturamaz!
         is_staff = (role == 'YONETICI')
         user = User.objects.create_user(
@@ -3343,11 +3350,10 @@ def user_create_action(request):
             is_active=True
         )
 
-        # Şirket / Tenant Bağlantısı (Multi-Tenancy)
-        user_company = get_user_company(request.user)
         UserProfile.objects.create(
             user=user,
-            company=user_company
+            company=user_company,
+            pin_code=password if password.isdigit() else ''
         )
 
         role_label = "Yönetici (Mağaza Müdürü)" if is_staff else "Kasiyer (POS Satış)"
@@ -3454,8 +3460,22 @@ def user_reset_password_action(request, user_id):
         messages.error(request, 'Lütfen yeni bir şifre giriniz.')
         return redirect('user_management_view')
 
+    user_company = get_user_company(request.user)
+    if new_password.isdigit() and user_company:
+        for existing in User.objects.filter(is_active=True, profile__company=user_company).exclude(id=target_user.id):
+            cand_pin = getattr(getattr(existing, 'profile', None), 'pin_code', '')
+            if cand_pin == new_password or existing.check_password(new_password):
+                messages.error(
+                    request,
+                    f"'{new_password}' PIN kodu bu mağazada zaten '{existing.get_full_name() or existing.username}' tarafından kullanılıyor! Lütfen farklı bir PIN belirleyiniz."
+                )
+                return redirect('user_management_view')
+
     target_user.set_password(new_password)
     target_user.save()
+    if hasattr(target_user, 'profile'):
+        target_user.profile.pin_code = new_password if new_password.isdigit() else ''
+        target_user.profile.save()
     log_action('AUTH', 'Şifre Güncellendi', f"'{target_user.username}' kullanıcısının şifresi yönetici tarafından sıfırlandı.", user=request.user)
     messages.success(request, f"'{target_user.username}' şifresi başarıyla güncellendi.")
     return redirect('user_management_view')

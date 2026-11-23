@@ -4885,6 +4885,28 @@ class SmartTvDevicePairingAndPinScopeTests(TestCase):
         self.assertEqual(res_pos.context['shift'].cashier, self.cashier_a)
         self.assertEqual(res_pos.context['company'], self.company_a)
 
+    def test_duplicate_pin_rejected_in_same_company(self):
+        """Aynı şirkette iki personele aynı PIN verilmesi engellenir."""
+        self.client.login(username='patron_gunes', password='password123')
+
+        # Yeni kasiyere Ahmet'in PIN'i (5555) verilmeye çalışıldığında hata verir
+        res = self.client.post(reverse('user_create_action'), {
+            'username': 'yeni_kasiyer',
+            'full_name': 'Yeni Personel',
+            'password': '5555',
+            'role': 'KASIYER'
+        }, follow=True)
+        self.assertFalse(User.objects.filter(username='yeni_kasiyer').exists())
+        self.assertContains(res, 'zaten')
+
+    def test_login_page_renders_clean_numpad_without_cashier_list(self):
+        """Giriş sayfasında gereksiz kasiyer butonları veya terminal seçim radyo butonları yer almaz."""
+        res = self.client.get(reverse('login_view'))
+        self.assertEqual(res.status_code, 200)
+        self.assertNotContains(res, 'KASİYER SEÇİMİ:')
+        self.assertNotContains(res, 'reg_selector')
+        self.assertContains(res, 'pinCodeInput')
+
 
 
 

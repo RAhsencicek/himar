@@ -317,37 +317,22 @@
                 </div>
             </div>
 
-            <!-- KASA TERMİNALİ BİLGİSİ VEYA SEÇİMİ -->
+            <!-- KASA TERMİNALİ MÜHÜR BİLGİSİ (SABİT KASA DONANIMI) -->
             {% if is_device_paired %}
-            <div class="mb-2 flex-shrink-0 p-2 bg-primary-subtle rounded-3 border border-primary-subtle text-center">
-                <div class="fw-bold text-primary fs-8 d-flex align-items-center justify-content-center gap-1">
+            <div class="mb-2 flex-shrink-0 p-2 bg-success-subtle rounded-3 border border-success-subtle text-center">
+                <div class="fw-bold text-success fs-8 d-flex align-items-center justify-content-center gap-1">
                     <i class="bi bi-shield-check"></i> {{ paired_company.name|default:"Mağaza" }} · {{ paired_register.name }}
                 </div>
-                <div class="text-secondary font-monospace fs-9">Bu cihaz mühürlüdür ({{ paired_register.register_code }})</div>
+                <div class="text-secondary font-monospace fs-9">Mühürlü Donanım: {{ paired_register.register_code }}</div>
             </div>
             {% else %}
-            <div class="mb-2 flex-shrink-0">
-                <div class="text-center mb-1.5">
-                    <a href="{% url 'pair_terminal_action' %}" class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle text-decoration-none py-1.5 px-2.5 rounded-2 d-inline-flex align-items-center gap-1 fs-9 shadow-xs">
-                        <i class="bi bi-link-45deg"></i> Bu Cihazı Bir Kasaya Bağla (Smart TV Kodu)
-                    </a>
+            <div class="mb-2 flex-shrink-0 p-2 bg-warning-subtle rounded-3 border border-warning-subtle text-center">
+                <div class="text-warning-emphasis fw-bold fs-9 mb-1">
+                    <i class="bi bi-exclamation-triangle-fill text-warning me-1"></i> Bu Cihaz Henüz Bir Kasaya Mühürlenmedi
                 </div>
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <span class="fw-bold text-secondary" style="font-size: 0.74rem;">
-                        <i class="bi bi-pc-display text-primary me-0.5"></i> Terminal Seçimi:
-                    </span>
-                    <span class="text-muted" style="font-size: 0.72rem;">Aktif Satış Kasası</span>
-                </div>
-                <div class="btn-group w-100" role="group">
-                    <input type="radio" class="btn-check" name="reg_selector" id="regKasa1" value="KASA-01" checked onchange="setRegisterChoice('KASA-01')">
-                    <label class="btn btn-outline-primary fw-bold reg-pill-btn d-flex align-items-center justify-content-center gap-1" for="regKasa1">
-                        <i class="bi bi-1-circle-fill"></i> KASA-01 (Ana)
-                    </label>
-                    <input type="radio" class="btn-check" name="reg_selector" id="regKasa2" value="KASA-02" onchange="setRegisterChoice('KASA-02')">
-                    <label class="btn btn-outline-primary fw-bold reg-pill-btn d-flex align-items-center justify-content-center gap-1" for="regKasa2">
-                        <i class="bi bi-2-circle-fill"></i> KASA-02 (Ek)
-                    </label>
-                </div>
+                <a href="{% url 'pair_terminal_action' %}" class="btn btn-xs btn-outline-warning text-dark fw-bold py-0.5 px-2.5 rounded-2 fs-9 shadow-xs text-decoration-none">
+                    <i class="bi bi-link-45deg"></i> Smart TV Kodu ile Mühürle
+                </a>
             </div>
             {% endif %}
 
@@ -361,30 +346,14 @@
                 {% endif %}
 
                 <div class="pin-pad-container">
-                    {% if cashiers %}
-                    <div class="mb-2">
-                        <div class="text-secondary fs-9 fw-bold text-uppercase mb-1">Kasiyer Seçimi:</div>
-                        <div class="d-flex flex-wrap gap-1 mb-1">
-                            {% for c in cashiers %}
-                            <button type="button" class="btn btn-xs btn-outline-primary py-0.5 px-2 fs-9 rounded-2 text-truncate" style="max-width: 120px;" onclick="selectCashier('{{ c.username|escapejs }}', '{{ c.get_full_name|default:c.username|escapejs }}')">
-                                <i class="bi bi-person me-0.5"></i> {{ c.first_name|default:c.username }}
-                            </button>
-                            {% endfor %}
-                        </div>
-                        <div id="selectedCashierNotice" class="text-primary fw-bold fs-9 d-none">
-                            <i class="bi bi-person-check-fill me-1"></i> <span id="selectedCashierName"></span> için PIN giriniz:
-                        </div>
-                    </div>
-                    {% endif %}
-
                     <div class="d-flex justify-content-between align-items-center mb-1">
                         <label class="form-label fw-bold mb-0 text-slate-700" style="font-size: 0.74rem;">
                             <i class="bi bi-key-fill text-primary me-0.5"></i> Kasiyer PIN Kodu
                         </label>
                         <span class="text-muted font-monospace" style="font-size: 0.7rem;">Varsayılan: 1234</span>
                     </div>
-                    <input type="password" name="pin_code" id="pinCodeInput" class="form-control pin-display"
-                           placeholder="••••" maxlength="12" inputmode="numeric" autocomplete="off" required>
+                    <input type="password" name="pin_code" id="pinCodeInput" class="form-control pin-display text-center fs-3 font-monospace"
+                           placeholder="••••" maxlength="12" inputmode="numeric" autocomplete="off" autofocus required>
 
                     <!-- KOMPAKT SABİT NUMPAD (ÖLÇÜLÜ & ORTALI) -->
                     <div class="pin-pad-grid my-2">
@@ -504,29 +473,6 @@
                 tabStd.className = 'btn btn-primary w-100 mode-tab-btn shadow-xs';
                 tabPin.className = 'btn btn-light w-100 mode-tab-btn text-secondary border-0';
                 document.getElementById('usernameInput').focus();
-            }
-        }
-
-        function setRegisterChoice(code) {
-            document.getElementById('pinRegisterInput').value = code;
-            document.getElementById('stdRegisterInput').value = code;
-        }
-
-        function selectCashier(username, displayName) {
-            const notice = document.getElementById('selectedCashierNotice');
-            const nameSpan = document.getElementById('selectedCashierName');
-            const userInput = document.getElementById('usernameInput');
-            if (notice && nameSpan) {
-                nameSpan.textContent = displayName;
-                notice.classList.remove('d-none');
-            }
-            if (userInput) {
-                userInput.value = username;
-            }
-            const pinInp = document.getElementById('pinCodeInput');
-            if (pinInp) {
-                pinInp.value = '';
-                pinInp.focus();
             }
         }
 
