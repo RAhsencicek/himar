@@ -418,7 +418,7 @@
 
         // Çakışma kontrolü
         if (val && companyPins[val] && companyPins[val].id !== activeModalUserId) {
-            conflictText.innerText = "'" + val + "' PIN kodu mağazadaki '" + companyPins[val].name + "' personeline aittir! Çakışma olmaması için farklı bir PIN belirleyiniz.";
+            conflictText.innerText = "Bu PIN kodu (" + val + ") zaten kullanımda! Lütfen farklı bir PIN belirleyiniz.";
             conflictBox.classList.remove('d-none');
             saveBtn.disabled = true;
             return;
@@ -447,7 +447,7 @@
         const conflictText = document.getElementById('addUserConflictText');
 
         if (val && companyPins[val]) {
-            conflictText.innerText = "'" + val + "' PIN kodu mağazadaki '" + companyPins[val].name + "' personeline aittir!";
+            conflictText.innerText = "Bu PIN kodu (" + val + ") zaten kullanımda! Lütfen farklı bir PIN belirleyiniz.";
             conflictBox.classList.remove('d-none');
         } else {
             conflictBox.classList.add('d-none');

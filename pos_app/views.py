@@ -3343,7 +3343,7 @@ def user_create_action(request):
                 if cand_pin == password or existing.check_password(password):
                     messages.error(
                         request,
-                        f"'{password}' PIN kodu bu mağazada zaten '{existing.get_full_name() or existing.username}' tarafından kullanılıyor! Lütfen her personele benzersiz bir PIN belirleyiniz."
+                        f"'{password}' PIN kodu bu mağazada zaten kullanımda! Lütfen her personele benzersiz bir PIN belirleyiniz."
                     )
                     return redirect('user_management_view')
 
@@ -3487,7 +3487,7 @@ def user_reset_password_action(request, user_id):
             if cand_pin == new_password or existing.check_password(new_password):
                 messages.error(
                     request,
-                    f"'{new_password}' PIN kodu bu mağazada zaten '{existing.get_full_name() or existing.username}' tarafından kullanılıyor! Lütfen farklı bir PIN belirleyiniz."
+                    f"'{new_password}' PIN kodu bu mağazada zaten kullanımda! Lütfen farklı bir PIN belirleyiniz."
                 )
                 return redirect('user_management_view')
 
