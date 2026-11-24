@@ -134,6 +134,7 @@ urlpatterns = [
 
     # Müşteri Göstergesi (Dual-Screen / İkinci Ekran)
     path('pos/customer-display/', views.customer_display_view, name='customer_display_view'),
+    path('api/pos/customer-display-state/', views.customer_display_state_api, name='customer_display_state_api'),
 
     # Raf Etiketi & Barkod Basım
     path('management/products/labels/', views.product_labels_view, name='product_labels_view'),

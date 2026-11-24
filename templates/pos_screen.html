@@ -2239,6 +2239,9 @@
                 <span class="pos-mini-pill">
                     <i class="bi bi-pc-display"></i> {{ register.register_code }}
                 </span>
+                <a href="{% url 'customer_display_view' %}?register={{ register.register_code|urlencode }}" target="_blank" rel="noopener" class="pos-mini-pill" title="Müşteri İkinci Ekranını Aç (HDMI / Çift Monitör / Tablet)" style="text-decoration:none; color:inherit; background:rgba(2, 132, 199, 0.12); border-color:#0284c7;">
+                    <i class="bi bi-display text-primary"></i> 2. Ekran
+                </a>
                 <!-- Faz 14: Kasa Ekranı Ağ Durumu & Çevrimdışı Kuyruk Göstergesi -->
                 <span class="pos-mini-pill" id="posNetworkBadge" style="background: rgba(16, 185, 129, 0.15); color: #059669; border-color: #10b981; font-weight: 700;">
                     <i class="bi bi-wifi"></i> Çevrimiçi
@@ -2945,8 +2948,8 @@
                 </a>
             </div>
             <div class="col-6">
-                <a href="{% url 'customer_display_view' %}" target="_blank" rel="noopener" class="btn btn-outline-dark w-100 fw-bold py-2">
-                    <i class="bi bi-display-fill d-block fs-4 mb-1"></i> Müşteri 2. Ekranı
+                <a href="{% url 'customer_display_view' %}?register={{ register.register_code|urlencode }}" target="_blank" rel="noopener" class="btn btn-outline-dark w-100 fw-bold py-2">
+                    <i class="bi bi-display-fill d-block fs-4 mb-1 text-primary"></i> Müşteri 2. Ekranı
                 </a>
             </div>
             {% if is_supervisor %}
@@ -3235,6 +3238,80 @@
     const URL_SCALE_READ = "{% url 'scale_read_api' %}";
     const URL_QUICK_CREATE = "{% url 'quick_create_product_api' %}";
     const URL_CREATE_FROM_POOL = "{% url 'create_product_from_pool_api' %}";
+    const URL_CUSTOMER_DISPLAY_STATE = "{% url 'customer_display_state_api' %}";
+    const COMPANY_ID = "{{ company.id|default:'1' }}";
+
+    // Müşteri 2. Ekranı İletişim Kanalları (0ms Yerel Yayın)
+    let posCustomerChannel = null;
+    let posCustomerChannelLegacy = null;
+    try {
+        posCustomerChannel = new BroadcastChannel('himarket_pos_channel_' + REGISTER_CODE);
+    } catch(e) {}
+    try {
+        posCustomerChannelLegacy = new BroadcastChannel('himarket_pos_channel');
+    } catch(e) {}
+
+    let isSaleSuccessDisplayState = false;
+
+    function broadcastCustomerDisplay(eventType, extraData = {}) {
+        try {
+            const total = typeof getGrandTotal === 'function' ? getGrandTotal() : 0;
+            const discount = typeof getTotalDiscountAmount === 'function' ? getTotalDiscountAmount() : 0;
+            const subtotal = cart.reduce((acc, item) => acc + ((item.catalog_price || item.unit_price || 0) * (item.quantity || 1)), 0);
+            const vat = total * 0.10;
+
+            const payload = {
+                type: eventType,
+                register_code: REGISTER_CODE,
+                company_id: COMPANY_ID,
+                cart: cart.map(i => ({
+                    product_id: i.product_id,
+                    name: i.name,
+                    barcode: i.barcode || '',
+                    quantity: i.quantity,
+                    unit: i.unit || 'Adet',
+                    unit_price: Number(i.unit_price) || 0,
+                    catalog_price: Number(i.catalog_price) || Number(i.unit_price) || 0,
+                    total_price: Number(((i.unit_price || 0) * (i.quantity || 0)).toFixed(2))
+                })),
+                subtotal: Number(subtotal.toFixed(2)),
+                discount: Number(discount.toFixed(2)),
+                vat: Number(vat.toFixed(2)),
+                total: Number(total.toFixed(2)),
+                timestamp: Date.now(),
+                ...extraData
+            };
+
+            // 1. Scoped & Legacy BroadcastChannel (0ms Yerel Çift Monitör)
+            if (posCustomerChannel) {
+                try { posCustomerChannel.postMessage(payload); } catch(e) {}
+            }
+            if (posCustomerChannelLegacy) {
+                try { posCustomerChannelLegacy.postMessage(payload); } catch(e) {}
+            }
+
+            // 2. LocalStorage Event (Aynı Tarayıcı / Diğer Pencereler)
+            try {
+                localStorage.setItem('himarket_pos_live_event_' + REGISTER_CODE, JSON.stringify(payload));
+                localStorage.setItem('himarket_pos_live_event', JSON.stringify(payload));
+            } catch(e) {}
+
+            // 3. Ağ Üzerindeki Tabletler / Ayrı Cihazlar için HTTP State Push
+            if (navigator.onLine && typeof URL_CUSTOMER_DISPLAY_STATE !== 'undefined') {
+                fetch(URL_CUSTOMER_DISPLAY_STATE, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify(payload),
+                    keepalive: true
+                }).catch(() => {});
+            }
+        } catch(err) {
+            console.warn('Customer display broadcast hatası:', err);
+        }
+    }
 
     // Uygulama Durumu
     let cart = [];
@@ -4264,11 +4341,13 @@
     }
 
     function executeClearCart() {
+        isSaleSuccessDisplayState = false;
         cart = [];
         selectedRowIndex = -1;
         cartGlobalDiscount = 0;
         clearSelectedCustomer();
         renderCart();
+        broadcastCustomerDisplay('CART_CLEAR');
         scannerStatusEl.textContent = 'Satış iptal edildi — Yeni fişe hazır.';
         showPosToast('Fiş temizlendi.', 'info');
         focusBarcodeInput();
@@ -4318,8 +4397,13 @@
                     </td>
                 </tr>`;
             updateTotals();
+            if (!isSaleSuccessDisplayState) {
+                broadcastCustomerDisplay('CART_CLEAR');
+            }
             return;
         }
+
+        isSaleSuccessDisplayState = false;
 
         if (selectedRowIndex < 0 || selectedRowIndex >= cart.length) {
             selectedRowIndex = cart.length - 1;
@@ -4370,6 +4454,7 @@
         }).join('');
 
         updateTotals();
+        broadcastCustomerDisplay('CART_UPDATE');
     }
 
     function updateTotals() {
@@ -5099,6 +5184,16 @@
                 scannerStatusEl.textContent = `Fiş #${data.receipt_number} kaydedildi${changeNote}${drawerNote}`;
                 showPosToast(`Fiş #${data.receipt_number} başarıyla kesildi${changeNote}`, 'success');
 
+                // Müşteri 2. Ekranına Ödeme Tamamlandı Bildirimi
+                isSaleSuccessDisplayState = true;
+                const finalTotal = Number(data.total_amount || (payload.cash_paid + payload.card_paid) || getGrandTotal());
+                broadcastCustomerDisplay('SALE_COMPLETE', {
+                    receipt_number: data.receipt_number,
+                    total: finalTotal,
+                    change_given: Number(data.change_given || 0),
+                    payment_type: paymentType
+                });
+
                 cart = [];
                 selectedRowIndex = -1;
                 cartGlobalDiscount = 0;
@@ -5153,6 +5248,16 @@
 
             scannerStatusEl.textContent = `Çevrimdışı Fiş #${savedRecord.offline_receipt_id} kaydedildi. (İnternet gelince aktarılacak)`;
             showPosToast(`Çevrimdışı Satış Kaydedildi! Fiş #${savedRecord.offline_receipt_id}`, 'warning');
+
+            // Müşteri 2. Ekranına Çevrimdışı Ödeme Tamamlandı Bildirimi
+            isSaleSuccessDisplayState = true;
+            const changeGivenOffline = Math.max(0, (Number(cashPaid) || 0) - grandTotal);
+            broadcastCustomerDisplay('SALE_COMPLETE', {
+                receipt_number: savedRecord.offline_receipt_id,
+                total: grandTotal,
+                change_given: changeGivenOffline,
+                payment_type: paymentType
+            });
 
             // Çevrimdışı fişi doğrudan önizleme modalına yükle
             previewOfflineReceipt(savedRecord);

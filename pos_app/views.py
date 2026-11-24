@@ -4264,19 +4264,98 @@ def scale_ports_api(request):
     return JsonResponse({'success': True, 'ports': ports})
 
 
+CUSTOMER_DISPLAY_CACHE = {}
+
+
 def customer_display_view(request):
     """
     Müşteriye Dönük 2. Ekran / HDMI Çift Monitör Sayfası.
-    BroadcastChannel ve LocalStorage üzerinden Kasa 1 veya Kasa 2 ile anlık senkronizedir.
+    BroadcastChannel, LocalStorage ve State API üzerinden Kasa ile anlık senkronizedir.
     """
-    register = get_current_register(request)
-    company = get_company_fiscal_profile()
+    reg_code = request.GET.get('register') or request.session.get('active_register_code')
+    comp_id = request.GET.get('company_id')
+    user_company = None
+    if comp_id:
+        user_company = Company.objects.filter(id=comp_id).first()
+    if not user_company and request.user.is_authenticated:
+        user_company = get_user_company(request.user)
+    if not user_company and reg_code:
+        matched_reg = CashRegister.objects.filter(register_code=reg_code).select_related('company').first()
+        if matched_reg and matched_reg.company:
+            user_company = matched_reg.company
+
+    register = get_current_register(request, register_code=reg_code, company=user_company)
+    if not user_company and register and register.company:
+        user_company = register.company
+    if not user_company:
+        user_company = Company.get_default_company()
+
+    setting = CompanySetting.get_settings(company=user_company)
+    company_fiscal = get_company_fiscal_profile(company=user_company)
+    all_registers = CashRegister.objects.filter(company=user_company, is_active=True).order_by('register_code')
+
     context = {
         'register': register,
-        'company': company,
+        'all_registers': all_registers,
+        'company': company_fiscal,
+        'company_model': user_company,
+        'setting': setting,
         'now': timezone.now(),
     }
     return render(request, 'customer_display.html', context)
+
+
+@csrf_exempt
+def customer_display_state_api(request):
+    """
+    Müşteri Ekranı Canlı Senkronizasyon API'si (Dual Screen & Tablet Desteği).
+    Kasa ekranından gönderilen sepet ve ödeme durumunu saklar ve müşteri ekranına sunar.
+    """
+    if request.method == 'POST':
+        try:
+            payload = json.loads(request.body.decode('utf-8'))
+        except Exception:
+            return JsonResponse({'success': False, 'message': 'Geçersiz JSON verisi'}, status=400)
+
+        reg_code = (payload.get('register_code') or 'KASA-01').strip()
+        user_company = None
+        if request.user.is_authenticated:
+            user_company = get_user_company(request.user)
+        comp_id = user_company.id if user_company else (payload.get('company_id') or 1)
+        cache_key = f"{comp_id}_{reg_code}"
+
+        payload['saved_at'] = timezone.now().isoformat()
+        CUSTOMER_DISPLAY_CACHE[cache_key] = payload
+
+        return JsonResponse({'success': True, 'cache_key': cache_key})
+
+    elif request.method == 'GET':
+        reg_code = (request.GET.get('register_code') or 'KASA-01').strip()
+        comp_id = request.GET.get('company_id')
+        if not comp_id and request.user.is_authenticated:
+            user_comp = get_user_company(request.user)
+            comp_id = user_comp.id if user_comp else 1
+        elif not comp_id:
+            comp_id = 1
+
+        cache_key = f"{comp_id}_{reg_code}"
+        state = CUSTOMER_DISPLAY_CACHE.get(cache_key)
+
+        if not state:
+            state = {
+                'type': 'CART_CLEAR',
+                'register_code': reg_code,
+                'cart': [],
+                'subtotal': 0,
+                'discount': 0,
+                'vat': 0,
+                'total': 0,
+                'timestamp': 0
+            }
+
+        return JsonResponse({'success': True, 'state': state})
+
+    return JsonResponse({'success': False, 'message': 'Yalnızca GET veya POST istekleri desteklenir.'}, status=405)
 
 
 @staff_required

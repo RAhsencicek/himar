@@ -5035,6 +5035,88 @@ class SmartTvDevicePairingAndPinScopeTests(TestCase):
         self.assertTrue(staff.check_password('GucluYoneticiSifresi2026!'))
 
 
+class CustomerDisplayRealtimeTests(TestCase):
+    def setUp(self):
+        self.company = Company.objects.create(name='Test Süpermarket', code='test-supermarket', tax_number='1234567890')
+        setting = CompanySetting.get_settings(company=self.company)
+        setting.brand_name = 'TestMarket'
+        setting.save()
+        self.reg1 = CashRegister.objects.create(company=self.company, register_code='KASA-01', name='Kasa 1 (Ana)', is_active=True)
+        self.reg2 = CashRegister.objects.create(company=self.company, register_code='KASA-02', name='Kasa 2 (Ek)', is_active=True)
+
+    def test_customer_display_view_loads_successfully(self):
+        """Müşteri ekranı (customer_display_view) hatasız yüklenir ve parametreye göre kasayı çözer."""
+        res = self.client.get(reverse('customer_display_view') + '?register=KASA-02')
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, 'TestMarket')
+        self.assertContains(res, 'KASA-02')
+        self.assertEqual(res.context['register'].register_code, 'KASA-02')
+
+    def test_customer_display_state_api_post_and_get(self):
+        """Kasa sepeti güncellediğinde state API'sine POST atar ve müşteri ekranı GET ile okuyabilir."""
+        payload = {
+            'type': 'CART_UPDATE',
+            'register_code': 'KASA-01',
+            'company_id': self.company.id,
+            'cart': [
+                {'product_id': 1, 'name': 'Süt 1L', 'quantity': 2, 'unit_price': 30.0, 'total_price': 60.0}
+            ],
+            'subtotal': 60.0,
+            'discount': 0.0,
+            'vat': 6.0,
+            'total': 60.0,
+            'timestamp': 1700000000
+        }
+        post_res = self.client.post(
+            reverse('customer_display_state_api'),
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        self.assertEqual(post_res.status_code, 200)
+        self.assertTrue(post_res.json()['success'])
+
+        # GET ile durumu çekme
+        get_res = self.client.get(
+            reverse('customer_display_state_api') + f'?register_code=KASA-01&company_id={self.company.id}'
+        )
+        self.assertEqual(get_res.status_code, 200)
+        state_data = get_res.json()
+        self.assertTrue(state_data['success'])
+        self.assertEqual(state_data['state']['type'], 'CART_UPDATE')
+        self.assertEqual(state_data['state']['total'], 60.0)
+        self.assertEqual(len(state_data['state']['cart']), 1)
+        self.assertEqual(state_data['state']['cart'][0]['name'], 'Süt 1L')
+
+    def test_customer_display_sale_complete_state(self):
+        """Ödeme tamamlandığında fiş no ve para üstü state API üzerinden anında iletilir."""
+        sale_payload = {
+            'type': 'SALE_COMPLETE',
+            'register_code': 'KASA-01',
+            'company_id': self.company.id,
+            'receipt_number': 'REC-998877',
+            'total': 150.0,
+            'change_given': 50.0,
+            'payment_type': 'NAKIT',
+            'timestamp': 1700000050
+        }
+        self.client.post(
+            reverse('customer_display_state_api'),
+            data=json.dumps(sale_payload),
+            content_type='application/json'
+        )
+
+        get_res = self.client.get(
+            reverse('customer_display_state_api') + f'?register_code=KASA-01&company_id={self.company.id}'
+        )
+        self.assertEqual(get_res.status_code, 200)
+        st = get_res.json()['state']
+        self.assertEqual(st['type'], 'SALE_COMPLETE')
+        self.assertEqual(st['receipt_number'], 'REC-998877')
+        self.assertEqual(st['change_given'], 50.0)
+        self.assertEqual(st['total'], 150.0)
+
+
+
 
 
 
