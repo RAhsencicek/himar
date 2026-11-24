@@ -115,6 +115,7 @@ urlpatterns = [
     # Kullanıcı ve Personel Yetkilendirme (RBAC)
     path('management/users/', views.user_management_view, name='user_management_view'),
     path('management/users/create/', views.user_create_action, name='user_create_action'),
+    path('management/users/<int:user_id>/edit/', views.user_edit_action, name='user_edit_action'),
     path('management/users/<int:user_id>/toggle-status/', views.user_toggle_status_action, name='user_toggle_status_action'),
     path('management/users/<int:user_id>/change-role/', views.user_change_role_action, name='user_change_role_action'),
     path('management/users/<int:user_id>/reset-password/', views.user_reset_password_action, name='user_reset_password_action'),

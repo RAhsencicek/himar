@@ -3291,7 +3291,7 @@ def user_management_view(request):
     """
     if request.user.is_superuser:
         # Süper Admin platformdaki tüm kullanıcıları görebilir
-        users = User.objects.all().order_by('-is_superuser', '-is_staff', 'username')
+        users = User.objects.all().select_related('profile').order_by('-is_superuser', '-is_staff', 'username')
     else:
         # Şube Yöneticisi SADECE kendi şirketine bağlı personeli görebilir
         # Süper Admin hesapları ASLA listelenmez!
@@ -3300,10 +3300,10 @@ def user_management_view(request):
             users = User.objects.filter(
                 profile__company=user_company,
                 is_superuser=False
-            ).order_by('-is_staff', 'username')
+            ).select_related('profile').order_by('-is_staff', 'username')
         else:
             # Şirketi henüz atanmamış yönetici sadece kendisini görebilir (güvenli fallback)
-            users = User.objects.filter(id=request.user.id, is_superuser=False)
+            users = User.objects.filter(id=request.user.id, is_superuser=False).select_related('profile')
 
     total_users = users.count()
     cashier_count = users.filter(is_staff=False, is_superuser=False).count()
@@ -3357,8 +3357,8 @@ def user_create_action(request):
                 messages.error(request, 'Kasiyer PIN kodu 4 ile 6 hane arasında rakam olmalıdır (Örn: 1234)!')
                 return redirect('user_management_view')
 
-        # 2. PIN / Şifre Çakışma Kontrolü (Aynı şirkette iki personele aynı numerik PIN verilemez)
-        if password.isdigit() and user_company:
+        # 2. PIN / Şifre Çakışma Kontrolü (Aynı şirkette iki kasiyere aynı numerik PIN verilemez)
+        if role == 'KASIYER' and password.isdigit() and user_company:
             for existing in User.objects.filter(is_active=True, profile__company=user_company):
                 cand_pin = getattr(getattr(existing, 'profile', None), 'pin_code', '')
                 if cand_pin == password or existing.check_password(password):
@@ -3383,12 +3383,106 @@ def user_create_action(request):
         UserProfile.objects.create(
             user=user,
             company=user_company,
-            pin_code=password if password.isdigit() else ''
+            pin_code=password if role == 'KASIYER' else '',
+            plain_password=password
         )
 
         role_label = "Yönetici (Mağaza Müdürü)" if is_staff else "Kasiyer (POS Satış)"
         log_action('AUTH', 'Yeni Personel Eklendi', f"'{user.username}' ({role_label}) sisteme eklendi. Şirket: {user_company}. Ekleyen: {request.user.username}", user=request.user)
-        messages.success(request, f"'{user.get_full_name() or user.username}' ({role_label}) başarıyla eklendi. PIN/Şifre: {password}")
+        messages.success(request, f"'{user.get_full_name() or user.username}' ({role_label}) başarıyla eklendi.")
+
+    return redirect('user_management_view')
+
+
+@staff_required
+def user_edit_action(request, user_id):
+    """
+    Personel ve Kullanıcı Bilgilerini Güncelleme (Ad Soyad, Kullanıcı Adı, Rol, Şifre/PIN)
+    RBAC & Multi-Tenant Korumalı
+    """
+    target_user = get_object_or_404(User, id=user_id)
+
+    # 1. Hiyerarşik Koruma: Süper Admin hesaplarını sadece Süper Admin düzenleyebilir
+    if target_user.is_superuser and not request.user.is_superuser:
+        messages.error(request, 'Süper Yönetici hesabını düzenleme yetkiniz yoktur!')
+        return redirect('user_management_view')
+
+    # 2. Şirket İzolasyonu: Şube yöneticisi sadece kendi şirketinin personelini düzenleyebilir
+    if not request.user.is_superuser:
+        user_company = get_user_company(request.user)
+        target_company = get_user_company(target_user)
+        if user_company != target_company:
+            messages.error(request, 'Farklı bir mağazanın personelini düzenleme yetkiniz yoktur!')
+            return redirect('user_management_view')
+    else:
+        user_company = get_user_company(target_user)
+
+    if request.method == 'POST':
+        full_name = request.POST.get('full_name', '').strip()
+        username = request.POST.get('username', '').strip().lower()
+        role = request.POST.get('role', 'KASIYER')
+        new_password = request.POST.get('new_password', '').strip()
+
+        if not username:
+            messages.error(request, 'Kullanıcı adı boş bırakılamaz!')
+            return redirect('user_management_view')
+
+        # Kullanıcı adı değiştiyse çakışma kontrolü
+        if username != target_user.username and User.objects.filter(username=username).exclude(id=target_user.id).exists():
+            messages.error(request, f"'{username}' kullanıcı adı başka bir hesap tarafından kullanılıyor!")
+            return redirect('user_management_view')
+
+        target_user.username = username
+        if full_name:
+            parts = full_name.split(' ', 1)
+            target_user.first_name = parts[0]
+            target_user.last_name = parts[1] if len(parts) > 1 else ''
+
+        # Rol Değişikliği (Süper admin olmayanlar için)
+        if not target_user.is_superuser:
+            is_staff = (role == 'YONETICI')
+            target_user.is_staff = is_staff
+
+        profile, _ = UserProfile.objects.get_or_create(user=target_user, defaults={'company': user_company})
+
+        # Şifre veya PIN Güncellemesi
+        if role == 'KASIYER':
+            if new_password:
+                if not new_password.isdigit():
+                    messages.error(request, 'Kasiyer PIN kodu sadece rakamlardan oluşmalıdır (harf veya özel karakter içeremez)!')
+                    return redirect('user_management_view')
+                if len(new_password) < 4 or len(new_password) > 6:
+                    messages.error(request, 'Kasiyer PIN kodu 4 ile 6 hane arasında rakam olmalıdır (Örn: 1234)!')
+                    return redirect('user_management_view')
+
+                # PIN Çakışma kontrolü
+                if user_company:
+                    for existing in User.objects.filter(is_active=True, profile__company=user_company).exclude(id=target_user.id):
+                        cand_pin = getattr(getattr(existing, 'profile', None), 'pin_code', '')
+                        if cand_pin == new_password or existing.check_password(new_password):
+                            messages.error(request, f"'{new_password}' PIN kodu bu mağazada zaten kullanımda! Lütfen farklı bir PIN belirleyiniz.")
+                            return redirect('user_management_view')
+
+                target_user.set_password(new_password)
+                profile.pin_code = new_password
+                profile.plain_password = new_password
+            else:
+                if not profile.pin_code:
+                    messages.error(request, 'Yöneticiyi Kasiyere dönüştürürken 4-6 haneli sayısal bir Kasa PIN kodu belirlemeniz zorunludur!')
+                    return redirect('user_management_view')
+        else:
+            # YÖNETİCİ: PIN KESİNLİKLE OLAMAZ!
+            profile.pin_code = ''
+            if new_password:
+                target_user.set_password(new_password)
+                profile.plain_password = new_password
+
+        target_user.save()
+        profile.save()
+
+        role_label = "Yönetici" if target_user.is_staff or target_user.is_superuser else "Kasiyer"
+        log_action('AUTH', 'Personel Bilgileri Güncellendi', f"'{target_user.username}' ({role_label}) bilgileri güncellendi.", user=request.user)
+        messages.success(request, f"'{target_user.get_full_name() or target_user.username}' personeli başarıyla güncellendi.")
 
     return redirect('user_management_view')
 
@@ -3520,9 +3614,10 @@ def user_reset_password_action(request, user_id):
 
     if hasattr(target_user, 'profile'):
         target_user.profile.pin_code = pin_value
+        target_user.profile.plain_password = new_password
         target_user.profile.save()
     else:
-        UserProfile.objects.create(user=target_user, company=user_company, pin_code=pin_value)
+        UserProfile.objects.create(user=target_user, company=user_company, pin_code=pin_value, plain_password=new_password)
 
     log_action('AUTH', 'Şifre/PIN Güncellendi', f"'{target_user.username}' kullanıcısının şifresi/PIN kodu yönetici tarafından güncellendi.", user=request.user)
     if is_manager:

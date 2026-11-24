@@ -74,6 +74,7 @@ class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile', verbose_name="Kullanıcı")
     company = models.ForeignKey(Company, on_delete=models.CASCADE, null=True, blank=True, related_name='users', verbose_name="Bağlı Olduğu Mağaza")
     pin_code = models.CharField(max_length=10, blank=True, default='', verbose_name="Hızlı PIN Kodu")
+    plain_password = models.CharField(max_length=128, blank=True, default='', verbose_name="Görüntülenebilir Şifre / PIN")
 
     class Meta:
         verbose_name = "Kullanıcı Profili"

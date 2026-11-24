@@ -4974,6 +4974,46 @@ class SmartTvDevicePairingAndPinScopeTests(TestCase):
         })
         self.assertRedirects(res_super, reverse('super_admin_dashboard'))
 
+    def test_user_edit_action_updates_username_fullname_and_credentials(self):
+        """Yönetici bir personelin kullanıcı adını, adını soyadını ve şifresini/PIN'ini güncelleyebilir."""
+        self.client.force_login(self.manager_a)
+
+        # Yeni kasiyer oluştur
+        staff = User.objects.create_user(username='eski_kullanici', password='1111', first_name='Eski', last_name='Ad')
+        UserProfile.objects.create(user=staff, company=self.company_a, pin_code='1111', plain_password='1111')
+
+        # 1. Kullanıcı adını ve PIN'ini güncelle
+        res = self.client.post(reverse('user_edit_action', kwargs={'user_id': staff.id}), data={
+            'username': 'yeni_kullanici',
+            'full_name': 'Yeni İsim',
+            'role': 'KASIYER',
+            'new_password': '2222'
+        })
+        self.assertRedirects(res, reverse('user_management_view'))
+
+        staff.refresh_from_db()
+        self.assertEqual(staff.username, 'yeni_kullanici')
+        self.assertEqual(staff.first_name, 'Yeni')
+        self.assertEqual(staff.last_name, 'İsim')
+        self.assertEqual(staff.profile.pin_code, '2222')
+        self.assertEqual(staff.profile.plain_password, '2222')
+
+        # 2. Kasiyeri Yöneticiye dönüştür (PIN temizlenmeli, yönetici şifresi atanmalı)
+        res2 = self.client.post(reverse('user_edit_action', kwargs={'user_id': staff.id}), data={
+            'username': 'yeni_kullanici',
+            'full_name': 'Yeni Yönetici',
+            'role': 'YONETICI',
+            'new_password': 'GucluYoneticiSifresi2026!'
+        })
+        self.assertRedirects(res2, reverse('user_management_view'))
+
+        staff.refresh_from_db()
+        self.assertTrue(staff.is_staff)
+        self.assertEqual(staff.profile.pin_code, '')  # Yöneticinin PIN'i kesinlikle silinmeli!
+        self.assertEqual(staff.profile.plain_password, 'GucluYoneticiSifresi2026!')
+        self.assertTrue(staff.check_password('GucluYoneticiSifresi2026!'))
+
+
 
 
 
