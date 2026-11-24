@@ -1,4 +1,5 @@
 from django.shortcuts import render, get_object_or_404, redirect
+from django.urls import reverse
 from django.core.paginator import Paginator
 from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse, FileResponse, Http404, HttpResponse
@@ -3288,14 +3289,51 @@ def system_logs_view(request):
 def user_management_view(request):
     """
     Sadeleştirilmiş Personel ve Kullanıcı Yetkilendirme Ekranı (Multi-Tenant & RBAC)
+    Süper Admin İçin Hiyerarşik Yapı:
+    - 1. Kademe (Varsayılan): Firmalar ve Yetkili Mağaza Müdürleri (Özet Tablo & Drilldown).
+    - 2. Kademe (?company_id=<id>): Seçilen firmanın personelleri (Kasiyerleri ve Müdürü).
+    Şube Müdürü İçin:
+    - Doğrudan sadece kendi personelleri.
     """
+    selected_company_id = request.GET.get('company_id')
+    all_companies = Company.objects.all().order_by('name') if request.user.is_superuser else []
+
     if request.user.is_superuser:
-        # Süper Admin platformdaki tüm kullanıcıları görebilir
-        users = User.objects.all().select_related('profile').order_by('-is_superuser', '-is_staff', 'username')
+        if selected_company_id:
+            # 2. Kademe: Seçili Firmanın İçine Girildi
+            selected_company = get_object_or_404(Company, id=selected_company_id)
+            users = User.objects.filter(
+                profile__company=selected_company,
+                is_superuser=False
+            ).select_related('profile').order_by('-is_staff', 'username')
+            view_mode = 'company_detail'
+            companies_data = []
+        else:
+            # 1. Kademe: Firmalar ve Yöneticileri Listesi (Merkezi Hiyerarşik Görünüm)
+            selected_company = None
+            users = User.objects.all().select_related('profile').order_by('-is_superuser', '-is_staff', 'username')
+            view_mode = 'companies_overview'
+            companies_data = []
+            for comp in all_companies:
+                comp_users = User.objects.filter(profile__company=comp, is_superuser=False).select_related('profile').order_by('-is_staff', 'username')
+                managers = [u for u in comp_users if u.is_staff]
+                cashiers = [u for u in comp_users if not u.is_staff]
+                active_regs = comp.cash_registers.filter(is_active=True).count()
+                companies_data.append({
+                    'company': comp,
+                    'managers': managers,
+                    'cashiers': cashiers,
+                    'total_staff_count': comp_users.count(),
+                    'manager_count': len(managers),
+                    'cashier_count': len(cashiers),
+                    'active_registers_count': active_regs,
+                })
     else:
-        # Şube Yöneticisi SADECE kendi şirketine bağlı personeli görebilir
-        # Süper Admin hesapları ASLA listelenmez!
+        # Şube Yöneticisi: Sadece kendi şirketini görebilir
         user_company = get_user_company(request.user)
+        selected_company = user_company
+        view_mode = 'company_detail'
+        companies_data = []
         if user_company:
             users = User.objects.filter(
                 profile__company=user_company,
@@ -3305,11 +3343,15 @@ def user_management_view(request):
             # Şirketi henüz atanmamış yönetici sadece kendisini görebilir (güvenli fallback)
             users = User.objects.filter(id=request.user.id, is_superuser=False).select_related('profile')
 
-    total_users = users.count()
-    cashier_count = users.filter(is_staff=False, is_superuser=False).count()
-    admin_count = users.filter(Q(is_staff=True) | Q(is_superuser=True)).count()
+    total_users = users.count() if view_mode == 'company_detail' else sum(c['total_staff_count'] for c in companies_data)
+    cashier_count = users.filter(is_staff=False, is_superuser=False).count() if view_mode == 'company_detail' else sum(c['cashier_count'] for c in companies_data)
+    admin_count = users.filter(is_staff=True).count() if view_mode == 'company_detail' else sum(c['manager_count'] for c in companies_data)
 
     context = {
+        'view_mode': view_mode,
+        'selected_company': selected_company,
+        'all_companies': all_companies,
+        'companies_data': companies_data,
         'staff_users': users,
         'total_users': total_users,
         'cashier_count': cashier_count,
@@ -3346,7 +3388,14 @@ def user_create_action(request):
             last_name = parts[1] if len(parts) > 1 else ''
 
         # Şirket / Tenant Bağlantısı (Multi-Tenancy)
-        user_company = get_user_company(request.user)
+        if request.user.is_superuser:
+            target_company_id = request.POST.get('company_id')
+            if target_company_id:
+                user_company = Company.objects.filter(id=target_company_id).first() or get_user_company(request.user)
+            else:
+                user_company = get_user_company(request.user)
+        else:
+            user_company = get_user_company(request.user)
 
         # 1. Kasiyer için sadece numerik (4-6 hane) PIN zorunluluğu
         if role == 'KASIYER':
@@ -3391,7 +3440,9 @@ def user_create_action(request):
         log_action('AUTH', 'Yeni Personel Eklendi', f"'{user.username}' ({role_label}) sisteme eklendi. Şirket: {user_company}. Ekleyen: {request.user.username}", user=request.user)
         messages.success(request, f"'{user.get_full_name() or user.username}' ({role_label}) başarıyla eklendi.")
 
-    return redirect('user_management_view')
+        if request.user.is_superuser and user_company:
+            return redirect(f"{reverse('user_management_view')}?company_id={user_company.id}")
+        return redirect('user_management_view')
 
 
 @staff_required
@@ -3484,7 +3535,9 @@ def user_edit_action(request, user_id):
         log_action('AUTH', 'Personel Bilgileri Güncellendi', f"'{target_user.username}' ({role_label}) bilgileri güncellendi.", user=request.user)
         messages.success(request, f"'{target_user.get_full_name() or target_user.username}' personeli başarıyla güncellendi.")
 
-    return redirect('user_management_view')
+        if request.user.is_superuser and user_company:
+            return redirect(f"{reverse('user_management_view')}?company_id={user_company.id}")
+        return redirect('user_management_view')
 
 
 @staff_required
@@ -3516,6 +3569,10 @@ def user_toggle_status_action(request, user_id):
     status_str = "Aktif Edildi" if target_user.is_active else "Donduruldu / Pasife Alındı"
     log_action('AUTH', 'Kullanıcı Durumu Değişti', f"'{target_user.username}' hesabı {status_str}.", user=request.user)
     messages.success(request, f"'{target_user.username}' hesabı {status_str}.")
+
+    target_company = get_user_company(target_user)
+    if request.user.is_superuser and target_company:
+        return redirect(f"{reverse('user_management_view')}?company_id={target_company.id}")
     return redirect('user_management_view')
 
 
@@ -6919,6 +6976,9 @@ def super_admin_dashboard_view(request):
             if sub.expires_at and now <= sub.expires_at <= thirty_days_later and sub.status in ('ACTIVE', 'TRIAL'):
                 expiring_soon_count += 1
 
+        managers = list(User.objects.filter(profile__company=comp, is_staff=True, is_superuser=False).select_related('profile'))
+        staff_count = User.objects.filter(profile__company=comp, is_superuser=False).count()
+
         company_rows.append({
             'company': comp,
             'subscription': sub,
@@ -6928,6 +6988,8 @@ def super_admin_dashboard_view(request):
             'is_valid': sub.is_valid if sub else False,
             'days_remaining': sub.days_remaining if sub else 0,
             'expires_at_formatted': sub.expires_at.strftime('%Y-%m-%d') if (sub and sub.expires_at) else '',
+            'managers': managers,
+            'staff_count': staff_count,
         })
 
     inactive_companies = total_companies - active_companies

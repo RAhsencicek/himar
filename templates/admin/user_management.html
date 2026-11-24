@@ -3,17 +3,64 @@
 
 {% block content %}
 <div class="container-fluid p-0">
+
+    {% if is_master_admin and view_mode == 'company_detail' and selected_company %}
+    <!-- SÜPER ADMİN: FİRMA DETAY BREADCRUMB & GERİ DÖNÜŞ BARI -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 p-2.5 bg-white rounded-3 border shadow-xs">
+        <div class="d-flex align-items-center gap-2">
+            <a href="{% url 'user_management_view' %}" class="btn btn-sm btn-outline-dark fw-bold px-3 py-1.5 shadow-xs d-inline-flex align-items-center gap-1.5 rounded-2">
+                <i class="bi bi-arrow-left"></i> Tüm Firmalara Dön
+            </a>
+            <div class="vr mx-1 d-none d-sm-block"></div>
+            <div class="d-flex align-items-center gap-1.5">
+                <span class="badge bg-primary text-white p-1.5 rounded-2"><i class="bi bi-shop"></i></span>
+                <span class="fw-bold text-slate-900 fs-6">{{ selected_company.name }}</span>
+                <span class="badge bg-light text-secondary border font-monospace fs-8">{{ selected_company.code }}</span>
+            </div>
+        </div>
+
+        <!-- Başka Mağazaya Hızlı Geçiş Açılır Menüsü -->
+        <div class="d-flex align-items-center gap-2">
+            <span class="text-secondary fs-8 fw-semibold d-none d-md-inline">Firma Değiştir:</span>
+            <select class="form-select form-select-sm font-monospace fw-semibold" style="max-width: 240px;" onchange="if(this.value) window.location.href='?company_id=' + this.value;">
+                {% for c in all_companies %}
+                    <option value="{{ c.id }}" {% if c.id == selected_company.id %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- ÜST BAŞLIK VE YENİ PERSONEL EKLE BUTONU -->
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 pb-2 border-bottom">
         <div>
             <h1 class="h3 fw-bold text-slate-900 mb-0 d-flex align-items-center gap-2">
-                <i class="bi bi-people-fill text-primary"></i> PERSONEL & YETKİLENDİRME YÖNETİMİ
+                {% if view_mode == 'companies_overview' %}
+                    <i class="bi bi-buildings-fill text-primary"></i> FİRMA & ŞUBE YÖNETİCİLERİ
+                {% else %}
+                    <i class="bi bi-people-fill text-primary"></i> {{ selected_company.name|default:"MAĞAZA" }} PERSONEL KADROSU
+                {% endif %}
             </h1>
-            <span class="text-secondary small fw-medium">Market kasiyerlerini ve şube yöneticilerini yönetin, kullanıcı adı, şifre ve yetkilerini belirleyin.</span>
+            <span class="text-secondary small fw-medium">
+                {% if view_mode == 'companies_overview' %}
+                    Platformdaki kayıtlı firmaları ve yetkili mağaza müdürlerini görüntüleyin. Personelleri yönetmek için firmanın içine giriniz.
+                {% else %}
+                    Bu mağazaya bağlı kasiyer ve yönetici kadrosunu yönetin, şifre ve kullanıcı adlarını güncelleyin.
+                {% endif %}
+            </span>
         </div>
-        <button type="button" class="btn btn-primary fw-bold px-3 py-2 shadow-xs d-flex align-items-center gap-2 text-white" data-bs-toggle="modal" data-bs-target="#addUserModal">
-            <i class="bi bi-person-plus-fill fs-6 text-white"></i> YENİ PERSONEL EKLE
-        </button>
+        
+        <div class="d-flex align-items-center gap-2">
+            {% if view_mode == 'companies_overview' %}
+                <a href="{% url 'super_admin_dashboard' %}" class="btn btn-outline-secondary fw-bold px-3 py-2 shadow-xs d-flex align-items-center gap-1.5 rounded-3">
+                    <i class="bi bi-speedometer2"></i> Süper Admin Paneli
+                </a>
+            {% endif %}
+            <button type="button" class="btn btn-primary fw-bold px-3 py-2 shadow-xs d-flex align-items-center gap-2 text-white rounded-3" data-bs-toggle="modal" data-bs-target="#addUserModal">
+                <i class="bi bi-person-plus-fill fs-6 text-white"></i> 
+                <span>{% if view_mode == 'companies_overview' %}Yeni Personel / Yönetici Ekle{% else %}Yeni Personel Ekle{% endif %}</span>
+            </button>
+        </div>
     </div>
 
     <!-- REHBER BİLGİLENDİRME (Kasiyer PIN vs Yönetici Şifre) -->
@@ -21,10 +68,13 @@
         <div class="d-flex align-items-start gap-2">
             <i class="bi bi-shield-check text-info fs-5 mt-0.5"></i>
             <div>
-                <strong class="d-block text-slate-900 mb-1">Giriş Modelleri ve Yetki Ayrımı Nasıl Çalışır?</strong>
+                <strong class="d-block text-slate-900 mb-1">Hiyerarşik Güvenlik ve Giriş Modeli:</strong>
                 <ul class="mb-0 ps-3 text-slate-700">
-                    <li><strong>🔵 Kasiyer:</strong> Sadece POS Kasa Ekranına erişir. Satış yapar, fiş keser ve müşteri iadesi alır. Kasa ekranına <strong>4-6 haneli sayısal PIN</strong> ile giriş yapar. Yönetim paneline <u>kesinlikle erişemez</u>.</li>
-                    <li><strong>🟢 Yönetici:</strong> Yönetim paneline, Z raporlarına, stok ve fiyat ayarlarına erişir. Sisteme <strong>kullanıcı adı ve güçlü şifre</strong> ile girer. Kasada PIN ile oturum açamaz.</li>
+                    {% if view_mode == 'companies_overview' %}
+                        <li><strong>🏢 Firma Düzeyi:</strong> Her firma tamamen izoledir. Süper Admin olarak bir firmanın personel şifresini değiştirmek veya kasiyerlerini incelemek için ilgili firmanın <strong>"Personelleri Yönet"</strong> butonuna tıklayınız.</li>
+                    {% endif %}
+                    <li><strong>🟢 Yönetici (Mağaza Müdürü):</strong> Yönetim paneline kullanıcı adı ve şifreyle girer. Z raporları, fiyatlar ve personelleri yönetir (Kasa PIN kodu kullanılmaz).</li>
+                    <li><strong>🔵 Kasiyer:</strong> Sadece POS Kasa Ekranına erişir. Kasaya <strong>4-6 haneli sayısal PIN</strong> tuşlayarak oturum açar. Yönetim paneline erişemez.</li>
                 </ul>
             </div>
         </div>
@@ -36,11 +86,29 @@
             <div class="tabler-card border-start border-4 border-primary">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
-                        <span class="text-uppercase fw-bold text-secondary fs-8 d-block mb-1">TOPLAM PERSONEL</span>
-                        <div class="fs-4 fw-extrabold text-slate-900">{{ total_users }} Kişi</div>
+                        <span class="text-uppercase fw-bold text-secondary fs-8 d-block mb-1">
+                            {% if view_mode == 'companies_overview' %}TOPLAM MAĞAZA (FİRMA){% else %}MAĞAZA PERSONELİ{% endif %}
+                        </span>
+                        <div class="fs-4 fw-extrabold text-slate-900">
+                            {% if view_mode == 'companies_overview' %}{{ all_companies.count }} Firma{% else %}{{ total_users }} Kişi{% endif %}
+                        </div>
                     </div>
-                    <span class="badge bg-primary text-white p-2 rounded-2"><i class="bi bi-people fs-4"></i></span>
+                    <span class="badge bg-primary text-white p-2 rounded-2">
+                        <i class="bi {% if view_mode == 'companies_overview' %}bi-buildings{% else %}bi-people{% endif %} fs-4"></i>
+                    </span>
                 </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-4">
+            <div class="tabler-card border-start border-4 border-success">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="text-uppercase fw-bold text-secondary fs-8 d-block mb-1">ŞUBE YÖNETİCİLERİ</span>
+                        <div class="fs-4 fw-extrabold text-success">{{ admin_count }} Yönetici</div>
+                    </div>
+                    <span class="badge bg-success text-white p-2 rounded-2"><i class="bi bi-shield-lock-fill fs-4"></i></span>
+                </div>
+                <small class="text-muted fs-8 d-block mt-1">Kullanıcı adı + şifre ile tam yetkili yöneticiler</small>
             </div>
         </div>
         <div class="col-12 col-md-4">
@@ -52,28 +120,135 @@
                     </div>
                     <span class="badge bg-info text-white p-2 rounded-2"><i class="bi bi-cart4 fs-4"></i></span>
                 </div>
-                <small class="text-muted fs-8 d-block mt-1">Sadece POS Kasa PIN kodu ile giriş yapabilenler</small>
-            </div>
-        </div>
-        <div class="col-12 col-md-4">
-            <div class="tabler-card border-start border-4 border-success">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <span class="text-uppercase fw-bold text-secondary fs-8 d-block mb-1">YÖNETİCİLER</span>
-                        <div class="fs-4 fw-extrabold text-success">{{ admin_count }} Yönetici</div>
-                    </div>
-                    <span class="badge bg-success text-white p-2 rounded-2"><i class="bi bi-shield-lock-fill fs-4"></i></span>
-                </div>
-                <small class="text-muted fs-8 d-block mt-1">Kullanıcı adı + şifre ile tam yetkili olanlar</small>
+                <small class="text-muted fs-8 d-block mt-1">Sadece POS Kasa PIN kodu ile satış yapabilenler</small>
             </div>
         </div>
     </div>
 
-    <!-- PERSONEL LİSTESİ TABLOSU -->
+    {% if view_mode == 'companies_overview' %}
+    <!-- ======================================================== -->
+    <!-- 1. KADEME: FİRMALAR VE MAĞAZA YÖNETİCİLERİ LİSTESİ TABLOSU -->
+    <!-- ======================================================== -->
+    <div class="card shadow-sm border-0 rounded-3 mb-4">
+        <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2 border-bottom">
+            <div class="d-flex align-items-center gap-2">
+                <span class="fw-bold text-slate-900 fs-7"><i class="bi bi-buildings-fill text-primary me-1"></i> KAYITLI FİRMALAR & MAĞAZA MÜDÜRLERİ</span>
+                <span class="badge bg-light border text-slate-700 fs-8">{{ all_companies.count }} Mağaza</span>
+            </div>
+            <!-- Canlı Arama Kutusu -->
+            <div class="input-group input-group-sm" style="max-width: 320px;">
+                <span class="input-group-text bg-light border-end-0"><i class="bi bi-search text-muted"></i></span>
+                <input type="text" id="companyOverviewSearch" class="form-control bg-light border-start-0" placeholder="Firma veya yönetici adı ara..." onkeyup="filterCompanyOverviewTable()">
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 fs-8 align-middle" id="companiesOverviewTable">
+                <thead class="table-light text-secondary">
+                    <tr>
+                        <th class="ps-3" style="width: 50px;">#</th>
+                        <th style="min-width: 200px;">Firma / Mağaza Adı</th>
+                        <th style="min-width: 250px;">Yetkili Şube Müdürü / Yönetici</th>
+                        <th style="min-width: 140px;">Kasa Terminalleri</th>
+                        <th style="min-width: 140px;">Personel Kadrosu</th>
+                        <th class="text-end pe-3" style="width: 240px;">İşlemler</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cd in companies_data %}
+                    <tr class="comp-overview-row" data-name="{{ cd.company.name|lower }}" data-code="{{ cd.company.code|lower }}" data-mgr="{% for m in cd.managers %}{{ m.username|lower }} {{ m.get_full_name|lower }} {% endfor %}">
+                        <td class="ps-3 text-secondary fw-semibold">{{ cd.company.id }}</td>
+                        <td>
+                            <div class="fw-bold text-slate-900 fs-7 d-flex align-items-center gap-1.5">
+                                <i class="bi bi-shop text-primary"></i>
+                                <span>{{ cd.company.name }}</span>
+                                {% if not cd.company.is_active %}
+                                    <span class="badge bg-danger text-white fs-9 px-1.5 py-0.5">Pasif</span>
+                                {% endif %}
+                            </div>
+                            <div class="text-secondary fs-8 mt-0.5">
+                                Kod: <span class="badge bg-light text-dark border px-1.5 py-0.5 font-monospace">{{ cd.company.code }}</span>
+                            </div>
+                        </td>
+                        <td>
+                            {% if cd.managers %}
+                                {% for mgr in cd.managers %}
+                                <div class="mb-1.5 last-mb-0">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="fw-bold text-slate-900 font-monospace fs-8">
+                                            <i class="bi bi-person-fill text-success"></i> @{{ mgr.username }}
+                                        </span>
+                                        <span class="badge text-white font-monospace fs-8 px-2 py-0.5 shadow-xs" style="background-color: #1e293b;">
+                                            <i class="bi bi-shield-lock-fill text-success me-0.5"></i> {{ mgr.profile.plain_password|default:"••••••" }}
+                                        </span>
+                                    </div>
+                                    <div class="text-secondary fs-9">
+                                        {{ mgr.get_full_name|default:"İsimsiz Yönetici" }}
+                                        {% if mgr.last_login %} · Son Giriş: {{ mgr.last_login|date:"d.m.Y H:i" }}{% endif %}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            {% else %}
+                                <div class="d-inline-flex align-items-center gap-1.5 p-1 px-2 rounded-2 bg-warning-subtle text-warning-emphasis border border-warning-subtle fs-8">
+                                    <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+                                    <span>Yönetici Atanmadı</span>
+                                </div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center gap-1.5">
+                                <span class="badge bg-info-subtle text-info border border-info-subtle font-monospace fs-7 px-2.5 py-1">
+                                    <i class="bi bi-display me-1"></i> {{ cd.active_registers_count }} Kasa Aktif
+                                </span>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="d-flex flex-column gap-0.5">
+                                <span class="fw-bold text-slate-900 fs-7">{{ cd.total_staff_count }} Personel</span>
+                                <small class="text-muted fs-8">{{ cd.manager_count }} Yönetici, {{ cd.cashier_count }} Kasiyer</small>
+                            </div>
+                        </td>
+                        <td class="text-end pe-3">
+                            <div class="d-inline-flex gap-1.5">
+                                <!-- MAĞAZAYA GİR / PERSONELLERİ YÖNET BUTONU (İSTENEN ÖZELLİK) -->
+                                <a href="?company_id={{ cd.company.id }}" 
+                                   class="btn btn-sm btn-primary fw-bold px-3 py-1.5 fs-8 text-white shadow-xs d-inline-flex align-items-center gap-1.5 rounded-2"
+                                   title="{{ cd.company.name }} mağazasının personellerini ve kasa şifrelerini görüntüle / düzenle">
+                                    <i class="bi bi-people-fill"></i> Personelleri Yönet ({{ cd.total_staff_count }}) →
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center py-5 text-secondary">Kayıtlı firma bulunamadı.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+
+    <!-- ======================================================== -->
+    <!-- 2. KADEME: SEÇİLİ FİRMANIN PERSONEL LİSTESİ TABLOSU      -->
+    <!-- ======================================================== -->
     <div class="card shadow-sm border-0 rounded-3">
-        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center border-bottom">
-            <span class="fw-bold text-slate-900 fs-7"><i class="bi bi-list-ul me-1.5 text-primary"></i> KAYITLI PERSONELLER VE GİRİŞ HESAPLARI</span>
-            <span class="badge bg-light border text-slate-700 fs-8">{{ staff_users.count }} Kullanıcı</span>
+        <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2 border-bottom">
+            <div class="d-flex align-items-center gap-2">
+                <span class="fw-bold text-slate-900 fs-7">
+                    <i class="bi bi-list-ul me-1.5 text-primary"></i> 
+                    {% if selected_company %}{{ selected_company.name|upper }} · {% endif %}KAYITLI PERSONELLER VE GİRİŞ HESAPLARI
+                </span>
+                <span class="badge bg-light border text-slate-700 fs-8">{{ staff_users.count }} Kullanıcı</span>
+            </div>
+            
+            {% if is_master_admin %}
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-success-subtle text-success border border-success-subtle fs-8 px-2.5 py-1">
+                    <i class="bi bi-building-check me-1"></i> Firma İzolasyonu Aktif
+                </span>
+            </div>
+            {% endif %}
         </div>
         <div class="table-responsive">
             <table class="table table-hover mb-0 fs-8 align-middle">
@@ -172,13 +347,18 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="7" class="text-center py-4 text-secondary">Kayıtlı personel bulunamadı.</td>
+                        <td colspan="7" class="text-center py-5 text-secondary">
+                            <i class="bi bi-people fs-2 d-block mb-2 text-muted"></i>
+                            Bu mağazaya kayıtlı personel bulunamadı. Sağ üstteki <strong>"Yeni Personel Ekle"</strong> butonu ile ilk kasiyeri veya müdürü ekleyebilirsiniz.
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
     </div>
+    {% endif %}
+
 </div>
 
 <!-- ======================================================= -->
@@ -196,6 +376,28 @@
             <form method="post" action="{% url 'user_create_action' %}">
                 {% csrf_token %}
                 <div class="modal-body p-4">
+
+                    <!-- SÜPER ADMİN İÇİN MAĞAZA SEÇİMİ -->
+                    {% if is_master_admin %}
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-slate-800 d-block mb-1">Bağlı Olacağı Mağaza (Firma) *</label>
+                        {% if selected_company %}
+                            <input type="hidden" name="company_id" value="{{ selected_company.id }}">
+                            <div class="p-2.5 bg-light rounded-3 border d-flex align-items-center justify-content-between">
+                                <span class="fw-bold text-primary fs-8"><i class="bi bi-shop me-1"></i> {{ selected_company.name }}</span>
+                                <span class="badge bg-secondary-subtle text-secondary font-monospace fs-9">{{ selected_company.code }}</span>
+                            </div>
+                        {% else %}
+                            <select name="company_id" class="form-select font-monospace fw-semibold" required>
+                                <option value="">-- Lütfen Mağaza Seçiniz --</option>
+                                {% for c in all_companies %}
+                                    <option value="{{ c.id }}">{{ c.name }} ({{ c.code }})</option>
+                                {% endfor %}
+                            </select>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
                     <!-- EN ÜSTTE ROL SEÇİMİ (Kullanıcı Kasiyer mi Yönetici mi?) -->
                     <div class="mb-3">
                         <label class="form-label fw-bold text-slate-800 d-block mb-1.5">Personel Rolü ve Yetki Seviyesi *</label>
@@ -571,6 +773,24 @@
 
         conflictBox.classList.add('d-none');
         submitBtn.disabled = false;
+    }
+
+    // 3. FİRMA LİSTESİ CANLI ARAMA
+    function filterCompanyOverviewTable() {
+        const input = document.getElementById('companyOverviewSearch');
+        if (!input) return;
+        const query = input.value.toLowerCase().trim();
+        const rows = document.querySelectorAll('.comp-overview-row');
+        rows.forEach(row => {
+            const name = row.getAttribute('data-name') || '';
+            const code = row.getAttribute('data-code') || '';
+            const mgr = row.getAttribute('data-mgr') || '';
+            if (name.includes(query) || code.includes(query) || mgr.includes(query)) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
     }
 </script>
 {% endblock %}

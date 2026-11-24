@@ -4725,6 +4725,27 @@ class UserManagementRBACTests(TestCase):
         self.assertIn('sube_muduru', usernames)
         self.assertIn('diger_kasiyer', usernames)
 
+    def test_super_admin_hierarchical_company_filter(self):
+        """Süper Admin bir firmanın içine girdiğinde (?company_id=X) sadece o firmanın personellerini görür."""
+        self.client.login(username='super_boss', password='password123')
+        
+        # 1. Merkez Market personelleri içine gir
+        res_merkez = self.client.get(reverse('user_management_view'), {'company_id': self.merkez_company.id})
+        self.assertEqual(res_merkez.status_code, 200)
+        self.assertEqual(res_merkez.context['view_mode'], 'company_detail')
+        merkez_usernames = [u.username for u in res_merkez.context['staff_users']]
+        self.assertIn('sube_muduru', merkez_usernames)
+        self.assertIn('sube_kasiyeri', merkez_usernames)
+        self.assertNotIn('diger_kasiyer', merkez_usernames) # Güneş Market kasiyeri listede olmamalı!
+
+        # 2. Güneş Market personelleri içine gir
+        res_diger = self.client.get(reverse('user_management_view'), {'company_id': self.diger_company.id})
+        self.assertEqual(res_diger.status_code, 200)
+        self.assertEqual(res_diger.context['view_mode'], 'company_detail')
+        diger_usernames = [u.username for u in res_diger.context['staff_users']]
+        self.assertIn('diger_kasiyer', diger_usernames)
+        self.assertNotIn('sube_kasiyeri', diger_usernames) # Merkez Market kasiyeri listede olmamalı!
+
     def test_branch_manager_cannot_change_super_admin_role(self):
         """Şube yöneticisi Süper Admin'in rolünü değiştiremez (engellenir)."""
         self.client.login(username='sube_muduru', password='password123')

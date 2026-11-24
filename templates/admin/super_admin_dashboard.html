@@ -192,6 +192,16 @@
                                     <div class="text-secondary fs-8 mt-0.5">
                                         Kod: <span class="badge bg-light text-dark border px-1.5 py-0.5">{{ row.company.code }}</span>
                                     </div>
+                                    {% if row.managers %}
+                                        <div class="text-secondary fs-9 mt-1">
+                                            <span class="text-success fw-bold"><i class="bi bi-shield-check"></i> Müdür:</span> 
+                                            {% for m in row.managers %}<span class="font-monospace fw-semibold text-slate-800">@{{ m.username }}</span>{% if not forloop.last %}, {% endif %}{% endfor %}
+                                        </div>
+                                    {% else %}
+                                        <div class="text-warning fs-9 mt-1">
+                                            <i class="bi bi-exclamation-triangle"></i> <span class="fw-semibold">Müdür Atanmadı</span>
+                                        </div>
+                                    {% endif %}
                                 </td>
                                 <td>
                                     {% if row.company.tax_number %}
@@ -287,6 +297,13 @@
                                 </td>
                                 <td class="text-end pe-3 text-nowrap">
                                     <div class="d-inline-flex gap-1.5">
+                                        <!-- MAĞAZA PERSONELLERİ BUTONU (İSTENEN ÖZELLİK) -->
+                                        <a href="{% url 'user_management_view' %}?company_id={{ row.company.id }}" 
+                                           class="btn btn-xs btn-outline-info fw-semibold px-2.5 py-1 rounded-2 shadow-xs d-inline-flex align-items-center gap-1"
+                                           title="Bu mağazanın şube yöneticisini ve personellerini görüntüle / düzenle">
+                                            <i class="bi bi-people-fill"></i> Personeller ({{ row.staff_count }})
+                                        </a>
+
                                         <!-- DÜZENLEME MODAL BUTONU -->
                                         <button type="button"
                                                 class="btn btn-xs btn-outline-primary fw-semibold px-2 py-1 rounded-2"
